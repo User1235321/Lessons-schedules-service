@@ -23,4 +23,4 @@
 
 ## Связанная задача
 
-Issue / Project card:
+**Trello:**

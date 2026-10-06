@@ -1,0 +1,406 @@
+{
+  "project": {
+    "name": "Minimal integration project",
+    "cycle": {
+      "odd_week_days": ["MONDAY", "TUESDAY"],
+      "even_week_days": ["MONDAY", "TUESDAY"]
+    },
+    "time_mode": {
+      "type": "STEP",
+      "step_minutes": 30
+    },
+    "duration_mode": {
+      "type": "INDIVIDUAL"
+    }
+  },
+  "subjects": [
+    {
+      "id": "subject-math",
+      "name": "Математика"
+    },
+    {
+      "id": "subject-physics",
+      "name": "Физика"
+    },
+    {
+      "id": "subject-programming",
+      "name": "Программирование"
+    }
+  ],
+  "teachers": [
+    {
+      "id": "teacher-ivanov",
+      "full_name": "Иванов Иван Иванович",
+      "capabilities": [
+        {
+          "subject_id": "subject-physics",
+          "lesson_type": "LAB"
+        },
+        {
+          "subject_id": "subject-physics",
+          "lesson_type": "PRACTICE"
+        }
+      ],
+      "availability": [
+        {
+          "week": "ODD",
+          "day": "MONDAY",
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "week": "ODD",
+          "day": "TUESDAY",
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "week": "EVEN",
+          "day": "MONDAY",
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "week": "EVEN",
+          "day": "TUESDAY",
+          "start": "09:00",
+          "end": "18:00"
+        }
+      ],
+      "preferences": [
+        {
+          "week": "ANY",
+          "day": "MONDAY",
+          "start": "10:00",
+          "end": "15:00"
+        }
+      ]
+    },
+    {
+      "id": "teacher-goncharov",
+      "full_name": "Гончаров Алексей Сергеевич",
+      "capabilities": [
+        {
+          "subject_id": "subject-physics",
+          "lesson_type": "LAB"
+        }
+      ],
+      "availability": [
+        {
+          "week": "ODD",
+          "day": "MONDAY",
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "week": "ODD",
+          "day": "TUESDAY",
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "week": "EVEN",
+          "day": "MONDAY",
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "week": "EVEN",
+          "day": "TUESDAY",
+          "start": "09:00",
+          "end": "18:00"
+        }
+      ],
+      "preferences": [
+        {
+          "week": "ANY",
+          "day": "TUESDAY",
+          "start": "10:00",
+          "end": "16:00"
+        }
+      ]
+    },
+    {
+      "id": "teacher-petrova",
+      "full_name": "Петрова Анна Викторовна",
+      "capabilities": [
+        {
+          "subject_id": "subject-math",
+          "lesson_type": "LECTURE"
+        }
+      ],
+      "availability": [
+        {
+          "week": "ODD",
+          "day": "MONDAY",
+          "start": "09:00",
+          "end": "16:00"
+        },
+        {
+          "week": "ODD",
+          "day": "TUESDAY",
+          "start": "09:00",
+          "end": "16:00"
+        },
+        {
+          "week": "EVEN",
+          "day": "MONDAY",
+          "start": "09:00",
+          "end": "16:00"
+        },
+        {
+          "week": "EVEN",
+          "day": "TUESDAY",
+          "start": "09:00",
+          "end": "16:00"
+        }
+      ],
+      "preferences": [
+        {
+          "week": "ANY",
+          "day": "MONDAY",
+          "start": "09:00",
+          "end": "13:00"
+        }
+      ]
+    },
+    {
+      "id": "teacher-smirnov",
+      "full_name": "Смирнов Павел Олегович",
+      "capabilities": [
+        {
+          "subject_id": "subject-programming",
+          "lesson_type": "PRACTICE"
+        }
+      ],
+      "availability": [
+        {
+          "week": "ODD",
+          "day": "MONDAY",
+          "start": "10:00",
+          "end": "18:00"
+        },
+        {
+          "week": "ODD",
+          "day": "TUESDAY",
+          "start": "10:00",
+          "end": "18:00"
+        },
+        {
+          "week": "EVEN",
+          "day": "MONDAY",
+          "start": "10:00",
+          "end": "18:00"
+        },
+        {
+          "week": "EVEN",
+          "day": "TUESDAY",
+          "start": "10:00",
+          "end": "18:00"
+        }
+      ],
+      "preferences": []
+    }
+  ],
+  "rooms": [
+    {
+      "id": "room-212",
+      "name": "212",
+      "capacity": 60,
+      "type": "LECTURE",
+      "availability": [
+        {
+          "week": "ANY",
+          "day": "MONDAY",
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "week": "ANY",
+          "day": "TUESDAY",
+          "start": "09:00",
+          "end": "18:00"
+        }
+      ],
+      "capabilities": []
+    },
+    {
+      "id": "room-214",
+      "name": "214",
+      "capacity": 30,
+      "type": "PRACTICE_SPECIALIZED",
+      "availability": [
+        {
+          "week": "ANY",
+          "day": "MONDAY",
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "week": "ANY",
+          "day": "TUESDAY",
+          "start": "09:00",
+          "end": "18:00"
+        }
+      ],
+      "capabilities": [
+        {
+          "subject_id": "subject-programming",
+          "lesson_type": "PRACTICE"
+        }
+      ]
+    },
+    {
+      "id": "room-215",
+      "name": "215",
+      "capacity": 30,
+      "type": "LABORATORY",
+      "availability": [
+        {
+          "week": "ANY",
+          "day": "MONDAY",
+          "start": "09:00",
+          "end": "18:00"
+        },
+        {
+          "week": "ANY",
+          "day": "TUESDAY",
+          "start": "09:00",
+          "end": "18:00"
+        }
+      ],
+      "capabilities": [
+        {
+          "subject_id": "subject-physics",
+          "lesson_type": "LAB"
+        }
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "id": "group-301",
+      "name": "301",
+      "student_count": 24,
+      "subgroups": [
+        {
+          "id": "group-301-1",
+          "name": "301-1",
+          "student_count": 12
+        },
+        {
+          "id": "group-301-2",
+          "name": "301-2",
+          "student_count": 12
+        }
+      ]
+    },
+    {
+      "id": "group-302",
+      "name": "302",
+      "student_count": 26,
+      "subgroups": []
+    }
+  ],
+  "streams": [
+    {
+      "id": "stream-301-302",
+      "name": "301 + 302",
+      "group_ids": ["group-301", "group-302"]
+    }
+  ],
+  "workloads": [
+    {
+      "id": "workload-math-lecture",
+      "target": {
+        "type": "STREAM",
+        "id": "stream-301-302"
+      },
+      "subject_id": "subject-math",
+      "lesson_type": "LECTURE",
+      "format": "ONSITE",
+      "occurrences_per_cycle": 2,
+      "duration_minutes": 90,
+      "required_teacher_count": 1
+    },
+    {
+      "id": "workload-programming-301-1",
+      "target": {
+        "type": "SUBGROUP",
+        "id": "group-301-1"
+      },
+      "subject_id": "subject-programming",
+      "lesson_type": "PRACTICE",
+      "format": "ONSITE",
+      "occurrences_per_cycle": 2,
+      "duration_minutes": 90,
+      "required_teacher_count": 1
+    },
+    {
+      "id": "workload-programming-301-2",
+      "target": {
+        "type": "SUBGROUP",
+        "id": "group-301-2"
+      },
+      "subject_id": "subject-programming",
+      "lesson_type": "PRACTICE",
+      "format": "REMOTE",
+      "occurrences_per_cycle": 2,
+      "duration_minutes": 90,
+      "required_teacher_count": 1
+    },
+    {
+      "id": "workload-physics-lab-301",
+      "target": {
+        "type": "GROUP",
+        "id": "group-301"
+      },
+      "subject_id": "subject-physics",
+      "lesson_type": "LAB",
+      "format": "ONSITE",
+      "occurrences_per_cycle": 2,
+      "duration_minutes": 120,
+      "required_teacher_count": 2
+    }
+  ],
+  "extra_constraints": [
+    {
+      "id": "constraint-group-301-start",
+      "type": "MIN_START_TIME",
+      "target": {
+        "type": "GROUP",
+        "id": "group-301"
+      },
+      "params": {
+        "time": "10:00"
+      }
+    },
+    {
+      "id": "constraint-physics-every-week",
+      "type": "EVERY_WEEK",
+      "target": {
+        "type": "WORKLOAD",
+        "id": "workload-physics-lab-301"
+      },
+      "params": {}
+    }
+  ],
+  "optimization_criteria": [
+    {
+      "type": "STUDENT_GAPS",
+      "priority": 1
+    },
+    {
+      "type": "TEACHER_PREFERENCES",
+      "priority": 2
+    },
+    {
+      "type": "BALANCED_STUDENT_LOAD",
+      "priority": 3
+    }
+  ],
+  "generation": {
+    "mode": "TOP_N",
+    "top_n": 3
+  }
+}

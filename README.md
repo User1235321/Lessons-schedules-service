@@ -84,13 +84,11 @@ PostgreSQL является постоянным хранилищем данны
 │   └── package.json
 ├── docs/
 │   ├── FS.md
-│   ├── HLD.md
-│   └── PROJECT_BOARD.md
+│   └── HLD.md
 ├── test-data/
 │   └── minimal-project.json
 ├── .github/
 │   ├── workflows/
-│   ├── ISSUE_TEMPLATE/
 │   └── pull_request_template.md
 ├── docker-compose.yml
 ├── .env.example
@@ -167,6 +165,7 @@ feature/
 fix/
 refactor/
 infra/
+docs/
 ```
 
 Примеры:
@@ -178,9 +177,10 @@ feature/groups-subgroups
 feature/scheduler-jobs
 infra/docker-compose
 fix/room-validation
+docs/trello-workflow
 ```
 
-Прямые коммиты в `main` запрещены организационным процессом. Изменения попадают в `main` только через Pull Request.
+Прямые коммиты в `main` запрещены Ruleset. Изменения попадают в `main` только через Pull Request.
 
 Для merge требуется:
 
@@ -188,6 +188,41 @@ fix/room-validation
 - успешное прохождение обязательных CI checks;
 - отсутствие нерешённых review comments;
 - соответствие Definition of Done.
+
+## Управление задачами
+
+Единым источником состояния задач команды является **Trello**.
+
+GitHub Project Board для проекта не используется. GitHub Issues не являются основным инструментом планирования и не должны дублировать карточки Trello.
+
+В Trello рекомендуется использовать статусы:
+
+```text
+Backlog → Ready → In Progress → Review → Done
+                         ↓
+                      Blocked
+```
+
+Для каждой карточки разработки желательно указывать:
+
+- исполнителя;
+- область: Frontend / Backend / DB / Scheduler / DevOps / Docs;
+- приоритет: High / Medium / Low;
+- контрольную дату;
+- размер: S / M / L;
+- связанные требования FS;
+- связанные разделы HLD;
+- блокирующие зависимости при наличии.
+
+В течение одной контрольной недели у участника желательно держать не более двух задач одновременно в `In Progress`.
+
+На еженедельном созвоне команда проходит задачи в порядке:
+
+```text
+Review → Blocked → In Progress → Ready
+```
+
+Обсуждаются конкретные результаты, блокеры, переносы контрольных дат и задачи до следующего созвона.
 
 ## Pull Request
 
@@ -200,13 +235,29 @@ fix/room-validation
 - связанные разделы HLD;
 - способ проверки;
 - добавленные или изменённые тесты;
-- связанная задача.
+- ссылка на связанную карточку Trello.
+
+Рекомендуемый процесс:
+
+```text
+Trello card
+    ↓
+рабочая ветка
+    ↓
+Pull Request
+    ↓
+review + CI
+    ↓
+merge в main
+    ↓
+карточка Trello → Done
+```
 
 ## Definition of Done
 
 Задача считается завершённой, если:
 
-- реализованы требования FS, указанные в задаче;
+- реализованы требования FS, указанные в карточке Trello;
 - реализация соответствует HLD;
 - изменение попало в `main` через Pull Request;
 - Pull Request одобрен другим участником;
@@ -214,7 +265,8 @@ fix/room-validation
 - проект собирается и запускается;
 - автоматические тесты проходят;
 - ранее реализованная функциональность не сломана;
-- документация обновлена, если изменение затрагивает публичный контракт или архитектуру.
+- документация обновлена, если изменение затрагивает публичный контракт или архитектуру;
+- карточка Trello переведена в `Done`.
 
 ## CI
 
@@ -239,23 +291,10 @@ build
 
 Workflow-файлы находятся в `.github/workflows`.
 
-## Доска проекта
-
-Рекомендуемая доска и правила карточек описаны в `docs/PROJECT_BOARD.md`.
-
-Статусы:
-
-```text
-Backlog → Ready → In Progress → Review → Done
-                         ↓
-                      Blocked
-```
-
 ## Документация
 
 - `docs/FS.md` — функциональная спецификация;
-- `docs/HLD.md` — High-Level Design;
-- `docs/PROJECT_BOARD.md` — правила ведения задач.
+- `docs/HLD.md` — High-Level Design.
 
 ## Тестовые данные
 

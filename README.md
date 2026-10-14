@@ -71,12 +71,14 @@ PostgreSQL является постоянным хранилищем данны
 │   ├── app/
 │   │   ├── api/
 │   │   ├── application/
+│   │   ├── bootstrap/
 │   │   ├── domain/
 │   │   ├── infrastructure/
 │   │   ├── scheduling/
 │   │   └── worker/
 │   ├── tests/
 │   ├── alembic/
+│   ├── alembic.ini
 │   └── pyproject.toml
 ├── frontend/
 │   ├── src/
@@ -136,6 +138,35 @@ uvicorn app.main:app --reload
 ```text
 GET http://localhost:8000/health
 ```
+
+Миграции базы (нужен PostgreSQL из `docker compose`, адрес берётся из `DATABASE_URL`):
+
+```bash
+alembic upgrade head                            # применить все миграции
+alembic revision --autogenerate -m "add users"  # создать миграцию по изменениям моделей
+alembic downgrade -1                            # откатить последнюю миграцию
+alembic history                                 # список миграций
+```
+
+Сгенерированную миграцию нужно прочитать перед коммитом: Alembic не распознаёт переименования и часть изменений типов. Тесты проверяют, что миграции совпадают с моделями и что каждая из них откатывается.
+
+Проверки перед Pull Request:
+
+```bash
+ruff check .
+lint-imports
+pytest                       # интеграционные тесты сами поднимают PostgreSQL в Docker
+pytest -m "not integration"  # быстрый прогон без Docker
+```
+
+Код бэкенда разделён на слои:
+
+- `domain` — сущности и правила предметной области, только стандартная библиотека;
+- `application` — сценарии и порты (интерфейсы того, что сценариям нужно снаружи);
+- `api`, `worker`, `infrastructure` — адаптеры: HTTP, обработчик заданий, PostgreSQL, MinIO и т. д.;
+- `bootstrap` — настройки и сборка приложения.
+
+Импорт разрешён только в сторону внутренних слоёв: `domain` ничего не знает о FastAPI и SQLAlchemy. Это проверяет `lint-imports`.
 
 ## Frontend
 

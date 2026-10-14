@@ -10,14 +10,18 @@ dependencies = [
     "fastapi>=0.115,<1.0",
     "uvicorn[standard]>=0.32,<1.0",
     "sqlalchemy>=2.0,<3.0",
-    "psycopg[binary]>=3.2,<4.0"
+    "psycopg[binary]>=3.2,<4.0",
+    "pydantic-settings>=2.6,<3.0",
+    "alembic>=1.14,<2.0"
 ]
 
 [project.optional-dependencies]
 dev = [
-    "httpx>=0.27,<1.0",
+    "httpx2>=2.0,<3.0",
     "pytest>=8.3,<9.0",
-    "ruff>=0.8,<1.0"
+    "ruff>=0.8,<1.0",
+    "import-linter>=2.1,<3.0",
+    "testcontainers>=4.15,<5.0"
 ]
 
 [tool.setuptools.packages.find]
@@ -26,7 +30,46 @@ include = ["app*"]
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+addopts = "--strict-markers"
+markers = [
+    "integration: тесты с настоящим PostgreSQL в Docker (testcontainers)"
+]
 
 [tool.ruff]
 target-version = "py312"
 line-length = 100
+
+[tool.ruff.lint.isort]
+# Папка с миграциями называется alembic/, без этой строки ruff принимает библиотеку за свой код
+known-third-party = ["alembic"]
+
+[tool.importlinter]
+root_package = "app"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Зависимости направлены внутрь"
+type = "layers"
+layers = [
+    "app.bootstrap",
+    "app.api | (app.worker) | app.infrastructure",
+    "app.application",
+    "app.domain"
+]
+
+[[tool.importlinter.contracts]]
+name = "Сущности и сценарии не знают о фреймворках"
+type = "forbidden"
+source_modules = ["app.domain", "app.application"]
+forbidden_modules = [
+    "fastapi",
+    "starlette",
+    "pydantic",
+    "pydantic_settings",
+    "sqlalchemy",
+    "alembic",
+    "psycopg",
+    "minio",
+    "redis",
+    "confluent_kafka"
+]

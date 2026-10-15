@@ -1,14 +1,5 @@
-from fastapi import FastAPI
+from app.bootstrap.api import create_app
 
-
-def create_app() -> FastAPI:
-    app = FastAPI(title="Lessons Schedules Service")
-
-    @app.get("/health")
-    async def health() -> dict[str, str]:
-        return {"status": "ok"}
-
-    return app
-
+__all__ = ["app", "create_app"]
 
 app = create_app()

@@ -179,15 +179,12 @@ npm run dev
 
 ## Git workflow
 
-Используется GitHub Flow.
+Используется схема с двумя постоянными ветками:
 
-Основная ветка:
+- `main` — стабильное состояние, пригодное для демонстрации и релиза;
+- `dev` — интеграционная ветка текущей разработки.
 
-```text
-main
-```
-
-Рабочие ветки создаются от актуальной `main`.
+Рабочие ветки создаются от актуальной `dev` и через Pull Request возвращаются в `dev`.
 
 Префиксы:
 
@@ -197,6 +194,7 @@ fix/
 refactor/
 infra/
 docs/
+hotfix/
 ```
 
 Примеры:
@@ -204,29 +202,59 @@ docs/
 ```text
 feature/auth-api
 feature/project-editor
-feature/groups-subgroups
-feature/scheduler-jobs
-infra/docker-compose
 fix/room-validation
-docs/trello-workflow
+refactor/scheduler-core
+infra/docker-compose
+docs/api-contract
+hotfix/login-crash
 ```
 
-Прямые коммиты в `main` запрещены Ruleset. Изменения попадают в `main` только через Pull Request.
+Обычный процесс:
 
-Для merge требуется:
+```text
+dev
+ ↓
+feature/* | fix/* | refactor/* | infra/* | docs/*
+ ↓
+Pull Request
+ ↓
+dev
+ ↓
+интеграционная проверка
+ ↓
+Pull Request
+ ↓
+main
+```
+
+Переход `dev → main` выполняется отдельным Pull Request после достижения контрольной точки.
+
+Прямые push в `main` и `dev` запрещены. Для обеих веток должны действовать Ruleset с обязательным Pull Request, одним approval, успешными CI checks, закрытыми review comments и запретом force push.
+
+Для обычного merge требуется:
 
 - минимум одно одобрение другого участника;
 - успешное прохождение обязательных CI checks;
 - отсутствие нерешённых review comments;
 - соответствие Definition of Done.
 
+### Hotfix
+
+Критическое исправление для кода, уже находящегося в `main`, создаётся от `main`:
+
+```text
+main → hotfix/* → main
+```
+
+После merge исправление обязательно переносится обратно в `dev` через Pull Request `main → dev`.
+
 ## Управление задачами
 
 Единым источником состояния задач команды является **Trello**.
 
-GitHub Project Board для проекта не используется. GitHub Issues не являются основным инструментом планирования и не должны дублировать карточки Trello.
+GitHub Project Board не используется. GitHub Issues не должны дублировать карточки Trello.
 
-В Trello рекомендуется использовать статусы:
+Рекомендуемые статусы:
 
 ```text
 Backlog → Ready → In Progress → Review → Done
@@ -234,16 +262,20 @@ Backlog → Ready → In Progress → Review → Done
                       Blocked
 ```
 
-Для каждой карточки разработки желательно указывать:
+Для карточки разработки указываются:
 
-- исполнителя;
+- исполнитель;
 - область: Frontend / Backend / DB / Scheduler / DevOps / Docs;
 - приоритет: High / Medium / Low;
-- контрольную дату;
+- контрольная дата;
 - размер: S / M / L;
 - связанные требования FS;
 - связанные разделы HLD;
 - блокирующие зависимости при наличии.
+
+`Review` означает, что открыт Pull Request рабочей ветки в `dev`.
+
+`Done` означает, что задача прошла review и влита в `dev`. Переход `dev → main` является интеграционной контрольной точкой и не удерживает отдельные карточки разработчиков в работе.
 
 В течение одной контрольной недели у участника желательно держать не более двух задач одновременно в `In Progress`.
 
@@ -253,11 +285,18 @@ Backlog → Ready → In Progress → Review → Done
 Review → Blocked → In Progress → Ready
 ```
 
-Обсуждаются конкретные результаты, блокеры, переносы контрольных дат и задачи до следующего созвона.
-
 ## Pull Request
 
 Шаблон PR находится в `.github/pull_request_template.md`.
+
+Типовые направления:
+
+```text
+рабочая ветка → dev
+dev → main
+hotfix/* → main
+main → dev после hotfix
+```
 
 В PR указываются:
 
@@ -266,31 +305,15 @@ Review → Blocked → In Progress → Ready
 - связанные разделы HLD;
 - способ проверки;
 - добавленные или изменённые тесты;
-- ссылка на связанную карточку Trello.
-
-Рекомендуемый процесс:
-
-```text
-Trello card
-    ↓
-рабочая ветка
-    ↓
-Pull Request
-    ↓
-review + CI
-    ↓
-merge в main
-    ↓
-карточка Trello → Done
-```
+- ссылка на связанную карточку Trello для рабочих задач.
 
 ## Definition of Done
 
-Задача считается завершённой, если:
+Обычная задача считается завершённой, если:
 
 - реализованы требования FS, указанные в карточке Trello;
 - реализация соответствует HLD;
-- изменение попало в `main` через Pull Request;
+- изменение попало в `dev` через Pull Request;
 - Pull Request одобрен другим участником;
 - обязательные CI checks успешно пройдены;
 - проект собирается и запускается;
@@ -299,15 +322,18 @@ merge в main
 - документация обновлена, если изменение затрагивает публичный контракт или архитектуру;
 - карточка Trello переведена в `Done`.
 
+`main` обновляется отдельным PR из `dev` после интеграционной проверки контрольной точки.
+
 ## CI
 
-Для каждого Pull Request и push в `main` запускаются независимые проверки Backend и Frontend.
+Для каждого Pull Request и push в `main` или `dev` запускаются независимые проверки Backend и Frontend.
 
 Backend:
 
 ```text
 install
 lint
+architecture checks
 test
 ```
 

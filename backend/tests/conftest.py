@@ -21,8 +21,9 @@ def database_url() -> Iterator[str]:
     """Чистый PostgreSQL в Docker на всю сессию тестов."""
     from testcontainers.community.postgres import PostgresContainer
 
-    container = PostgresContainer(POSTGRES_IMAGE, driver="psycopg")
     try:
+        # Клиент Docker подключается уже в конструкторе, поэтому он тоже внутри try
+        container = PostgresContainer(POSTGRES_IMAGE, driver="psycopg")
         container.start()
     except Exception as error:
         # В CI тест должен упасть, а локально без Docker — пропуститься с понятной причиной.

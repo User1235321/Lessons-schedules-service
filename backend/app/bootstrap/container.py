@@ -4,8 +4,10 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.shared.ports import Clock, IdGenerator
+from app.application.shared.uow import UnitOfWork
 from app.bootstrap.settings import Settings
 from app.infrastructure.persistence.database import create_database_engine, create_session_factory
+from app.infrastructure.persistence.uow import SqlUnitOfWork
 from app.infrastructure.system import SystemClock, UuidGenerator
 
 
@@ -22,6 +24,10 @@ class Container:
     session_factory: sessionmaker[Session]
     clock: Clock
     ids: IdGenerator
+
+    def uow(self) -> UnitOfWork:
+        # Новая транзакция на каждый вызов: сценарии не делят сессию между запросами
+        return SqlUnitOfWork(self.session_factory)
 
 
 def build_container(settings: Settings) -> Container:

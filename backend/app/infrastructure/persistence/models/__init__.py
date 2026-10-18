@@ -5,5 +5,7 @@
 """
 
 from app.infrastructure.persistence.base import Base
+from app.infrastructure.persistence.models.projects import ProjectRow
+from app.infrastructure.persistence.models.users import UserRow, UserSessionRow
 
-__all__ = ["Base"]
+__all__ = ["Base", "ProjectRow", "UserRow", "UserSessionRow"]

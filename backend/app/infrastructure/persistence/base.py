@@ -1,4 +1,7 @@
-from sqlalchemy import MetaData
+from datetime import datetime
+from typing import Any, ClassVar
+
+from sqlalchemy import DateTime, MetaData
 from sqlalchemy.orm import DeclarativeBase
 
 # Предсказуемые имена ограничений: Alembic может сравнивать и удалять их в миграциях.
@@ -13,3 +16,6 @@ NAMING_CONVENTION = {
 
 class Base(DeclarativeBase):
     metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
+    # Всё время в базе хранится с часовым поясом: Clock отдаёт время в UTC (HLD 15.3).
+    type_annotation_map: ClassVar[dict[Any, Any]] = {datetime: DateTime(timezone=True)}

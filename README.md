@@ -143,7 +143,7 @@ GET http://localhost:8000/health
 
 ```bash
 alembic upgrade head                            # применить все миграции
-alembic revision --autogenerate -m "add users"  # создать миграцию по изменениям моделей
+alembic revision --autogenerate -m "add new models"  # создать миграцию по изменениям моделей
 alembic downgrade -1                            # откатить последнюю миграцию
 alembic history                                 # список миграций
 ```

@@ -6,6 +6,7 @@ from alembic import command
 from sqlalchemy import Connection, Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.infrastructure.persistence.uow import SqlUnitOfWork
 from tests.database import POSTGRES_IMAGE, alembic_config
 
 
@@ -62,3 +63,8 @@ def session_factory(db_connection: Connection) -> sessionmaker[Session]:
     return sessionmaker(
         bind=db_connection, expire_on_commit=False, join_transaction_mode="create_savepoint"
     )
+
+
+@pytest.fixture
+def uow(session_factory: sessionmaker[Session]) -> SqlUnitOfWork:
+    return SqlUnitOfWork(session_factory)

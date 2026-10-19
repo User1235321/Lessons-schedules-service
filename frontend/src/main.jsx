@@ -1,11 +1,16 @@
-import { CssBaseline } from "@mui/material";
+import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { createBrowserRouter, RouterProvider } from "react-router";
 
-import App from "./App.jsx";
+import AppProviders from "./app/AppProviders.jsx";
+import { routes } from "./app/routes.jsx";
+
+const router = createBrowserRouter(routes);
 
 createRoot(document.getElementById("root")).render(
-  <>
-    <CssBaseline />
-    <App />
-  </>
+  <StrictMode>
+    <AppProviders>
+      <RouterProvider router={router} />
+    </AppProviders>
+  </StrictMode>
 );

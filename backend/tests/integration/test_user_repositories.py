@@ -2,12 +2,15 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import Connection
 
 from app.domain.auth.errors import EmailAlreadyRegistered
 from app.domain.auth.session import UserSession
 from app.domain.auth.user import Email, User
+from app.domain.shared.errors import NotFound
 from app.domain.shared.ids import SessionId, UserId
 from app.infrastructure.persistence.uow import SqlUnitOfWork
+from tests.database import recorded_statements
 
 NOW = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
 
@@ -95,3 +98,30 @@ def test_revoked_session_is_saved(uow: SqlUnitOfWork) -> None:
         reloaded = uow.user_sessions.get_by_token_hash(session.refresh_token_hash)
         assert reloaded is not None
         assert reloaded.revoked_at == NOW + timedelta(hours=1)
+
+
+def test_session_saving_is_a_single_update(uow: SqlUnitOfWork, db_connection: Connection) -> None:
+    user = a_user()
+    session = a_session(user)
+    with uow:
+        uow.users.add(user)
+        uow.user_sessions.add(session)
+        uow.commit()
+
+    with uow:
+        stored = uow.user_sessions.get_by_token_hash(session.refresh_token_hash)
+        assert stored is not None
+        stored.revoke(NOW + timedelta(hours=1))
+        with recorded_statements(db_connection) as statements:
+            uow.user_sessions.save(stored)
+
+    assert statements == ["UPDATE"]
+
+
+def test_saving_missing_session_fails(uow: SqlUnitOfWork) -> None:
+    user = a_user()
+    with uow:
+        uow.users.add(user)
+
+        with pytest.raises(NotFound):
+            uow.user_sessions.save(a_session(user))

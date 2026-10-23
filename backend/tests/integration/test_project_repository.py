@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import Connection
 
 from app.domain.auth.user import Email, User
 from app.domain.projects.project import Project
@@ -10,6 +11,7 @@ from app.domain.shared.errors import NotFound
 from app.domain.shared.ids import ProjectId, UserId
 from app.domain.shared.week import Weekday
 from app.infrastructure.persistence.uow import SqlUnitOfWork
+from tests.database import recorded_statements
 
 NOW = datetime(2026, 10, 18, 12, 0, tzinfo=UTC)
 
@@ -103,6 +105,21 @@ def test_saved_changes_are_persisted(uow: SqlUnitOfWork) -> None:
 
     with uow:
         assert uow.projects.get_owned(project.id, owner.id) == stored
+
+
+def test_saving_is_a_single_update(uow: SqlUnitOfWork, db_connection: Connection) -> None:
+    owner = stored_user(uow)
+    project = a_project(owner)
+    store(uow, project)
+
+    with uow:
+        stored = uow.projects.get_owned(project.id, owner.id)
+        assert stored is not None
+        stored.rename("Весенний семестр", NOW + timedelta(hours=1))
+        with recorded_statements(db_connection) as statements:
+            uow.projects.save(stored)
+
+    assert statements == ["UPDATE"]
 
 
 def test_saving_missing_project_fails(uow: SqlUnitOfWork) -> None:

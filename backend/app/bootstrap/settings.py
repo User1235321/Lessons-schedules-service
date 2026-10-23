@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,7 +21,8 @@ class Settings(BaseSettings):
     minio_secret_key: str = "minio123"
     minio_bucket: str = "lessons-schedules"
 
-    jwt_secret: str = "change-me"
+    # HS256 требует ключ не короче 32 байт (RFC 7518, 3.2), с коротким PyJWT предупреждает
+    jwt_secret: str = Field("dev-only-secret-replace-in-production", min_length=32)
     access_token_ttl_minutes: int = 15
     refresh_token_ttl_days: int = 30
 

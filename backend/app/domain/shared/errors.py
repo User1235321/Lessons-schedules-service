@@ -23,6 +23,12 @@ class AlreadyExists(DomainError):
     code = "ALREADY_EXISTS"
 
 
+class NotAuthenticated(DomainError):
+    """Пользователь не вошёл или вход не удался (F_Auth_5, NF_Security_1)."""
+
+    code = "NOT_AUTHENTICATED"
+
+
 class InvalidValue(DomainError):
     """Локально некорректное значение (F_Valid_1). Поле указывается всегда (F_Valid_2)."""
 

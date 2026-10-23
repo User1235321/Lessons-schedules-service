@@ -6,6 +6,8 @@ from app.domain.shared.errors import InvalidValue
 from app.domain.shared.ids import UserId
 
 MAX_EMAIL_LENGTH = 254  # предел длины адреса в SMTP (RFC 5321)
+MIN_PASSWORD_LENGTH = 6
+MAX_PASSWORD_LENGTH = 20
 
 # Только грубая проверка формата. Что адрес настоящий, подтвердит письмо сброса пароля.
 _EMAIL_PATTERN = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
@@ -31,6 +33,19 @@ class Email:
 
     def __str__(self) -> str:
         return self.value
+
+
+def check_new_password(password: str) -> None:
+    """Длина нового пароля: при регистрации и при сбросе (F_Auth_2, F_Auth_6, F_Valid_1).
+
+    Считаются символы, а не байты, пробелы тоже. При входе длину не проверяем:
+    любой неподходящий пароль просто окажется неверным.
+    """
+    if not MIN_PASSWORD_LENGTH <= len(password) <= MAX_PASSWORD_LENGTH:
+        raise InvalidValue(
+            f"Пароль должен содержать от {MIN_PASSWORD_LENGTH} до {MAX_PASSWORD_LENGTH} символов",
+            field="password",
+        )
 
 
 @dataclass(kw_only=True)

@@ -15,18 +15,15 @@ class CredentialsRequest(BaseModel):
         return Credentials(email=self.email, password=self.password)
 
 
-class TokensResponse(BaseModel):
+class AccessTokenResponse(BaseModel):
+    """Refresh-токен в тело не попадает: он приходит в httpOnly-cookie."""
+
     access_token: str
-    refresh_token: str
     token_type: Literal["bearer"] = "bearer"
 
     @classmethod
-    def of(cls, tokens: AuthTokens) -> "TokensResponse":
-        return cls(access_token=tokens.access_token, refresh_token=tokens.refresh_token)
-
-
-class RefreshTokenRequest(BaseModel):
-    refresh_token: str
+    def of(cls, tokens: AuthTokens) -> "AccessTokenResponse":
+        return cls(access_token=tokens.access_token)
 
 
 class UserResponse(BaseModel):

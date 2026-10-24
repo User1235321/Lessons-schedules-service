@@ -1,10 +1,13 @@
+import re
 from datetime import UTC, datetime, timedelta
+from email.utils import parsedate_to_datetime
 
 import jwt
 import pytest
 from fastapi.testclient import TestClient
 from httpx2 import Response
 
+from app.api.cookies import REFRESH_COOKIE_NAME
 from app.bootstrap.container import Container
 from app.domain.auth.user import Email, User
 
@@ -17,12 +20,34 @@ def login(api: TestClient, email: str = "ivan@mail.ru", password: str = "secret1
     return api.post("/auth/login", json={"email": email, "password": password})
 
 
-def refresh(api: TestClient, refresh_token: str) -> Response:
-    return api.post("/auth/refresh", json={"refresh_token": refresh_token})
+def refresh(api: TestClient) -> Response:
+    return api.post("/auth/refresh")
 
 
-def logout(api: TestClient, refresh_token: str) -> Response:
-    return api.post("/auth/logout", json={"refresh_token": refresh_token})
+def logout(api: TestClient) -> Response:
+    return api.post("/auth/logout")
+
+
+def refresh_cookie(api: TestClient) -> str | None:
+    return api.cookies.get(REFRESH_COOKIE_NAME)
+
+
+def cookie_expiry(response: Response) -> datetime:
+    match = re.search(r"expires=([^;]+)", response.headers["set-cookie"])
+    assert match is not None
+    return parsedate_to_datetime(match.group(1))
+
+
+def another_browser(api: TestClient, refresh_token: str | None = None) -> TestClient:
+    """Клиент того же приложения со своими cookie, например украденным refresh-токеном."""
+    browser = TestClient(api.app, base_url=str(api.base_url))
+    if refresh_token is not None:
+        # Домен и путь как у cookie от сервера, иначе ответ refresh не заменит этот cookie.
+        # Хост без точки http.cookiejar хранит с суффиксом .local
+        browser.cookies.set(
+            REFRESH_COOKIE_NAME, refresh_token, domain=f"{api.base_url.host}.local", path="/auth"
+        )
+    return browser
 
 
 def me(api: TestClient, access_token: str) -> Response:
@@ -70,10 +95,26 @@ def test_register_creates_user_and_signs_in(api: TestClient, container: Containe
     assert token_owner(container, body["access_token"]) == str(user.id)
 
 
+def test_refresh_token_comes_only_in_protected_cookie(
+    api: TestClient, container: Container
+) -> None:  # HLD 8
+    response = register(api)
+
+    assert set(response.json()) == {"access_token", "token_type"}
+    cookie = response.headers["set-cookie"]
+    assert cookie.startswith(f"{REFRESH_COOKIE_NAME}=")
+    for attribute in ("HttpOnly", "Secure", "SameSite=strict", "Path=/auth"):
+        assert attribute in cookie.split("; ")
+    ttl = timedelta(days=container.settings.refresh_token_ttl_days)
+    assert abs(cookie_expiry(response) - (datetime.now(UTC) + ttl)) < timedelta(minutes=1)
+
+
 def test_password_and_refresh_token_are_stored_as_hashes(
     api: TestClient, container: Container
 ) -> None:  # HLD 8
-    refresh_token = register(api, password="secret1").json()["refresh_token"]
+    register(api, password="secret1")
+    refresh_token = refresh_cookie(api)
+    assert refresh_token is not None
 
     user = stored_user(container, "ivan@mail.ru")
     with container.uow() as uow:
@@ -124,15 +165,15 @@ def test_missing_field_is_named(api: TestClient) -> None:  # F_Valid_2
 
 
 def test_login_opens_new_session(api: TestClient, container: Container) -> None:  # F_Auth_4
-    registered = register(api).json()
+    register(api)
+    registered = refresh_cookie(api)
 
     response = login(api, email="Ivan@mail.ru")
 
     assert response.status_code == 200
-    body = response.json()
-    assert body["refresh_token"] != registered["refresh_token"]
+    assert refresh_cookie(api) not in (None, registered)
     user = stored_user(container, "ivan@mail.ru")
-    assert token_owner(container, body["access_token"]) == str(user.id)
+    assert token_owner(container, response.json()["access_token"]) == str(user.id)
 
 
 @pytest.mark.parametrize(
@@ -156,20 +197,24 @@ def test_login_rejects_wrong_credentials_alike(
 
 
 def test_refresh_issues_new_pair_and_burns_old_token(api: TestClient) -> None:  # HLD 8
-    old = register(api).json()
+    register(api)
+    old = refresh_cookie(api)
+    copy = another_browser(api, old)
 
-    response = refresh(api, old["refresh_token"])
+    response = refresh(copy)
 
     assert response.status_code == 200
-    new = response.json()
-    assert new["refresh_token"] != old["refresh_token"]
-    assert me(api, new["access_token"]).status_code == 200
-    assert refresh(api, old["refresh_token"]).status_code == 401
-    assert refresh(api, new["refresh_token"]).status_code == 200
+    assert refresh_cookie(copy) not in (None, old)
+    assert me(copy, response.json()["access_token"]).status_code == 200
+    assert refresh(api).status_code == 401  # у api остался старый токен
+    assert refresh(copy).status_code == 200
 
 
-def test_unknown_refresh_token_is_rejected(api: TestClient) -> None:
-    response = refresh(api, "made-up-token")
+@pytest.mark.parametrize("refresh_token", [None, "made-up-token"], ids=["no cookie", "unknown"])
+def test_missing_or_unknown_refresh_token_is_rejected(
+    api: TestClient, refresh_token: str | None
+) -> None:
+    response = refresh(another_browser(api, refresh_token))
 
     assert response.status_code == 401
     assert response.json() == {
@@ -183,31 +228,46 @@ def test_refresh_does_not_extend_session(
     api: TestClient, container: Container, clock: FakeClock
 ) -> None:
     ttl = timedelta(days=container.settings.refresh_token_ttl_days)
-    refresh_token = register(api).json()["refresh_token"]
+    registered = register(api)
 
     clock.advance(ttl - timedelta(days=1))
-    refresh_token = refresh(api, refresh_token).json()["refresh_token"]
+    refreshed = refresh(api)
     clock.advance(timedelta(days=1))
 
-    assert refresh(api, refresh_token).status_code == 401
+    assert cookie_expiry(refreshed) == cookie_expiry(registered)
+    assert refresh(api).status_code == 401
 
 
 def test_logout_ends_only_its_own_session(api: TestClient) -> None:
-    phone = register(api).json()
-    laptop = login(api).json()
+    phone, laptop = api, another_browser(api)
+    register(phone)
+    login(laptop)
 
-    assert logout(api, phone["refresh_token"]).status_code == 204
+    response = logout(phone)
 
-    assert refresh(api, phone["refresh_token"]).status_code == 401
-    assert refresh(api, laptop["refresh_token"]).status_code == 200
+    assert response.status_code == 204
+    assert refresh_cookie(phone) is None  # cookie стёрт
+    assert refresh(phone).status_code == 401
+    assert refresh(laptop).status_code == 200
+
+
+def test_logged_out_token_stops_working(api: TestClient) -> None:
+    register(api)
+    copied = another_browser(api, refresh_cookie(api))
+
+    logout(api)
+
+    assert refresh(copied).status_code == 401
 
 
 def test_repeated_or_unknown_logout_succeeds(api: TestClient) -> None:
-    refresh_token = register(api).json()["refresh_token"]
-    logout(api, refresh_token)
+    register(api)
+    copied = another_browser(api, refresh_cookie(api))
+    logout(api)
 
-    assert logout(api, refresh_token).status_code == 204
-    assert logout(api, "made-up-token").status_code == 204
+    assert logout(copied).status_code == 204
+    assert logout(api).status_code == 204  # cookie уже нет
+    assert logout(another_browser(api, "made-up-token")).status_code == 204
 
 
 def test_me_returns_signed_in_user(api: TestClient, container: Container) -> None:
@@ -239,11 +299,11 @@ def test_request_without_access_token_is_rejected(
 
 
 def test_forged_or_malformed_access_token_is_rejected(api: TestClient) -> None:
-    tokens = register(api).json()
-    claims = jwt.decode(tokens["access_token"], options={"verify_signature": False})
+    access_token = register(api).json()["access_token"]
+    claims = jwt.decode(access_token, options={"verify_signature": False})
     forged = jwt.encode(claims, "someone-elses-secret-of-32-chars", algorithm="HS256")
 
-    for access_token in (forged, "not-a-jwt", tokens["refresh_token"]):
+    for access_token in (forged, "not-a-jwt", refresh_cookie(api)):
         response = me(api, access_token)
         assert response.status_code == 401
         assert response.json()["code"] == "INVALID_ACCESS_TOKEN"

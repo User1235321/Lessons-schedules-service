@@ -73,7 +73,7 @@ describe("routing", () => {
   });
 
   it("logs out to the login page from the profile menu", async () => {
-    const { user, router } = renderRoute("/projects");
+    const { user, router, fetchMock } = renderRoute("/projects");
     await findHeading("Мои проекты");
 
     await user.click(screen.getByRole("button", { name: "Профиль" }));
@@ -81,5 +81,14 @@ describe("routing", () => {
 
     expect(await findHeading("Вход")).toBeTruthy();
     expect(router.state.location.pathname).toBe("/login");
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/logout", expect.anything());
+  });
+
+  it("sends an anonymous user to the login page and remembers the address", async () => {
+    const { router } = renderRoute("/projects/42/rooms", undefined, { authenticated: false });
+
+    expect(await findHeading("Вход")).toBeTruthy();
+    expect(router.state.location.pathname).toBe("/login");
+    expect(router.state.location.state.from.pathname).toBe("/projects/42/rooms");
   });
 });

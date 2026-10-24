@@ -47,15 +47,34 @@ describe("LoginPage", () => {
     expect(await screen.findByText("Неверный адрес или пароль")).toBeTruthy();
   });
 
-  it("logs in through the auth API", async () => {
-    const { user, fetchMock } = renderRoute("/login", undefined, anonymous);
+  it("logs in and opens the projects list", async () => {
+    const { user, router, fetchMock } = renderRoute("/login", undefined, anonymous);
     await findHeading("Вход");
 
     await fillCredentials(user, TEST_USER.email, TEST_PASSWORD);
     await user.click(screen.getByRole("button", { name: "Войти" }));
 
-    await screen.findByRole("button", { name: "Войти" });
+    expect(await findHeading("Мои проекты")).toBeTruthy();
+    expect(router.state.location.pathname).toBe("/projects");
     expect(calledUrls(fetchMock)).toContain("/api/auth/login");
+  });
+
+  it("returns to the page that required login", async () => {
+    const { user, router } = renderRoute("/projects/42/rooms", undefined, anonymous);
+    await findHeading("Вход");
+
+    await fillCredentials(user, TEST_USER.email, TEST_PASSWORD);
+    await user.click(screen.getByRole("button", { name: "Войти" }));
+
+    expect(await findHeading("Аудитории")).toBeTruthy();
+    expect(router.state.location.pathname).toBe("/projects/42/rooms");
+  });
+
+  it("redirects a signed-in user away from the login page", async () => {
+    const { router } = renderRoute("/login");
+
+    expect(await findHeading("Мои проекты")).toBeTruthy();
+    expect(router.state.location.pathname).toBe("/projects");
   });
 });
 
@@ -69,6 +88,17 @@ describe("RegisterPage", () => {
 
     expect(screen.getByText("Пароль должен содержать от 6 до 20 символов")).toBeTruthy();
     expect(calledUrls(fetchMock)).not.toContain("/api/auth/register");
+  });
+
+  it("registers and opens the projects list", async () => {
+    const { user, router } = renderRoute("/register", undefined, anonymous);
+    await findHeading("Регистрация");
+
+    await fillCredentials(user, "new@example.com", TEST_PASSWORD);
+    await user.click(screen.getByRole("button", { name: "Зарегистрироваться" }));
+
+    expect(await findHeading("Мои проекты")).toBeTruthy();
+    expect(router.state.location.pathname).toBe("/projects");
   });
 
   it("shows a taken email on the email field (F_Auth_3)", async () => {

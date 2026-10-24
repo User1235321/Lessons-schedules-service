@@ -12,14 +12,14 @@ describe("routing", () => {
   });
 
   it("renders auth pages inside the auth layout", async () => {
-    renderRoute("/login");
+    renderRoute("/login", undefined, { authenticated: false });
 
     expect(await findHeading("Вход")).toBeTruthy();
     expect(screen.queryByRole("banner")).toBeNull();
   });
 
   it("navigates between auth pages", async () => {
-    const { user, router } = renderRoute("/login");
+    const { user, router } = renderRoute("/login", undefined, { authenticated: false });
 
     await user.click(await screen.findByRole("link", { name: "Нет аккаунта? Зарегистрироваться" }));
 

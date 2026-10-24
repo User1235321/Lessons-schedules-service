@@ -3,6 +3,7 @@ from typing import Annotated, Protocol
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.api.cookies import RefreshCookie
 from app.application.auth.use_cases import (
     Authenticate,
     GetCurrentUser,
@@ -36,6 +37,13 @@ def get_use_cases(request: Request) -> UseCases:
 
 
 UseCasesDep = Annotated[UseCases, Depends(get_use_cases)]
+
+
+def get_refresh_cookie(request: Request) -> RefreshCookie:
+    return request.app.state.refresh_cookie
+
+
+RefreshCookieDep = Annotated[RefreshCookie, Depends(get_refresh_cookie)]
 
 # Без auto_error: свой ответ FastAPI не в формате ошибок из HLD 10
 _bearer = HTTPBearer(auto_error=False)

@@ -20,6 +20,7 @@ class Credentials:
 class AuthTokens:
     access_token: str
     refresh_token: str
+    refresh_expires_at: datetime  # когда закончится refresh-сессия
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class SessionIssuer:
         return AuthTokens(
             access_token=self.tokens.issue_access_token(user_id, now),
             refresh_token=refresh_token,
+            refresh_expires_at=session.expires_at,
         )
 
 
@@ -94,21 +96,31 @@ class Login:
         return tokens
 
 
+def _locked_session(
+    uow: UnitOfWork, tokens: TokenService, refresh_token: str | None
+) -> UserSession | None:
+    if refresh_token is None:
+        return None
+    return uow.user_sessions.get_by_token_hash_for_update(tokens.hash_refresh_token(refresh_token))
+
+
 @dataclass(frozen=True)
 class Refresh:
-    """Новая пара токенов в обмен на refresh-токен (HLD 8). Старый refresh-токен сгорает."""
+    """Новая пара токенов в обмен на refresh-токен (HLD 8). Старый refresh-токен сгорает.
+
+    Срок сессии не продлевается: через ttl после входа нужно войти снова.
+    """
 
     uow: UnitOfWork
     tokens: TokenService
     clock: Clock
 
-    def execute(self, refresh_token: str) -> AuthTokens:
+    def execute(self, refresh_token: str | None) -> AuthTokens:
+        """refresh_token — None, если клиент его не прислал."""
         now = self.clock.now()
         new_refresh_token = self.tokens.new_refresh_token()
         with self.uow:
-            session = self.uow.user_sessions.get_by_token_hash_for_update(
-                self.tokens.hash_refresh_token(refresh_token)
-            )
+            session = _locked_session(self.uow, self.tokens, refresh_token)
             if session is None or not session.is_active(now):
                 raise InvalidRefreshToken("Сессия завершена, войдите снова")
             session.rotate(self.tokens.hash_refresh_token(new_refresh_token))
@@ -117,6 +129,7 @@ class Refresh:
         return AuthTokens(
             access_token=self.tokens.issue_access_token(session.user_id, now),
             refresh_token=new_refresh_token,
+            refresh_expires_at=session.expires_at,
         )
 
 
@@ -128,12 +141,11 @@ class Logout:
     tokens: TokenService
     clock: Clock
 
-    def execute(self, refresh_token: str) -> None:
+    def execute(self, refresh_token: str | None) -> None:
+        """refresh_token — None, если клиент его не прислал."""
         with self.uow:
-            session = self.uow.user_sessions.get_by_token_hash_for_update(
-                self.tokens.hash_refresh_token(refresh_token)
-            )
-            # Неизвестный или уже отозванный токен — не ошибка: повторный выход ничего не меняет
+            session = _locked_session(self.uow, self.tokens, refresh_token)
+            # Нет токена, он неизвестен или уже отозван — не ошибка: повторный выход безвреден
             if session is None:
                 return
             session.revoke(self.clock.now())

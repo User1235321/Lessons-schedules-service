@@ -2,6 +2,7 @@ import { Navigate } from "react-router";
 
 import LoadingState from "../components/LoadingState.jsx";
 import RouteErrorBoundary from "../components/RouteErrorBoundary.jsx";
+import GuestOnly from "../features/auth/GuestOnly.jsx";
 import RequireAuth from "../features/auth/RequireAuth.jsx";
 import AppLayout from "../layouts/AppLayout.jsx";
 import AuthLayout from "../layouts/AuthLayout.jsx";
@@ -28,12 +29,17 @@ export const routes = [
             errorElement: <RouteErrorBoundary />,
             children: [
               {
-                path: paths.login,
-                lazy: page(() => import("../features/auth/pages/LoginPage.jsx"))
-              },
-              {
-                path: paths.register,
-                lazy: page(() => import("../features/auth/pages/RegisterPage.jsx"))
+                Component: GuestOnly,
+                children: [
+                  {
+                    path: paths.login,
+                    lazy: page(() => import("../features/auth/pages/LoginPage.jsx"))
+                  },
+                  {
+                    path: paths.register,
+                    lazy: page(() => import("../features/auth/pages/RegisterPage.jsx"))
+                  }
+                ]
               },
               {
                 path: paths.passwordReset,

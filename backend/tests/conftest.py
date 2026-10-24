@@ -83,4 +83,5 @@ def container(session_factory: sessionmaker[Session]) -> Container:
 
 @pytest.fixture
 def api(container: Container) -> TestClient:
-    return TestClient(create_app(container))
+    # Cookie с флагом Secure клиент, как и браузер, отправляет только по https
+    return TestClient(create_app(container), base_url="https://testserver")

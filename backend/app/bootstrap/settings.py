@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     jwt_secret: str = Field("dev-only-secret-replace-in-production", min_length=32)
     access_token_ttl_minutes: int = 15
     refresh_token_ttl_days: int = 30
+    # false — только для разработки по http, если браузер не сохраняет Secure-cookie
+    refresh_cookie_secure: bool = True
 
     mail_host: str = ""
     mail_port: int = 587

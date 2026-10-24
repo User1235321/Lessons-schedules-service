@@ -5,7 +5,15 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.application.auth.ports import PasswordHasher, TokenService
-from app.application.auth.use_cases import Login, Register, SessionIssuer
+from app.application.auth.use_cases import (
+    Authenticate,
+    GetCurrentUser,
+    Login,
+    Logout,
+    Refresh,
+    Register,
+    SessionIssuer,
+)
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
 from app.bootstrap.settings import Settings
@@ -51,6 +59,18 @@ class Container:
             sessions=self._session_issuer(),
             clock=self.clock,
         )
+
+    def refresh(self) -> Refresh:
+        return Refresh(uow=self.uow(), tokens=self.tokens, clock=self.clock)
+
+    def logout(self) -> Logout:
+        return Logout(uow=self.uow(), tokens=self.tokens, clock=self.clock)
+
+    def authenticate(self) -> Authenticate:
+        return Authenticate(tokens=self.tokens, clock=self.clock)
+
+    def get_current_user(self) -> GetCurrentUser:
+        return GetCurrentUser(uow=self.uow())
 
     def _session_issuer(self) -> SessionIssuer:
         return SessionIssuer(

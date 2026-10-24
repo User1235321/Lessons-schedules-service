@@ -60,6 +60,14 @@ class SqlUserSessionRepository:
         )
         return session_to_domain(row) if row else None
 
+    def get_by_token_hash_for_update(self, refresh_token_hash: str) -> UserSession | None:
+        row = self._session.scalar(
+            select(UserSessionRow)
+            .where(UserSessionRow.refresh_token_hash == refresh_token_hash)
+            .with_for_update()
+        )
+        return session_to_domain(row) if row else None
+
     def save(self, session: UserSession) -> None:
         row = self._session.get(UserSessionRow, session.id)
         if row is None:

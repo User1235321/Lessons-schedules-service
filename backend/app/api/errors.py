@@ -40,7 +40,9 @@ def install_error_handlers(app: FastAPI) -> None:
         ]
         return JSONResponse(
             status_code=422,
-            content=error_body("VALIDATION_ERROR", "Проверьте введённые данные", {"fields": fields}),
+            content=error_body(
+                "VALIDATION_ERROR", "Проверьте введённые данные", {"fields": fields}
+            ),
         )
 
     @app.exception_handler(Exception)

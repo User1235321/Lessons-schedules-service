@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 import jwt
 import pytest
 from fastapi.testclient import TestClient
@@ -13,6 +15,37 @@ def register(api: TestClient, email: str = "ivan@mail.ru", password: str = "secr
 
 def login(api: TestClient, email: str = "ivan@mail.ru", password: str = "secret1") -> Response:
     return api.post("/auth/login", json={"email": email, "password": password})
+
+
+def refresh(api: TestClient, refresh_token: str) -> Response:
+    return api.post("/auth/refresh", json={"refresh_token": refresh_token})
+
+
+def logout(api: TestClient, refresh_token: str) -> Response:
+    return api.post("/auth/logout", json={"refresh_token": refresh_token})
+
+
+def me(api: TestClient, access_token: str) -> Response:
+    return api.get("/auth/me", headers={"Authorization": f"Bearer {access_token}"})
+
+
+class FakeClock:
+    """Часы, которые тест переводит вперёд."""
+
+    def __init__(self) -> None:
+        self.current = datetime.now(UTC)
+
+    def now(self) -> datetime:
+        return self.current
+
+    def advance(self, delta: timedelta) -> None:
+        self.current += delta
+
+
+@pytest.fixture
+def clock(container: Container) -> FakeClock:
+    container.clock = fake = FakeClock()
+    return fake
 
 
 def stored_user(container: Container, email: str) -> User:
@@ -120,3 +153,112 @@ def test_login_rejects_wrong_credentials_alike(
         "message": "Неверный адрес электронной почты или пароль",
         "details": {},
     }
+
+
+def test_refresh_issues_new_pair_and_burns_old_token(api: TestClient) -> None:  # HLD 8
+    old = register(api).json()
+
+    response = refresh(api, old["refresh_token"])
+
+    assert response.status_code == 200
+    new = response.json()
+    assert new["refresh_token"] != old["refresh_token"]
+    assert me(api, new["access_token"]).status_code == 200
+    assert refresh(api, old["refresh_token"]).status_code == 401
+    assert refresh(api, new["refresh_token"]).status_code == 200
+
+
+def test_unknown_refresh_token_is_rejected(api: TestClient) -> None:
+    response = refresh(api, "made-up-token")
+
+    assert response.status_code == 401
+    assert response.json() == {
+        "code": "INVALID_REFRESH_TOKEN",
+        "message": "Сессия завершена, войдите снова",
+        "details": {},
+    }
+
+
+def test_refresh_does_not_extend_session(
+    api: TestClient, container: Container, clock: FakeClock
+) -> None:
+    ttl = timedelta(days=container.settings.refresh_token_ttl_days)
+    refresh_token = register(api).json()["refresh_token"]
+
+    clock.advance(ttl - timedelta(days=1))
+    refresh_token = refresh(api, refresh_token).json()["refresh_token"]
+    clock.advance(timedelta(days=1))
+
+    assert refresh(api, refresh_token).status_code == 401
+
+
+def test_logout_ends_only_its_own_session(api: TestClient) -> None:
+    phone = register(api).json()
+    laptop = login(api).json()
+
+    assert logout(api, phone["refresh_token"]).status_code == 204
+
+    assert refresh(api, phone["refresh_token"]).status_code == 401
+    assert refresh(api, laptop["refresh_token"]).status_code == 200
+
+
+def test_repeated_or_unknown_logout_succeeds(api: TestClient) -> None:
+    refresh_token = register(api).json()["refresh_token"]
+    logout(api, refresh_token)
+
+    assert logout(api, refresh_token).status_code == 204
+    assert logout(api, "made-up-token").status_code == 204
+
+
+def test_me_returns_signed_in_user(api: TestClient, container: Container) -> None:
+    access_token = register(api, email="Ivan@mail.ru").json()["access_token"]
+
+    response = me(api, access_token)
+
+    assert response.status_code == 200
+    user = stored_user(container, "ivan@mail.ru")
+    assert response.json() == {"id": str(user.id), "email": "ivan@mail.ru"}
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [{}, {"Authorization": "Basic aXZhbjpzZWNyZXQx"}],
+    ids=["no header", "not bearer"],
+)
+def test_request_without_access_token_is_rejected(
+    api: TestClient, headers: dict[str, str]
+) -> None:  # NF_Security_1
+    response = api.get("/auth/me", headers=headers)
+
+    assert response.status_code == 401
+    assert response.json() == {
+        "code": "NOT_AUTHENTICATED",
+        "message": "Требуется вход в систему",
+        "details": {},
+    }
+
+
+def test_forged_or_malformed_access_token_is_rejected(api: TestClient) -> None:
+    tokens = register(api).json()
+    claims = jwt.decode(tokens["access_token"], options={"verify_signature": False})
+    forged = jwt.encode(claims, "someone-elses-secret-of-32-chars", algorithm="HS256")
+
+    for access_token in (forged, "not-a-jwt", tokens["refresh_token"]):
+        response = me(api, access_token)
+        assert response.status_code == 401
+        assert response.json()["code"] == "INVALID_ACCESS_TOKEN"
+
+
+def test_access_token_expires_after_ttl(
+    api: TestClient, container: Container, clock: FakeClock
+) -> None:
+    ttl = timedelta(minutes=container.settings.access_token_ttl_minutes)
+    access_token = register(api).json()["access_token"]
+
+    clock.advance(ttl - timedelta(seconds=1))
+    assert me(api, access_token).status_code == 200
+    clock.advance(timedelta(seconds=1))
+
+    response = me(api, access_token)
+    assert response.status_code == 401
+    assert response.json()["code"] == "INVALID_ACCESS_TOKEN"

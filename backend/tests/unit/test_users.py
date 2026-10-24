@@ -81,3 +81,13 @@ def test_second_revoke_keeps_first_revocation_time() -> None:
     session.revoke(NOW + timedelta(minutes=10))
 
     assert session.revoked_at == NOW + timedelta(minutes=5)
+
+
+def test_rotated_session_gets_new_token_hash_but_keeps_expiry() -> None:
+    session = open_session()
+    expires_at = session.expires_at
+
+    session.rotate("new-hash")
+
+    assert session.refresh_token_hash == "new-hash"
+    assert session.expires_at == expires_at

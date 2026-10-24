@@ -1,8 +1,18 @@
 from typing import Annotated, Protocol
 
 from fastapi import Depends, Request
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.application.auth.use_cases import Login, Register
+from app.application.auth.use_cases import (
+    Authenticate,
+    GetCurrentUser,
+    Login,
+    Logout,
+    Refresh,
+    Register,
+)
+from app.domain.shared.errors import NotAuthenticated
+from app.domain.shared.ids import UserId
 
 
 class UseCases(Protocol):
@@ -12,9 +22,33 @@ class UseCases(Protocol):
 
     def login(self) -> Login: ...
 
+    def refresh(self) -> Refresh: ...
+
+    def logout(self) -> Logout: ...
+
+    def authenticate(self) -> Authenticate: ...
+
+    def get_current_user(self) -> GetCurrentUser: ...
+
 
 def get_use_cases(request: Request) -> UseCases:
     return request.app.state.container
 
 
 UseCasesDep = Annotated[UseCases, Depends(get_use_cases)]
+
+# Без auto_error: свой ответ FastAPI не в формате ошибок из HLD 10
+_bearer = HTTPBearer(auto_error=False)
+
+
+def get_current_user_id(
+    use_cases: UseCasesDep,
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
+) -> UserId:
+    """Пользователь из заголовка ``Authorization: Bearer <access-токен>`` (NF_Security_1)."""
+    if credentials is None:
+        raise NotAuthenticated("Требуется вход в систему")
+    return use_cases.authenticate().execute(credentials.credentials)
+
+
+CurrentUserDep = Annotated[UserId, Depends(get_current_user_id)]

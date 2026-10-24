@@ -21,6 +21,13 @@ class UserSessionRepository(Protocol):
 
     def get_by_token_hash(self, refresh_token_hash: str) -> UserSession | None: ...
 
+    def get_by_token_hash_for_update(self, refresh_token_hash: str) -> UserSession | None:
+        """Как get_by_token_hash, но блокирует сессию до конца транзакции.
+
+        Параллельный refresh или выход с тем же токеном дождётся commit и токен уже не найдёт.
+        """
+        ...
+
     def save(self, session: UserSession) -> None: ...
 
 
@@ -36,6 +43,10 @@ class TokenService(Protocol):
     """Access-токены и refresh-токены (HLD 8)."""
 
     def issue_access_token(self, user_id: UserId, now: datetime) -> str: ...
+
+    def read_access_token(self, access_token: str, now: datetime) -> UserId:
+        """Владелец токена. Подделанный, испорченный или истёкший токен — InvalidAccessToken."""
+        ...
 
     def new_refresh_token(self) -> str: ...
 

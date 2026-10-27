@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -9,7 +9,7 @@ from app.domain.shared.errors import NotFound
 from app.domain.shared.ids import UserId
 from app.infrastructure.persistence.errors import violated_constraint
 from app.infrastructure.persistence.mappers.users import (
-    fill_session_row,
+    session_columns,
     session_to_domain,
     session_to_row,
     user_to_domain,
@@ -61,7 +61,11 @@ class SqlUserSessionRepository:
         return session_to_domain(row) if row else None
 
     def save(self, session: UserSession) -> None:
-        row = self._session.get(UserSessionRow, session.id)
-        if row is None:
+        updated = self._session.scalar(
+            update(UserSessionRow)
+            .where(UserSessionRow.id == session.id)
+            .values(session_columns(session))
+            .returning(UserSessionRow.id)
+        )
+        if updated is None:
             raise NotFound("Сессия не найдена", session_id=str(session.id))
-        fill_session_row(row, session)

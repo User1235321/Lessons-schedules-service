@@ -1,3 +1,5 @@
+from typing import Any
+
 from app.domain.auth.session import UserSession
 from app.domain.auth.user import Email, User
 from app.domain.shared.ids import SessionId, UserId
@@ -22,17 +24,19 @@ def user_to_domain(row: UserRow) -> User:
     )
 
 
-def fill_session_row(row: UserSessionRow, session: UserSession) -> UserSessionRow:
-    row.user_id = session.user_id
-    row.refresh_token_hash = session.refresh_token_hash
-    row.created_at = session.created_at
-    row.expires_at = session.expires_at
-    row.revoked_at = session.revoked_at
-    return row
+def session_columns(session: UserSession) -> dict[str, Any]:
+    """Значения всех колонок сессии, кроме id."""
+    return {
+        "user_id": session.user_id,
+        "refresh_token_hash": session.refresh_token_hash,
+        "created_at": session.created_at,
+        "expires_at": session.expires_at,
+        "revoked_at": session.revoked_at,
+    }
 
 
 def session_to_row(session: UserSession) -> UserSessionRow:
-    return fill_session_row(UserSessionRow(id=session.id), session)
+    return UserSessionRow(id=session.id, **session_columns(session))
 
 
 def session_to_domain(row: UserSessionRow) -> UserSession:

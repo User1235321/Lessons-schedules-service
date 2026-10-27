@@ -1,11 +1,11 @@
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.orm import Session
 
 from app.domain.projects.project import Project
 from app.domain.shared.errors import NotFound
 from app.domain.shared.ids import ProjectId, UserId
 from app.infrastructure.persistence.mappers.projects import (
-    fill_project_row,
+    project_columns,
     project_to_domain,
     project_to_row,
 )
@@ -36,11 +36,15 @@ class SqlProjectRepository:
         return [project_to_domain(row) for row in rows]
 
     def save(self, project: Project) -> None:
-        # Строка, прочитанная в этой же транзакции, берётся из сессии без нового запроса
-        row = self._session.get(ProjectRow, project.id)
-        if row is None:
+        # Сразу UPDATE: прочитанную строку сессия уже отпустила, и get() снова пошёл бы в базу
+        updated = self._session.scalar(
+            update(ProjectRow)
+            .where(ProjectRow.id == project.id)
+            .values(project_columns(project))
+            .returning(ProjectRow.id)
+        )
+        if updated is None:
             raise NotFound("Проект не найден", project_id=str(project.id))
-        fill_project_row(row, project)
 
     def delete(self, project_id: ProjectId) -> None:
         # Данные проекта удалит база: внешние ключи на projects объявлены с ON DELETE CASCADE

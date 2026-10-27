@@ -10,21 +10,22 @@ import {
   Toolbar,
   Typography
 } from "@mui/material";
-import { Link as RouterLink, Outlet, useNavigate, useNavigation } from "react-router";
+import { Link as RouterLink, Outlet, useNavigation } from "react-router";
 
 import { paths } from "../app/paths.js";
+import { useAuth } from "../features/auth/AuthProvider.jsx";
 
 export default function AppLayout() {
   const navigation = useNavigation();
-  const navigate = useNavigate();
+  const { logout } = useAuth();
   const [menuAnchor, setMenuAnchor] = useState(null);
 
   const closeMenu = () => setMenuAnchor(null);
 
   const handleLogout = () => {
     closeMenu();
-    // TODO(auth): вызвать POST /auth/logout и очистить токены.
-    navigate(paths.login);
+    // После выхода RequireAuth сам отправит на страницу входа
+    logout();
   };
 
   return (

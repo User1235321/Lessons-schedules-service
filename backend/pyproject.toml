@@ -12,7 +12,9 @@ dependencies = [
     "sqlalchemy>=2.0,<3.0",
     "psycopg[binary]>=3.2,<4.0",
     "pydantic-settings>=2.6,<3.0",
-    "alembic>=1.14,<2.0"
+    "alembic>=1.14,<2.0",
+    "pyjwt>=2.10,<3.0",
+    "argon2-cffi>=25.1,<26.0"
 ]
 
 [project.optional-dependencies]
@@ -69,6 +71,8 @@ forbidden_modules = [
     "sqlalchemy",
     "alembic",
     "psycopg",
+    "jwt",
+    "argon2",
     "minio",
     "redis",
     "confluent_kafka"

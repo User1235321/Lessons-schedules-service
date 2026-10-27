@@ -1,13 +1,17 @@
 from dataclasses import dataclass
+from datetime import timedelta
 
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.application.auth.ports import PasswordHasher, TokenService
+from app.application.auth.use_cases import Login, Register, SessionIssuer
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
 from app.bootstrap.settings import Settings
 from app.infrastructure.persistence.database import create_database_engine, create_session_factory
 from app.infrastructure.persistence.uow import SqlUnitOfWork
+from app.infrastructure.security import Argon2PasswordHasher, JwtTokenService
 from app.infrastructure.system import SystemClock, UuidGenerator
 
 
@@ -24,10 +28,36 @@ class Container:
     session_factory: sessionmaker[Session]
     clock: Clock
     ids: IdGenerator
+    passwords: PasswordHasher
+    tokens: TokenService
 
     def uow(self) -> UnitOfWork:
         # Новая транзакция на каждый вызов: сценарии не делят сессию между запросами
         return SqlUnitOfWork(self.session_factory)
+
+    def register(self) -> Register:
+        return Register(
+            uow=self.uow(),
+            passwords=self.passwords,
+            sessions=self._session_issuer(),
+            clock=self.clock,
+            ids=self.ids,
+        )
+
+    def login(self) -> Login:
+        return Login(
+            uow=self.uow(),
+            passwords=self.passwords,
+            sessions=self._session_issuer(),
+            clock=self.clock,
+        )
+
+    def _session_issuer(self) -> SessionIssuer:
+        return SessionIssuer(
+            tokens=self.tokens,
+            ids=self.ids,
+            refresh_ttl=timedelta(days=self.settings.refresh_token_ttl_days),
+        )
 
 
 def build_container(settings: Settings) -> Container:
@@ -38,4 +68,8 @@ def build_container(settings: Settings) -> Container:
         session_factory=create_session_factory(engine),
         clock=SystemClock(),
         ids=UuidGenerator(),
+        passwords=Argon2PasswordHasher(),
+        tokens=JwtTokenService(
+            settings.jwt_secret, access_ttl=timedelta(minutes=settings.access_token_ttl_minutes)
+        ),
     )

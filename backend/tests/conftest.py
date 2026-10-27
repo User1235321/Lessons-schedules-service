@@ -1,11 +1,16 @@
 import os
 from collections.abc import Iterator
+from dataclasses import replace
 
 import pytest
 from alembic import command
+from fastapi.testclient import TestClient
 from sqlalchemy import Connection, Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.bootstrap.api import create_app
+from app.bootstrap.container import Container, build_container
+from app.bootstrap.settings import Settings
 from app.infrastructure.persistence.uow import SqlUnitOfWork
 from tests.database import POSTGRES_IMAGE, alembic_config
 
@@ -68,3 +73,14 @@ def session_factory(db_connection: Connection) -> sessionmaker[Session]:
 @pytest.fixture
 def uow(session_factory: sessionmaker[Session]) -> SqlUnitOfWork:
     return SqlUnitOfWork(session_factory)
+
+
+@pytest.fixture
+def container(session_factory: sessionmaker[Session]) -> Container:
+    # Приложение пишет в ту же внешнюю транзакцию, что и тест, и после теста всё откатывается
+    return replace(build_container(Settings()), session_factory=session_factory)
+
+
+@pytest.fixture
+def api(container: Container) -> TestClient:
+    return TestClient(create_app(container))

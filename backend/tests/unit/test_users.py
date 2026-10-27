@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 
 from app.domain.auth.session import UserSession
-from app.domain.auth.user import Email
+from app.domain.auth.user import Email, check_new_password
 from app.domain.shared.errors import InvalidValue
 from app.domain.shared.ids import SessionId, UserId
 
@@ -33,6 +33,19 @@ def test_malformed_email_is_rejected(raw: str) -> None:
 def test_too_long_email_is_rejected() -> None:
     with pytest.raises(InvalidValue):
         Email("a" * 250 + "@x.ru")
+
+
+@pytest.mark.parametrize("password", ["123456", "x" * 20, "пароль"])
+def test_password_of_6_to_20_characters_is_accepted(password: str) -> None:  # F_Auth_2
+    check_new_password(password)
+
+
+@pytest.mark.parametrize("password", ["", "12345", "x" * 21])
+def test_password_of_other_length_is_rejected(password: str) -> None:  # F_Auth_2, F_Valid_1
+    with pytest.raises(InvalidValue) as error:
+        check_new_password(password)
+
+    assert error.value.field == "password"
 
 
 def open_session(ttl: timedelta = timedelta(days=30)) -> UserSession:

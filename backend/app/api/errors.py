@@ -2,10 +2,17 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.domain.shared.errors import AlreadyExists, DomainError, InvalidValue, NotFound
+from app.domain.shared.errors import (
+    AlreadyExists,
+    DomainError,
+    InvalidValue,
+    NotAuthenticated,
+    NotFound,
+)
 
 # Порядок важен: подкласс с другим кодом ответа должен стоять выше своего родителя.
 HTTP_STATUS: dict[type[DomainError], int] = {
+    NotAuthenticated: 401,
     NotFound: 404,
     AlreadyExists: 409,
     InvalidValue: 422,

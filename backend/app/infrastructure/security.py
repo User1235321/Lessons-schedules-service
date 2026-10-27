@@ -1,11 +1,13 @@
 import hashlib
 import secrets
 from datetime import datetime, timedelta
+from uuid import UUID
 
 import argon2
 import jwt
 from argon2.exceptions import VerifyMismatchError
 
+from app.domain.auth.errors import InvalidAccessToken
 from app.domain.shared.ids import UserId
 
 
@@ -37,6 +39,23 @@ class JwtTokenService:
     def issue_access_token(self, user_id: UserId, now: datetime) -> str:
         claims = {"sub": str(user_id), "iat": now, "exp": now + self._access_ttl}
         return jwt.encode(claims, self._secret, algorithm=self.algorithm)
+
+    def read_access_token(self, access_token: str, now: datetime) -> UserId:
+        try:
+            claims = jwt.decode(
+                access_token,
+                self._secret,
+                algorithms=[self.algorithm],
+                # Срок сверяем с Clock, а не с часами PyJWT, чтобы проверять его в тестах (HLD 15.3)
+                options={"verify_exp": False, "verify_iat": False, "require": ["sub", "exp"]},
+            )
+            user_id = UserId(UUID(claims["sub"]))
+            expired = now.timestamp() >= claims["exp"]
+        except (jwt.InvalidTokenError, ValueError, TypeError) as error:
+            raise InvalidAccessToken("Недействительный токен доступа") from error
+        if expired:
+            raise InvalidAccessToken("Срок действия токена доступа истёк")
+        return user_id
 
     def new_refresh_token(self) -> str:
         return secrets.token_urlsafe(32)

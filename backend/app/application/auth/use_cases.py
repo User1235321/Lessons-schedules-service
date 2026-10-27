@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from app.application.auth.ports import PasswordHasher, TokenService
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
-from app.domain.auth.errors import InvalidCredentials
+from app.domain.auth.errors import InvalidAccessToken, InvalidCredentials, InvalidRefreshToken
 from app.domain.auth.session import UserSession
 from app.domain.auth.user import Email, User, check_new_password
 from app.domain.shared.ids import SessionId, UserId
@@ -20,6 +20,7 @@ class Credentials:
 class AuthTokens:
     access_token: str
     refresh_token: str
+    refresh_expires_at: datetime  # когда закончится refresh-сессия
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class SessionIssuer:
         return AuthTokens(
             access_token=self.tokens.issue_access_token(user_id, now),
             refresh_token=refresh_token,
+            refresh_expires_at=session.expires_at,
         )
 
 
@@ -92,3 +94,86 @@ class Login:
             tokens = self.sessions.issue(self.uow, user.id, self.clock.now())
             self.uow.commit()
         return tokens
+
+
+def _locked_session(
+    uow: UnitOfWork, tokens: TokenService, refresh_token: str | None
+) -> UserSession | None:
+    if refresh_token is None:
+        return None
+    return uow.user_sessions.get_by_token_hash_for_update(tokens.hash_refresh_token(refresh_token))
+
+
+@dataclass(frozen=True)
+class Refresh:
+    """Новая пара токенов в обмен на refresh-токен (HLD 8). Старый refresh-токен сгорает.
+
+    Срок сессии не продлевается: через ttl после входа нужно войти снова.
+    """
+
+    uow: UnitOfWork
+    tokens: TokenService
+    clock: Clock
+
+    def execute(self, refresh_token: str | None) -> AuthTokens:
+        """refresh_token — None, если клиент его не прислал."""
+        now = self.clock.now()
+        new_refresh_token = self.tokens.new_refresh_token()
+        with self.uow:
+            session = _locked_session(self.uow, self.tokens, refresh_token)
+            if session is None or not session.is_active(now):
+                raise InvalidRefreshToken("Сессия завершена, войдите снова")
+            session.rotate(self.tokens.hash_refresh_token(new_refresh_token))
+            self.uow.user_sessions.save(session)
+            self.uow.commit()
+        return AuthTokens(
+            access_token=self.tokens.issue_access_token(session.user_id, now),
+            refresh_token=new_refresh_token,
+            refresh_expires_at=session.expires_at,
+        )
+
+
+@dataclass(frozen=True)
+class Logout:
+    """Выход: refresh-сессия отзывается (HLD 8). Выданный access-токен доживает свой срок."""
+
+    uow: UnitOfWork
+    tokens: TokenService
+    clock: Clock
+
+    def execute(self, refresh_token: str | None) -> None:
+        """refresh_token — None, если клиент его не прислал."""
+        with self.uow:
+            session = _locked_session(self.uow, self.tokens, refresh_token)
+            # Нет токена, он неизвестен или уже отозван — не ошибка: повторный выход безвреден
+            if session is None:
+                return
+            session.revoke(self.clock.now())
+            self.uow.user_sessions.save(session)
+            self.uow.commit()
+
+
+@dataclass(frozen=True)
+class Authenticate:
+    """Пользователь по access-токену (NF_Security_1). Базу не трогает: токен подписан сервером."""
+
+    tokens: TokenService
+    clock: Clock
+
+    def execute(self, access_token: str) -> UserId:
+        return self.tokens.read_access_token(access_token, self.clock.now())
+
+
+@dataclass(frozen=True)
+class GetCurrentUser:
+    """Учётная запись, от имени которой пришёл запрос."""
+
+    uow: UnitOfWork
+
+    def execute(self, user_id: UserId) -> User:
+        with self.uow:
+            user = self.uow.users.get(user_id)
+        if user is None:
+            # Токен настоящий, а учётной записи уже нет
+            raise InvalidAccessToken("Учётная запись не найдена, войдите снова")
+        return user

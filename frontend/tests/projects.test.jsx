@@ -46,4 +46,36 @@ describe("ProjectsPage", () => {
 
     expect(within(await projectList()).getByText("Осенний семестр")).toBeTruthy();
   });
+  it("requires a project name and does not call the API without it (F_Project_1)", async () => {
+    const { user, fetchMock } = renderRoute("/projects");
+    await projectList();
+
+    await user.click(screen.getByRole("button", { name: "Создать проект" }));
+    const dialog = await screen.findByRole("dialog", { name: "Новый проект" });
+    await user.type(within(dialog).getByLabelText("Название проекта"), "   ");
+    await user.click(within(dialog).getByRole("button", { name: "Создать" }));
+
+    expect(within(dialog).getByText("Укажите название проекта")).toBeTruthy();
+    const posts = fetchMock.mock.calls.filter(
+      ([url, init]) => url === "/api/projects" && init?.method === "POST"
+    );
+    expect(posts).toHaveLength(0);
+  });
+
+  it("creates a project and opens it", async () => {
+    const { user, router, fetchMock } = renderRoute("/projects");
+    await projectList();
+
+    await user.click(screen.getByRole("button", { name: "Создать проект" }));
+    const dialog = await screen.findByRole("dialog", { name: "Новый проект" });
+    await user.type(within(dialog).getByLabelText("Название проекта"), "  Летняя сессия ");
+    await user.click(within(dialog).getByRole("button", { name: "Создать" }));
+
+    expect(await findHeading("Преподаватели")).toBeTruthy();
+    expect(router.state.location.pathname).toBe("/projects/100/teachers");
+    const [, init] = fetchMock.mock.calls.find(
+      ([url, options]) => url === "/api/projects" && options?.method === "POST"
+    );
+    expect(JSON.parse(init.body)).toEqual({ name: "Летняя сессия" });
+  });
 });

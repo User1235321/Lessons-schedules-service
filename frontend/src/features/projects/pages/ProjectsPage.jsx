@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   Box,
+  Button,
   List,
   ListItem,
   ListItemButton,
@@ -9,18 +10,21 @@ import {
   Stack,
   Typography
 } from "@mui/material";
-import { Link as RouterLink } from "react-router";
+import { Link as RouterLink, useNavigate } from "react-router";
 
 import { paths } from "../../../app/paths.js";
 import ErrorState from "../../../components/ErrorState.jsx";
 import LoadingState from "../../../components/LoadingState.jsx";
 import { projectsApi } from "../api.js";
+import CreateProjectDialog from "../components/CreateProjectDialog.jsx";
 
 const formatDate = (value) => new Date(value).toLocaleDateString("ru-RU");
 
 export default function ProjectsPage() {
   const [projects, setProjects] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const navigate = useNavigate();
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -46,6 +50,9 @@ export default function ProjectsPage() {
         <Typography component="h1" variant="h4">
           Мои проекты
         </Typography>
+        <Button variant="contained" onClick={() => setCreating(true)}>
+          Создать проект
+        </Button>
       </Stack>
 
       {loadError ? (
@@ -76,6 +83,13 @@ export default function ProjectsPage() {
           </List>
         </Paper>
       )}
+
+      <CreateProjectDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        // Новый проект сразу открывается: дальше пользователь заполняет его данные
+        onCreated={(project) => navigate(paths.project(project.id))}
+      />
     </Box>
   );
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Box,
   Button,
+  IconButton,
   List,
   ListItem,
   ListItemButton,
@@ -17,6 +18,7 @@ import ErrorState from "../../../components/ErrorState.jsx";
 import LoadingState from "../../../components/LoadingState.jsx";
 import { projectsApi } from "../api.js";
 import CreateProjectDialog from "../components/CreateProjectDialog.jsx";
+import DeleteProjectDialog from "../components/DeleteProjectDialog.jsx";
 
 const formatDate = (value) => new Date(value).toLocaleDateString("ru-RU");
 
@@ -24,6 +26,7 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [deletion, setDeletion] = useState({ open: false, project: null });
   const navigate = useNavigate();
 
   const load = useCallback(async () => {
@@ -71,7 +74,20 @@ export default function ProjectsPage() {
         <Paper variant="outlined">
           <List aria-label="Проекты" disablePadding>
             {projects.map((project) => (
-              <ListItem key={project.id} divider disablePadding>
+              <ListItem
+                key={project.id}
+                divider
+                disablePadding
+                secondaryAction={
+                  <IconButton
+                    edge="end"
+                    aria-label={`Удалить проект «${project.name}»`}
+                    onClick={() => setDeletion({ open: true, project })}
+                  >
+                    ✕
+                  </IconButton>
+                }
+              >
                 <ListItemButton component={RouterLink} to={paths.project(project.id)}>
                   <ListItemText
                     primary={project.name}
@@ -89,6 +105,15 @@ export default function ProjectsPage() {
         onClose={() => setCreating(false)}
         // Новый проект сразу открывается: дальше пользователь заполняет его данные
         onCreated={(project) => navigate(paths.project(project.id))}
+      />
+      <DeleteProjectDialog
+        open={deletion.open}
+        project={deletion.project}
+        onClose={() => setDeletion((current) => ({ ...current, open: false }))}
+        onDeleted={(deleted) => {
+          setProjects((current) => current.filter((project) => project.id !== deleted.id));
+          setDeletion((current) => ({ ...current, open: false }));
+        }}
       />
     </Box>
   );

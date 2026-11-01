@@ -99,25 +99,103 @@ async function toApiError(response) {
   });
 }
 
-// Параллельные запросы, получившие 401, ждут один общий refresh, а не запускают свой:
-// refresh меняет токен в cookie, и второй запрос пришёл бы уже с отозванным.
-export function refreshAccessToken() {
-  refreshPromise ??= (async () => {
-    try {
-      const response = await send("/auth/refresh", { method: "POST", auth: false });
-      if (!response.ok) {
-        throw await toApiError(response);
+// Refresh-токен один на все вкладки (общая cookie), а бэкенд при обмене сжигает старый.
+// Если две вкладки отправят его одновременно, вторая получит 401 и разлогинит пользователя.
+// Поэтому обмен идёт под блокировкой Web Locks, общей для вкладок, а результат
+// рассылается остальным через BroadcastChannel.
+const REFRESH_LOCK = "auth-refresh";
+// Сколько ждать результат вкладки, которая держала блокировку: сообщение между вкладками
+// может прийти чуть позже, чем освободится блокировка
+export const BROADCAST_WAIT_MS = 500;
+
+const channel = typeof BroadcastChannel === "function" ? new BroadcastChannel("auth") : null;
+
+channel?.addEventListener("message", ({ data }) => {
+  if (data?.type === "refreshed") {
+    setAccessToken(data.token);
+  }
+});
+
+// Ждёт итог refresh в другой вкладке: новый токен или null, если там не вышло или время истекло
+function waitForOtherTab() {
+  let cancel;
+  const result = new Promise((resolve) => {
+    const onMessage = ({ data }) => {
+      if (data?.type === "refreshed" || data?.type === "refresh-failed") {
+        cancel(data.token ?? null);
       }
-      const { access_token: token } = await readBody(response);
-      setAccessToken(token);
-      return token;
-    } catch (error) {
+    };
+    const timer = setTimeout(() => cancel(null), BROADCAST_WAIT_MS);
+    cancel = (value) => {
+      clearTimeout(timer);
+      channel?.removeEventListener("message", onMessage);
+      resolve(value);
+    };
+    channel?.addEventListener("message", onMessage);
+  });
+  return { result, cancel: () => cancel(null) };
+}
+
+async function exchangeRefreshToken() {
+  try {
+    const response = await send("/auth/refresh", { method: "POST", auth: false });
+    if (!response.ok) {
+      throw await toApiError(response);
+    }
+    const { access_token: token } = await readBody(response);
+    setAccessToken(token);
+    channel?.postMessage({ type: "refreshed", token });
+    return token;
+  } catch (error) {
+    channel?.postMessage({ type: "refresh-failed" });
+    throw error;
+  }
+}
+
+async function refreshAcrossTabs(staleToken) {
+  // Токен уже обновили, пока запрос ждал ответа: эта вкладка или сообщение из другой
+  const isFresh = () => accessToken !== null && accessToken !== staleToken;
+
+  // Без Web Locks (старый браузер) остаётся защита только внутри вкладки
+  if (!navigator.locks) {
+    return exchangeRefreshToken();
+  }
+
+  const BUSY = Symbol("busy");
+  const first = await navigator.locks.request(REFRESH_LOCK, { ifAvailable: true }, (lock) => {
+    if (!lock) {
+      return BUSY;
+    }
+    return isFresh() ? accessToken : exchangeRefreshToken();
+  });
+  if (first !== BUSY) {
+    return first;
+  }
+
+  // Другая вкладка уже обменивает токен. Ждём блокировку и её результат.
+  // Если результата нет, обмен идёт с cookie, которую та вкладка оставила, — она ещё не сожжена
+  const otherTab = waitForOtherTab();
+  return navigator.locks.request(REFRESH_LOCK, async () => {
+    if (isFresh()) {
+      otherTab.cancel();
+      return accessToken;
+    }
+    const token = await otherTab.result;
+    return token ?? exchangeRefreshToken();
+  });
+}
+
+// staleToken — access token, с которым запрос получил 401.
+// Параллельные запросы внутри вкладки ждут один общий refresh.
+export function refreshAccessToken(staleToken = null) {
+  refreshPromise ??= refreshAcrossTabs(staleToken)
+    .catch((error) => {
       expireSession();
       throw error;
-    } finally {
+    })
+    .finally(() => {
       refreshPromise = null;
-    }
-  })();
+    });
   return refreshPromise;
 }
 
@@ -125,10 +203,11 @@ export function refreshAccessToken() {
 // auth: false — для запросов без access token (вход, регистрация): их 401 не ведёт к refresh.
 export async function request(path, options = {}) {
   const { auth = true } = options;
+  const usedToken = accessToken;
   let response = await send(path, options);
 
   if (response.status === 401 && auth) {
-    await refreshAccessToken();
+    await refreshAccessToken(usedToken);
     response = await send(path, options);
   }
 

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { api, getAccessToken } from "../src/api/client.js";
 import { AuthProvider, useAuth } from "../src/features/auth/AuthProvider.jsx";
-import { stubAuthBackend, TEST_USER } from "./renderRoute.jsx";
+import { stubBackend, TEST_USER } from "./renderRoute.jsx";
 
 let auth;
 
@@ -22,7 +22,7 @@ function renderProvider() {
 
 describe("AuthProvider", () => {
   it("restores the session through refresh", async () => {
-    stubAuthBackend();
+    stubBackend();
     renderProvider();
 
     expect(screen.getByText("loading")).toBeTruthy();
@@ -31,7 +31,7 @@ describe("AuthProvider", () => {
   });
 
   it("stays anonymous when there is no session", async () => {
-    stubAuthBackend({ authenticated: false });
+    stubBackend({ authenticated: false });
     renderProvider();
 
     expect(await screen.findByText("anonymous")).toBeTruthy();
@@ -39,7 +39,7 @@ describe("AuthProvider", () => {
   });
 
   it("logs in and loads the user", async () => {
-    const fetchMock = stubAuthBackend({ authenticated: false });
+    const fetchMock = stubBackend({ authenticated: false });
     renderProvider();
     await screen.findByText("anonymous");
 
@@ -55,7 +55,7 @@ describe("AuthProvider", () => {
   });
 
   it("becomes anonymous when the session expires", async () => {
-    const fetchMock = stubAuthBackend();
+    const fetchMock = stubBackend();
     renderProvider();
     await screen.findByText("authenticated");
 

@@ -1,7 +1,12 @@
+import { useCallback, useEffect, useState } from "react";
 import { Box, Breadcrumbs, Button, Link, Stack, Tab, Tabs, Typography } from "@mui/material";
 import { Link as RouterLink, Outlet, useLocation, useParams } from "react-router";
 
 import { paths, projectSections } from "../app/paths.js";
+import ErrorState from "../components/ErrorState.jsx";
+import LoadingState from "../components/LoadingState.jsx";
+import { projectsApi } from "../features/projects/api.js";
+import NotFoundPage from "../pages/NotFoundPage.jsx";
 
 function useCurrentSection(projectId) {
   const { pathname } = useLocation();
@@ -16,9 +21,37 @@ function useCurrentSection(projectId) {
 export default function ProjectLayout() {
   const { projectId } = useParams();
   const currentSection = useCurrentSection(projectId);
+  const [project, setProject] = useState(null);
+  const [loadError, setLoadError] = useState(null);
 
-  // TODO(projects): загрузить проект через GET /projects/{projectId} и показать его имя.
-  const projectName = `Проект ${projectId}`;
+  const load = useCallback(async () => {
+    setProject(null);
+    setLoadError(null);
+    try {
+      setProject(await projectsApi.get(projectId));
+    } catch (error) {
+      setLoadError(error);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // Чужой проект бэкенд тоже отдаёт как NOT_FOUND (F_Auth_7)
+  if (loadError?.code === "NOT_FOUND") {
+    return <NotFoundPage />;
+  }
+  if (loadError) {
+    return (
+      <ErrorState title="Не удалось открыть проект" message={loadError.message} onRetry={load} />
+    );
+  }
+  if (!project) {
+    return <LoadingState label="Открываем проект" />;
+  }
+
+  const projectName = project.name;
 
   return (
     <Box>

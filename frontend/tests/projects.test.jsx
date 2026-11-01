@@ -125,3 +125,18 @@ describe("ProjectsPage", () => {
     expect(within(list).getByText("Осенний семестр")).toBeTruthy();
   });
 });
+
+describe("ProjectLayout", () => {
+  it("opens a project and shows its name", async () => {
+    renderRoute("/projects/42/teachers");
+
+    expect(await findHeading("Осенний семестр")).toBeTruthy();
+    expect(await findHeading("Преподаватели")).toBeTruthy();
+  });
+
+  it("shows not found for a missing project", async () => {
+    renderRoute("/projects/999/teachers");
+
+    expect(await findHeading("Страница не найдена")).toBeTruthy();
+  });
+});

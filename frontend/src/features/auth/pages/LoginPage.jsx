@@ -2,13 +2,23 @@ import { Link, Stack } from "@mui/material";
 import { Link as RouterLink } from "react-router";
 
 import { paths } from "../../../app/paths.js";
-import PlaceholderPage from "../../../components/PlaceholderPage.jsx";
+import { useAuth } from "../AuthProvider.jsx";
+import CredentialsForm from "../components/CredentialsForm.jsx";
+import { collectErrors, validateEmail, validatePassword } from "../validation.js";
+
+const validate = ({ email, password }) =>
+  collectErrors({ email: validateEmail(email), password: validatePassword(password) });
 
 export default function LoginPage() {
+  const { login } = useAuth();
+
   return (
-    <PlaceholderPage
+    <CredentialsForm
       title="Вход"
-      planned={["Email и пароль", "Сообщение о неверных данных (F_Auth_5)"]}
+      submitLabel="Войти"
+      passwordAutoComplete="current-password"
+      validate={validate}
+      onSubmit={login}
     >
       <Stack spacing={1}>
         <Link component={RouterLink} to={paths.register}>
@@ -18,6 +28,6 @@ export default function LoginPage() {
           Забыли пароль?
         </Link>
       </Stack>
-    </PlaceholderPage>
+    </CredentialsForm>
   );
 }

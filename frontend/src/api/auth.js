@@ -13,12 +13,11 @@ export const authApi = {
   refresh: refreshAccessToken,
   me: () => api.get("/auth/me"),
 
-  // Локальная сессия очищается, даже если сервер не ответил: пользователь просил выйти
+  // Локальная сессия очищается только после ответа сервера. Иначе refresh-сессия
+  // может остаться активной, и после перезагрузки страницы пользователь снова окажется в системе.
+  // Повторный выход сервер принимает, так что запрос можно просто повторить
   async logout() {
-    try {
-      await api.post("/auth/logout", undefined, { auth: false });
-    } finally {
-      clearSession();
-    }
+    await api.post("/auth/logout", undefined, { auth: false });
+    clearSession();
   }
 };

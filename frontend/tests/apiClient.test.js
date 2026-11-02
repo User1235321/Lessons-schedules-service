@@ -165,13 +165,34 @@ describe("authApi", () => {
     expect(getAccessToken()).toBe("t");
   });
 
-  it("clears the session on logout even if the server fails", async () => {
+  it("clears the session after the server confirms logout", async () => {
+    setAccessToken("t");
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await authApi.logout();
+
+    expect(call(0).url).toBe("/api/auth/logout");
+    expect(call(0).init.credentials).toBe("include");
+    expect(getAccessToken()).toBeNull();
+  });
+
+  it("keeps the session when the server did not confirm logout", async () => {
     setAccessToken("t");
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
 
     await expect(authApi.logout()).rejects.toMatchObject({ code: "NETWORK_ERROR" });
 
-    expect(call(0).url).toBe("/api/auth/logout");
-    expect(getAccessToken()).toBeNull();
+    expect(getAccessToken()).toBe("t");
+  });
+
+  it("keeps the session on a server error during logout", async () => {
+    setAccessToken("t");
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(500, { code: "INTERNAL_ERROR", message: "Внутренняя ошибка сервера", details: {} })
+    );
+
+    await expect(authApi.logout()).rejects.toMatchObject({ status: 500, code: "INTERNAL_ERROR" });
+
+    expect(getAccessToken()).toBe("t");
   });
 });

@@ -71,4 +71,37 @@ describe("AuthProvider", () => {
     await waitFor(() => expect(screen.getByText("anonymous")).toBeTruthy());
     expect(getAccessToken()).toBeNull();
   });
+  it("becomes anonymous after the server confirms logout", async () => {
+    const fetchMock = stubAuthBackend();
+    renderProvider();
+    await screen.findByText("authenticated");
+
+    await act(() => auth.logout());
+
+    expect(screen.getByText("anonymous")).toBeTruthy();
+    expect(auth.user).toBeNull();
+    expect(getAccessToken()).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/logout", expect.anything());
+  });
+
+  it("stays signed in when the server did not confirm logout", async () => {
+    const fetchMock = stubAuthBackend();
+    renderProvider();
+    await screen.findByText("authenticated");
+    const respond = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (url, init) => {
+      if (url === "/api/auth/logout") {
+        throw new TypeError("Failed to fetch");
+      }
+      return respond(url, init);
+    });
+
+    let error;
+    await act(() => auth.logout().catch((e) => (error = e)));
+
+    expect(error).toMatchObject({ code: "NETWORK_ERROR" });
+    expect(screen.getByText("authenticated")).toBeTruthy();
+    expect(auth.user).toEqual(TEST_USER);
+    expect(getAccessToken()).not.toBeNull();
+  });
 });

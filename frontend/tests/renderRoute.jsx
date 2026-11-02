@@ -7,10 +7,13 @@ import AppProviders from "../src/app/AppProviders.jsx";
 import { routes } from "../src/app/routes.jsx";
 
 export const TEST_USER = { id: "u-1", email: "user@example.com" };
+export const TEST_PASSWORD = "secret";
+export const TAKEN_EMAIL = "taken@example.com";
 
 function json(status, body) {
   return new Response(body === undefined ? null : JSON.stringify(body), { status });
 }
+
 
 export const TEST_PROJECTS = [
   { id: "42", name: "Осенний семестр", created_at: "2026-09-01T10:00:00Z", updated_at: "2026-09-01T10:00:00Z" },
@@ -19,7 +22,6 @@ export const TEST_PROJECTS = [
 
 const notFound = () => json(404, { code: "NOT_FOUND", message: "Проект не найден", details: {} });
 
-// Минимальный бэкенд: auth и проекты в памяти. При authenticated: false refresh отвечает 401
 export function stubBackend({ authenticated = true, projects = TEST_PROJECTS } = {}) {
   const store = projects.map((project) => ({ ...project }));
   let nextId = 100;
@@ -27,6 +29,22 @@ export function stubBackend({ authenticated = true, projects = TEST_PROJECTS } =
   const fetchMock = vi.fn(async (url, init = {}) => {
     const method = init.method ?? "GET";
     const body = init.body ? JSON.parse(init.body) : null;
+
+    if (url === "/api/auth/login") {
+      return body.email === TEST_USER.email && body.password === TEST_PASSWORD
+        ? json(200, { access_token: "test-token" })
+        : json(401, {
+            code: "INVALID_CREDENTIALS",
+            message: "Неверный адрес или пароль",
+            details: {}
+          });
+    }
+
+    if (url === "/api/auth/register") {
+      return body.email === TAKEN_EMAIL
+        ? json(409, { code: "EMAIL_ALREADY_REGISTERED", message: "Адрес занят", details: {} })
+        : json(201, { access_token: "test-token" });
+    }
 
     if (url === "/api/auth/refresh") {
       return authenticated

@@ -1,5 +1,7 @@
 import { useState } from "react";
 import {
+  Alert,
+  AlertTitle,
   AppBar,
   Box,
   Button,
@@ -19,13 +21,22 @@ export default function AppLayout() {
   const navigation = useNavigation();
   const { logout } = useAuth();
   const [menuAnchor, setMenuAnchor] = useState(null);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState(null);
 
   const closeMenu = () => setMenuAnchor(null);
 
-  const handleLogout = () => {
+  // После выхода RequireAuth сам отправит на страницу входа. Если сервер не подтвердил выход,
+  // пользователь остаётся в системе и может повторить попытку
+  const handleLogout = async () => {
     closeMenu();
-    // После выхода RequireAuth сам отправит на страницу входа
-    logout();
+    setLoggingOut(true);
+    try {
+      await logout();
+    } catch (error) {
+      setLogoutError(error);
+      setLoggingOut(false);
+    }
   };
 
   return (
@@ -59,7 +70,9 @@ export default function AppLayout() {
             open={Boolean(menuAnchor)}
             onClose={closeMenu}
           >
-            <MenuItem onClick={handleLogout}>Выйти</MenuItem>
+            <MenuItem onClick={handleLogout} disabled={loggingOut}>
+              Выйти
+            </MenuItem>
           </Menu>
         </Toolbar>
         {navigation.state !== "idle" && (
@@ -71,6 +84,21 @@ export default function AppLayout() {
       </AppBar>
 
       <Container component="main" maxWidth="lg" sx={{ py: 3 }}>
+        {logoutError && (
+          <Alert
+            severity="error"
+            sx={{ mb: 3 }}
+            action={
+              <Button color="inherit" size="small" onClick={handleLogout} disabled={loggingOut}>
+                {loggingOut ? "Выходим…" : "Повторить"}
+              </Button>
+            }
+          >
+            <AlertTitle>Не удалось выйти</AlertTitle>
+            Сервер не подтвердил завершение сессии, поэтому вы всё ещё в системе.{" "}
+            {logoutError.message}
+          </Alert>
+        )}
         <Outlet />
       </Container>
     </Box>

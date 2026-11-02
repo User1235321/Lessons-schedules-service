@@ -91,4 +91,30 @@ describe("routing", () => {
     expect(router.state.location.pathname).toBe("/login");
     expect(router.state.location.state.from.pathname).toBe("/projects/42/rooms");
   });
+  it("keeps the user signed in and offers a retry when logout fails", async () => {
+    const { user, router, fetchMock } = renderRoute("/projects");
+    await findHeading("Мои проекты");
+    const respond = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (url, init) =>
+      url === "/api/auth/logout"
+        ? new Response(
+            JSON.stringify({ code: "INTERNAL_ERROR", message: "Внутренняя ошибка сервера", details: {} }),
+            { status: 500 }
+          )
+        : respond(url, init)
+    );
+
+    await user.click(screen.getByRole("button", { name: "Профиль" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Выйти" }));
+
+    expect(await screen.findByText("Не удалось выйти")).toBeTruthy();
+    expect(screen.getByText(/Внутренняя ошибка сервера/)).toBeTruthy();
+    expect(router.state.location.pathname).toBe("/projects");
+
+    fetchMock.mockImplementation(respond);
+    await user.click(screen.getByRole("button", { name: "Повторить" }));
+
+    expect(await findHeading("Вход")).toBeTruthy();
+    expect(router.state.location.pathname).toBe("/login");
+  });
 });

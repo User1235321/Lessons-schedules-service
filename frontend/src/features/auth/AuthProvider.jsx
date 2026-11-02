@@ -35,12 +35,9 @@ export function AuthProvider({ children }) {
         await authApi.register(credentials);
         await loadUser();
       },
+      // Если сервер не подтвердил выход, пользователь остаётся в системе, а ошибка уходит вызывающему
       logout: async () => {
-        try {
-          await authApi.logout();
-        } catch {
-          // Локальная сессия уже очищена, ошибка сервера выходу не мешает
-        }
+        await authApi.logout();
         setState({ status: "anonymous", user: null });
       }
     }),

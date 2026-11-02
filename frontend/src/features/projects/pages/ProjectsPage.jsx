@@ -1,28 +1,120 @@
-import { Button, Stack } from "@mui/material";
-import { Link as RouterLink } from "react-router";
+import { useCallback, useEffect, useState } from "react";
+import {
+  Box,
+  Button,
+  IconButton,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemText,
+  Paper,
+  Stack,
+  Typography
+} from "@mui/material";
+import { Link as RouterLink, useNavigate } from "react-router";
 
 import { paths } from "../../../app/paths.js";
-import PlaceholderPage from "../../../components/PlaceholderPage.jsx";
+import ErrorState from "../../../components/ErrorState.jsx";
+import LoadingState from "../../../components/LoadingState.jsx";
+import { projectsApi } from "../api.js";
+import CreateProjectDialog from "../components/CreateProjectDialog.jsx";
+import DeleteProjectDialog from "../components/DeleteProjectDialog.jsx";
+
+const formatDate = (value) => new Date(value).toLocaleDateString("ru-RU");
 
 export default function ProjectsPage() {
+  const [projects, setProjects] = useState(null);
+  const [loadError, setLoadError] = useState(null);
+  const [creating, setCreating] = useState(false);
+  const [deletion, setDeletion] = useState({ open: false, project: null });
+  const navigate = useNavigate();
+
+  const load = useCallback(async () => {
+    setLoadError(null);
+    setProjects(null);
+    try {
+      setProjects(await projectsApi.list());
+    } catch (error) {
+      setLoadError(error);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
   return (
-    <PlaceholderPage
-      title="Мои проекты"
-      planned={[
-        "Список проектов пользователя",
-        "Создание проекта с обязательным именем (F_Project_1)",
-        "Открытие и удаление проекта (F_Project_2)"
-      ]}
-    >
-      <Stack direction="row" spacing={1}>
-        {/* Временная ссылка, чтобы можно было пройти по разделам проекта до появления API. */}
-        <Button variant="outlined" component={RouterLink} to={paths.project("demo")}>
-          Открыть демо-проект
-        </Button>
-        <Button variant="contained" disabled>
+    <Box>
+      <Stack
+        direction="row"
+        spacing={2}
+        sx={{ alignItems: "center", justifyContent: "space-between", mb: 3 }}
+      >
+        <Typography component="h1" variant="h4">
+          Мои проекты
+        </Typography>
+        <Button variant="contained" onClick={() => setCreating(true)}>
           Создать проект
         </Button>
       </Stack>
-    </PlaceholderPage>
+
+      {loadError ? (
+        <ErrorState
+          title="Не удалось загрузить проекты"
+          message={loadError.message}
+          onRetry={load}
+        />
+      ) : projects === null ? (
+        <LoadingState label="Загружаем проекты" />
+      ) : projects.length === 0 ? (
+        <Typography color="text.secondary">
+          Проектов пока нет. Создайте первый, чтобы начать составлять расписание.
+        </Typography>
+      ) : (
+        <Paper variant="outlined">
+          <List aria-label="Проекты" disablePadding>
+            {projects.map((project) => (
+              <ListItem
+                key={project.id}
+                divider
+                disablePadding
+                secondaryAction={
+                  <IconButton
+                    edge="end"
+                    aria-label={`Удалить проект «${project.name}»`}
+                    onClick={() => setDeletion({ open: true, project })}
+                  >
+                    ✕
+                  </IconButton>
+                }
+              >
+                <ListItemButton component={RouterLink} to={paths.project(project.id)}>
+                  <ListItemText
+                    primary={project.name}
+                    secondary={`Изменён ${formatDate(project.updated_at)}`}
+                  />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+        </Paper>
+      )}
+
+      <CreateProjectDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        // Новый проект сразу открывается: дальше пользователь заполняет его данные
+        onCreated={(project) => navigate(paths.project(project.id))}
+      />
+      <DeleteProjectDialog
+        open={deletion.open}
+        project={deletion.project}
+        onClose={() => setDeletion((current) => ({ ...current, open: false }))}
+        onDeleted={(deleted) => {
+          setProjects((current) => current.filter((project) => project.id !== deleted.id));
+          setDeletion((current) => ({ ...current, open: false }));
+        }}
+      />
+    </Box>
   );
 }

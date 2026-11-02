@@ -49,10 +49,10 @@ describe("routing", () => {
   it("goes from the projects list to a project", async () => {
     const { user, router } = renderRoute("/projects");
 
-    await user.click(await screen.findByRole("link", { name: "Открыть демо-проект" }));
+    await user.click(await screen.findByRole("link", { name: /Осенний семестр/ }));
 
     expect(await findHeading("Преподаватели")).toBeTruthy();
-    expect(router.state.location.pathname).toBe("/projects/demo/teachers");
+    expect(router.state.location.pathname).toBe("/projects/42/teachers");
   });
 
   it("goes from schedule viewer to schedule editor", async () => {

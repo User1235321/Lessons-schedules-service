@@ -2,17 +2,34 @@ import { Link } from "@mui/material";
 import { Link as RouterLink } from "react-router";
 
 import { paths } from "../../../app/paths.js";
-import PlaceholderPage from "../../../components/PlaceholderPage.jsx";
+import { useAuth } from "../AuthProvider.jsx";
+import CredentialsForm from "../components/CredentialsForm.jsx";
+import {
+  collectErrors,
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  validateEmail,
+  validateNewPassword
+} from "../validation.js";
+
+const validate = ({ email, password }) =>
+  collectErrors({ email: validateEmail(email), password: validateNewPassword(password) });
 
 export default function RegisterPage() {
+  const { register } = useAuth();
+
   return (
-    <PlaceholderPage
+    <CredentialsForm
       title="Регистрация"
-      planned={["Email и пароль от 6 до 20 символов (F_Auth_2)", "Ошибка при занятом email (F_Auth_3)"]}
+      submitLabel="Зарегистрироваться"
+      passwordAutoComplete="new-password"
+      passwordHelperText={`От ${MIN_PASSWORD_LENGTH} до ${MAX_PASSWORD_LENGTH} символов`}
+      validate={validate}
+      onSubmit={register}
     >
       <Link component={RouterLink} to={paths.login}>
         Уже есть аккаунт? Войти
       </Link>
-    </PlaceholderPage>
+    </CredentialsForm>
   );
 }

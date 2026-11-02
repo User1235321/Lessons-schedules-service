@@ -72,7 +72,7 @@ describe("AuthProvider", () => {
     expect(getAccessToken()).toBeNull();
   });
   it("becomes anonymous after the server confirms logout", async () => {
-    const fetchMock = stubAuthBackend();
+    const fetchMock = stubBackend();
     renderProvider();
     await screen.findByText("authenticated");
 
@@ -85,7 +85,7 @@ describe("AuthProvider", () => {
   });
 
   it("stays signed in when the server did not confirm logout", async () => {
-    const fetchMock = stubAuthBackend();
+    const fetchMock = stubBackend();
     renderProvider();
     await screen.findByText("authenticated");
     const respond = fetchMock.getMockImplementation();

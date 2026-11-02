@@ -175,3 +175,137 @@ describe("authApi", () => {
     expect(getAccessToken()).toBeNull();
   });
 });
+
+// Две вкладки — два экземпляра модуля клиента. Общие у них только cookie (одна на браузер),
+// блокировки Web Locks и BroadcastChannel, как в настоящем браузере
+describe("refresh across tabs", () => {
+  // Как в браузере: блокировка занята с момента запроса, ifAvailable не встаёт в очередь
+  class FakeLockManager {
+    #pending = 0;
+    #tail = Promise.resolve();
+
+    async request(name, options, callback) {
+      if (typeof options === "function") {
+        callback = options;
+        options = {};
+      }
+      if (options.ifAvailable && this.#pending > 0) {
+        return callback(null);
+      }
+      this.#pending += 1;
+      const previous = this.#tail;
+      let release;
+      this.#tail = new Promise((resolve) => (release = resolve));
+      await previous;
+      try {
+        return await callback({ name });
+      } finally {
+        this.#pending -= 1;
+        release();
+      }
+    }
+  }
+
+  // Бэкенд с ротацией refresh-токена: старый сгорает при обмене, как в use case Refresh
+  function fakeBackend() {
+    const state = { cookie: "r1", current: "r1", issued: 0, refreshCalls: [], validTokens: new Set() };
+    const delay = () => new Promise((resolve) => setTimeout(resolve, 10));
+
+    state.fetch = vi.fn(async (url, init) => {
+      if (url === "/api/auth/refresh") {
+        const sent = state.cookie;
+        state.refreshCalls.push(sent);
+        await delay();
+        if (sent !== state.current) {
+          return jsonResponse(401, {
+            code: "INVALID_REFRESH_TOKEN",
+            message: "Сессия завершена, войдите снова",
+            details: {}
+          });
+        }
+        state.issued += 1;
+        state.current = state.cookie = `r${state.issued + 1}`;
+        const token = `access-${state.issued}`;
+        state.validTokens.add(token);
+        return jsonResponse(200, { access_token: token });
+      }
+      const token = init.headers.Authorization?.replace("Bearer ", "");
+      return state.validTokens.has(token) ? jsonResponse(200, []) : unauthorized();
+    });
+    return state;
+  }
+
+  async function openTab() {
+    vi.resetModules();
+    return import("../src/api/client.js");
+  }
+
+  let backend;
+
+  beforeEach(() => {
+    backend = fakeBackend();
+    vi.stubGlobal("fetch", backend.fetch);
+    vi.stubGlobal("navigator", { ...navigator, locks: new FakeLockManager() });
+  });
+
+  it("refreshes once when the access token expires in two tabs at the same time", async () => {
+    const [tabA, tabB] = [await openTab(), await openTab()];
+    tabA.setAccessToken("expired");
+    tabB.setAccessToken("expired");
+    const expired = vi.fn();
+    tabA.onSessionExpired(expired);
+    tabB.onSessionExpired(expired);
+
+    await Promise.all([tabA.api.get("/projects"), tabB.api.get("/projects")]);
+
+    expect(backend.refreshCalls).toEqual(["r1"]);
+    expect(tabB.getAccessToken()).toBe(tabA.getAccessToken());
+    expect(expired).not.toHaveBeenCalled();
+  });
+
+  it("never sends a refresh token that was already rotated", async () => {
+    const tabs = [await openTab(), await openTab(), await openTab()];
+    tabs.forEach((tab) => tab.setAccessToken("expired"));
+
+    await Promise.all(tabs.flatMap((tab) => [tab.api.get("/projects"), tab.api.get("/projects")]));
+
+    expect(backend.refreshCalls).toEqual(["r1"]);
+  });
+
+  it("shares the new token with tabs that did not refresh", async () => {
+    const [tabA, tabB] = [await openTab(), await openTab()];
+
+    const token = await tabA.refreshAccessToken();
+    await vi.waitFor(() => expect(tabB.getAccessToken()).toBe(token));
+  });
+
+  it("refreshes itself with the rotated cookie when the other tab failed", async () => {
+    const [tabA, tabB] = [await openTab(), await openTab()];
+    const respond = backend.fetch.getMockImplementation();
+    backend.fetch.mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      throw new TypeError("Failed to fetch");
+    });
+    backend.fetch.mockImplementation(respond);
+
+    const results = await Promise.allSettled([
+      tabA.refreshAccessToken(),
+      tabB.refreshAccessToken()
+    ]);
+
+    expect(results[0]).toMatchObject({ status: "rejected", reason: { code: "NETWORK_ERROR" } });
+    expect(results[1]).toMatchObject({ status: "fulfilled", value: "access-1" });
+  });
+
+  it("without Web Locks the second tab would hit a rotated token", async () => {
+    vi.stubGlobal("navigator", { ...navigator, locks: undefined });
+    const [tabA, tabB] = [await openTab(), await openTab()];
+    tabA.setAccessToken("expired");
+    tabB.setAccessToken("expired");
+
+    const results = await Promise.allSettled([tabA.api.get("/projects"), tabB.api.get("/projects")]);
+
+    expect(results.map((result) => result.status).sort()).toEqual(["fulfilled", "rejected"]);
+    expect(backend.refreshCalls).toEqual(["r1", "r1"]);
+  });
+});

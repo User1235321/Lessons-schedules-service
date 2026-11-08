@@ -5,7 +5,8 @@ import jwt
 import pytest
 from pydantic import ValidationError
 
-from app.bootstrap.settings import Settings
+from app.bootstrap.api import create_app
+from app.bootstrap.settings import DEV_JWT_SECRET, Settings
 from app.domain.auth.errors import InvalidAccessToken
 from app.domain.shared.ids import UserId
 from app.infrastructure.security import Argon2PasswordHasher, JwtTokenService
@@ -96,3 +97,37 @@ def test_refresh_tokens_are_random_and_their_hash_is_stable() -> None:
 def test_short_jwt_secret_is_rejected() -> None:
     with pytest.raises(ValidationError):
         Settings(jwt_secret="change-me")
+
+
+def test_development_runs_with_example_key() -> None:
+    settings = Settings(_env_file=None, app_env="development", jwt_secret=DEV_JWT_SECRET)
+
+    assert settings.jwt_secret == DEV_JWT_SECRET
+
+
+@pytest.mark.parametrize(
+    "unsafe",
+    [{"jwt_secret": DEV_JWT_SECRET}, {"jwt_secret": SECRET, "refresh_cookie_secure": False}],
+    ids=["example key", "cookie without secure"],
+)
+def test_production_refuses_unsafe_settings(unsafe: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, app_env="production", **unsafe)
+
+
+def test_production_runs_with_own_key() -> None:
+    settings = Settings(_env_file=None, app_env="production", jwt_secret=SECRET)
+
+    assert settings.jwt_secret == SECRET
+
+
+def test_server_without_app_env_does_not_start_with_example_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Как на сервере, где забыли настроить окружение: APP_ENV нет, ключ из примера
+    monkeypatch.delenv("APP_ENV")
+    monkeypatch.setenv("JWT_SECRET", DEV_JWT_SECRET)
+    monkeypatch.setattr(Settings, "model_config", {**Settings.model_config, "env_file": None})
+
+    with pytest.raises(ValidationError, match="JWT_SECRET"):
+        create_app()

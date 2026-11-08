@@ -12,6 +12,13 @@ from app.application.auth.use_cases import (
     Refresh,
     Register,
 )
+from app.application.projects.use_cases import (
+    CreateProject,
+    DeleteProject,
+    GetProject,
+    ListProjects,
+    UpdateProject,
+)
 from app.domain.shared.errors import NotAuthenticated
 from app.domain.shared.ids import UserId
 
@@ -30,6 +37,16 @@ class UseCases(Protocol):
     def authenticate(self) -> Authenticate: ...
 
     def get_current_user(self) -> GetCurrentUser: ...
+
+    def create_project(self) -> CreateProject: ...
+
+    def list_projects(self) -> ListProjects: ...
+
+    def get_project(self) -> GetProject: ...
+
+    def update_project(self) -> UpdateProject: ...
+
+    def delete_project(self) -> DeleteProject: ...
 
 
 def get_use_cases(request: Request) -> UseCases:

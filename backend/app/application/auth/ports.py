@@ -34,6 +34,10 @@ class UserSessionRepository(Protocol):
 class PasswordHasher(Protocol):
     """Адаптивное хеширование паролей (HLD 8)."""
 
+    # Хеш случайного пароля с теми же параметрами, что у настоящих. Вход с неизвестным адресом
+    # сверяет пароль с ним и тратит столько же времени, сколько вход с известным
+    dummy_hash: str
+
     def hash(self, password: str) -> str: ...
 
     def verify(self, password: str, password_hash: str) -> bool: ...

@@ -4,6 +4,32 @@ from datetime import timedelta
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.application.academic.groups import (
+    CreateGroup,
+    CreateSubgroup,
+    DeleteGroup,
+    DeleteSubgroup,
+    GetGroup,
+    GetSubgroup,
+    ListGroups,
+    ListSubgroups,
+    UpdateGroup,
+    UpdateSubgroup,
+)
+from app.application.academic.subjects import (
+    CreateSubject,
+    DeleteSubject,
+    GetSubject,
+    ListSubjects,
+    UpdateSubject,
+)
+from app.application.academic.teachers import (
+    CreateTeacher,
+    DeleteTeacher,
+    GetTeacher,
+    ListTeachers,
+    UpdateTeacher,
+)
 from app.application.auth.ports import PasswordHasher, TokenService
 from app.application.auth.use_cases import (
     Authenticate,
@@ -93,6 +119,66 @@ class Container:
 
     def delete_project(self) -> DeleteProject:
         return DeleteProject(uow=self.uow())
+
+    def create_subject(self) -> CreateSubject:
+        return CreateSubject(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_subjects(self) -> ListSubjects:
+        return ListSubjects(uow=self.uow())
+
+    def get_subject(self) -> GetSubject:
+        return GetSubject(uow=self.uow())
+
+    def update_subject(self) -> UpdateSubject:
+        return UpdateSubject(uow=self.uow(), clock=self.clock)
+
+    def delete_subject(self) -> DeleteSubject:
+        return DeleteSubject(uow=self.uow(), clock=self.clock)
+
+    def create_teacher(self) -> CreateTeacher:
+        return CreateTeacher(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_teachers(self) -> ListTeachers:
+        return ListTeachers(uow=self.uow())
+
+    def get_teacher(self) -> GetTeacher:
+        return GetTeacher(uow=self.uow())
+
+    def update_teacher(self) -> UpdateTeacher:
+        return UpdateTeacher(uow=self.uow(), clock=self.clock)
+
+    def delete_teacher(self) -> DeleteTeacher:
+        return DeleteTeacher(uow=self.uow(), clock=self.clock)
+
+    def create_group(self) -> CreateGroup:
+        return CreateGroup(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_groups(self) -> ListGroups:
+        return ListGroups(uow=self.uow())
+
+    def get_group(self) -> GetGroup:
+        return GetGroup(uow=self.uow())
+
+    def update_group(self) -> UpdateGroup:
+        return UpdateGroup(uow=self.uow(), clock=self.clock)
+
+    def delete_group(self) -> DeleteGroup:
+        return DeleteGroup(uow=self.uow(), clock=self.clock)
+
+    def create_subgroup(self) -> CreateSubgroup:
+        return CreateSubgroup(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_subgroups(self) -> ListSubgroups:
+        return ListSubgroups(uow=self.uow())
+
+    def get_subgroup(self) -> GetSubgroup:
+        return GetSubgroup(uow=self.uow())
+
+    def update_subgroup(self) -> UpdateSubgroup:
+        return UpdateSubgroup(uow=self.uow(), clock=self.clock)
+
+    def delete_subgroup(self) -> DeleteSubgroup:
+        return DeleteSubgroup(uow=self.uow(), clock=self.clock)
 
     def _session_issuer(self) -> SessionIssuer:
         return SessionIssuer(

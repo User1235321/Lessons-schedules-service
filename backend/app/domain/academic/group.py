@@ -56,23 +56,23 @@ class StudentGroup:
     def add_subgroup(self, subgroup: Subgroup) -> None:
         self._replace_subgroups((*self.subgroups, subgroup), self.student_count)
 
+    def subgroup(self, subgroup_id: SubgroupId) -> Subgroup:
+        for subgroup in self.subgroups:
+            if subgroup.id == subgroup_id:
+                return subgroup
+        raise NotFound("Подгруппа не найдена", subgroup_id=str(subgroup_id))
+
     def change_subgroup(self, subgroup: Subgroup) -> None:
         """Заменяет подгруппу с тем же id."""
-        self._subgroup(subgroup.id)
+        self.subgroup(subgroup.id)
         self._replace_subgroups(
             (subgroup if old.id == subgroup.id else old for old in self.subgroups),
             self.student_count,
         )
 
     def remove_subgroup(self, subgroup_id: SubgroupId) -> None:
-        self._subgroup(subgroup_id)
+        self.subgroup(subgroup_id)
         self.subgroups = tuple(old for old in self.subgroups if old.id != subgroup_id)
-
-    def _subgroup(self, subgroup_id: SubgroupId) -> Subgroup:
-        for subgroup in self.subgroups:
-            if subgroup.id == subgroup_id:
-                return subgroup
-        raise NotFound("Подгруппа не найдена", subgroup_id=str(subgroup_id))
 
     def _replace_subgroups(self, subgroups: Iterable[Subgroup], student_count: int) -> None:
         ordered = tuple(sorted(subgroups, key=lambda subgroup: name_key(subgroup.name)))

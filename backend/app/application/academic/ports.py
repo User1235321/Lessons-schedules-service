@@ -3,7 +3,7 @@ from typing import Protocol
 from app.domain.academic.group import StudentGroup
 from app.domain.academic.subject import Subject
 from app.domain.academic.teacher import Teacher
-from app.domain.shared.ids import GroupId, ProjectId, SubjectId, TeacherId
+from app.domain.shared.ids import GroupId, ProjectId, SubgroupId, SubjectId, TeacherId
 
 # Всё ищется внутри проекта: чужие данные неотличимы от отсутствующих (NF_Security_2).
 # Владельца проекта сценарий проверяет раньше, через owned_project.
@@ -68,6 +68,18 @@ class GroupRepository(Protocol):
 
         Иначе две параллельные правки подгрупп могли бы вместе нарушить F_Data_12.
         """
+        ...
+
+    def get_by_subgroup_for_update(
+        self, project_id: ProjectId, subgroup_id: SubgroupId
+    ) -> StudentGroup | None:
+        """Группа, в которой есть такая подгруппа. Блокируется, как в get_for_update."""
+        ...
+
+    def get_by_subgroup(
+        self, project_id: ProjectId, subgroup_id: SubgroupId
+    ) -> StudentGroup | None:
+        """Группа, в которой есть такая подгруппа."""
         ...
 
     def list_in_project(self, project_id: ProjectId) -> list[StudentGroup]:

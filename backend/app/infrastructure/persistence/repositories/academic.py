@@ -1,0 +1,315 @@
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+from sqlalchemy import Select, and_, delete, func, insert, select, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, selectinload
+
+from app.domain.academic.errors import (
+    GroupNameTaken,
+    SubgroupNameTaken,
+    SubjectInUse,
+    SubjectNameTaken,
+)
+from app.domain.academic.group import StudentGroup
+from app.domain.academic.subject import Subject
+from app.domain.academic.teacher import Teacher
+from app.domain.shared.errors import DomainError, InvalidValue, NotFound
+from app.domain.shared.ids import GroupId, ProjectId, SubjectId, TeacherId
+from app.infrastructure.persistence.errors import violated_constraint
+from app.infrastructure.persistence.mappers.academic import (
+    capability_rows,
+    group_to_domain,
+    interval_rows,
+    subgroup_row,
+    subject_to_domain,
+    subject_to_row,
+    teacher_to_domain,
+)
+from app.infrastructure.persistence.models import (
+    StudentGroupRow,
+    SubgroupRow,
+    SubjectRow,
+    TeacherAvailabilityRow,
+    TeacherCapabilityRow,
+    TeacherPreferenceRow,
+    TeacherRow,
+)
+
+
+def _domain_error(error: IntegrityError) -> DomainError | None:
+    """Нарушение ограничения базы, которое пользователь может исправить сам."""
+    match violated_constraint(error):
+        case "uq_subjects_project_id_name":
+            return SubjectNameTaken("В проекте уже есть дисциплина с таким названием", field="name")
+        case "uq_student_groups_project_id_name":
+            return GroupNameTaken("В проекте уже есть группа с таким названием", field="name")
+        case "uq_subgroups_group_id_name":
+            return SubgroupNameTaken("В группе уже есть подгруппа с таким названием", field="name")
+        case "fk_teacher_capabilities_subject":
+            return InvalidValue("Такой дисциплины нет в проекте", field="capabilities")
+    return None
+
+
+@contextmanager
+def _translated() -> Iterator[None]:
+    """Переводит нарушения ограничений базы в ошибки предметной области."""
+    try:
+        yield
+    except IntegrityError as error:
+        if domain_error := _domain_error(error):
+            raise domain_error from error
+        raise
+
+
+def _subject_in_use(teachers: list[dict[str, str]]) -> SubjectInUse:
+    return SubjectInUse("Дисциплина используется у преподавателей", teachers=teachers)
+
+
+class SqlSubjectRepository:
+    """Реализует SubjectRepository."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, subject: Subject) -> None:
+        self._session.add(subject_to_row(subject))
+        with _translated():
+            # Сразу, а не при commit: одинаковые названия ловит только уникальный индекс
+            self._session.flush()
+
+    def get(self, project_id: ProjectId, subject_id: SubjectId) -> Subject | None:
+        row = self._session.scalar(
+            select(SubjectRow).where(
+                SubjectRow.project_id == project_id, SubjectRow.id == subject_id
+            )
+        )
+        return subject_to_domain(row) if row else None
+
+    def list_in_project(self, project_id: ProjectId) -> list[Subject]:
+        rows = self._session.scalars(
+            select(SubjectRow)
+            .where(SubjectRow.project_id == project_id)
+            .order_by(func.lower(SubjectRow.name), SubjectRow.id)
+        )
+        return [subject_to_domain(row) for row in rows]
+
+    def save(self, subject: Subject) -> None:
+        with _translated():
+            updated = self._session.scalar(
+                update(SubjectRow)
+                .where(SubjectRow.project_id == subject.project_id, SubjectRow.id == subject.id)
+                .values(name=subject.name)
+                .returning(SubjectRow.id)
+            )
+        if updated is None:
+            raise NotFound("Дисциплина не найдена", subject_id=str(subject.id))
+
+    def delete(self, project_id: ProjectId, subject_id: SubjectId) -> None:
+        teachers = self._session.execute(
+            select(TeacherRow.id, TeacherRow.full_name)
+            .join(
+                TeacherCapabilityRow,
+                and_(
+                    TeacherCapabilityRow.project_id == TeacherRow.project_id,
+                    TeacherCapabilityRow.teacher_id == TeacherRow.id,
+                ),
+            )
+            .where(
+                TeacherCapabilityRow.project_id == project_id,
+                TeacherCapabilityRow.subject_id == subject_id,
+            )
+            .distinct()
+            .order_by(TeacherRow.full_name, TeacherRow.id)
+        ).all()
+        if teachers:
+            raise _subject_in_use([{"id": str(id_), "full_name": name} for id_, name in teachers])
+        try:
+            deleted = self._session.scalar(
+                delete(SubjectRow)
+                .where(SubjectRow.project_id == project_id, SubjectRow.id == subject_id)
+                .returning(SubjectRow.id)
+            )
+        except IntegrityError as error:
+            # Ссылку добавили уже после проверки, и внешний ключ не дал удалить
+            if violated_constraint(error) == "fk_teacher_capabilities_subject":
+                raise _subject_in_use([]) from error
+            raise
+        if deleted is None:
+            raise NotFound("Дисциплина не найдена", subject_id=str(subject_id))
+
+
+class SqlTeacherRepository:
+    """Реализует TeacherRepository.
+
+    Наборы преподавателя пишутся явными запросами после строки преподавателя: так порядок
+    вставки не зависит от того, как SQLAlchemy упорядочит flush.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, teacher: Teacher) -> None:
+        self._session.execute(
+            insert(TeacherRow).values(
+                id=teacher.id, project_id=teacher.project_id, full_name=teacher.full_name
+            )
+        )
+        self._insert_parts(teacher)
+
+    def get(self, project_id: ProjectId, teacher_id: TeacherId) -> Teacher | None:
+        row = self._session.scalar(self._query(project_id).where(TeacherRow.id == teacher_id))
+        return teacher_to_domain(row) if row else None
+
+    def get_for_update(self, project_id: ProjectId, teacher_id: TeacherId) -> Teacher | None:
+        row = self._session.scalar(
+            self._query(project_id).where(TeacherRow.id == teacher_id).with_for_update()
+        )
+        return teacher_to_domain(row) if row else None
+
+    def list_in_project(self, project_id: ProjectId) -> list[Teacher]:
+        rows = self._session.scalars(
+            self._query(project_id).order_by(func.lower(TeacherRow.full_name), TeacherRow.id)
+        )
+        return [teacher_to_domain(row) for row in rows]
+
+    def save(self, teacher: Teacher) -> None:
+        # Сначала строка преподавателя: её блокировка выстраивает параллельные сохранения в очередь
+        updated = self._session.scalar(
+            update(TeacherRow)
+            .where(TeacherRow.project_id == teacher.project_id, TeacherRow.id == teacher.id)
+            .values(full_name=teacher.full_name)
+            .returning(TeacherRow.id)
+        )
+        if updated is None:
+            raise NotFound("Преподаватель не найден", teacher_id=str(teacher.id))
+        # У строк наборов нет своей идентичности, поэтому наборы заменяются целиком
+        for table in (TeacherCapabilityRow, TeacherAvailabilityRow, TeacherPreferenceRow):
+            self._session.execute(delete(table).where(table.teacher_id == teacher.id))
+        self._insert_parts(teacher)
+
+    def delete(self, project_id: ProjectId, teacher_id: TeacherId) -> None:
+        # Наборы удалит база: внешние ключи объявлены с ON DELETE CASCADE
+        deleted = self._session.scalar(
+            delete(TeacherRow)
+            .where(TeacherRow.project_id == project_id, TeacherRow.id == teacher_id)
+            .returning(TeacherRow.id)
+        )
+        if deleted is None:
+            raise NotFound("Преподаватель не найден", teacher_id=str(teacher_id))
+
+    def _query(self, project_id: ProjectId) -> Select[tuple[TeacherRow]]:
+        return (
+            select(TeacherRow)
+            .where(TeacherRow.project_id == project_id)
+            .options(
+                selectinload(TeacherRow.capabilities),
+                selectinload(TeacherRow.availability),
+                selectinload(TeacherRow.preferences),
+            )
+            # Наборы пишутся мимо identity map, поэтому строки всегда читаются заново
+            .execution_options(populate_existing=True)
+        )
+
+    def _insert_parts(self, teacher: Teacher) -> None:
+        with _translated():
+            self._session.execute(insert(TeacherCapabilityRow), capability_rows(teacher))
+        self._session.execute(
+            insert(TeacherAvailabilityRow), interval_rows(teacher, teacher.availability)
+        )
+        if teacher.preferences:
+            self._session.execute(
+                insert(TeacherPreferenceRow), interval_rows(teacher, teacher.preferences)
+            )
+
+
+class SqlGroupRepository:
+    """Реализует GroupRepository."""
+
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def add(self, group: StudentGroup) -> None:
+        with _translated():
+            self._session.execute(
+                insert(StudentGroupRow).values(
+                    id=group.id,
+                    project_id=group.project_id,
+                    name=group.name,
+                    student_count=group.student_count,
+                )
+            )
+            if group.subgroups:
+                self._session.execute(
+                    insert(SubgroupRow), [subgroup_row(group, sub) for sub in group.subgroups]
+                )
+
+    def get(self, project_id: ProjectId, group_id: GroupId) -> StudentGroup | None:
+        row = self._session.scalar(self._query(project_id).where(StudentGroupRow.id == group_id))
+        return group_to_domain(row) if row else None
+
+    def get_for_update(self, project_id: ProjectId, group_id: GroupId) -> StudentGroup | None:
+        row = self._session.scalar(
+            self._query(project_id).where(StudentGroupRow.id == group_id).with_for_update()
+        )
+        return group_to_domain(row) if row else None
+
+    def list_in_project(self, project_id: ProjectId) -> list[StudentGroup]:
+        rows = self._session.scalars(
+            self._query(project_id).order_by(func.lower(StudentGroupRow.name), StudentGroupRow.id)
+        )
+        return [group_to_domain(row) for row in rows]
+
+    def save(self, group: StudentGroup) -> None:
+        with _translated():
+            updated = self._session.scalar(
+                update(StudentGroupRow)
+                .where(
+                    StudentGroupRow.project_id == group.project_id, StudentGroupRow.id == group.id
+                )
+                .values(name=group.name, student_count=group.student_count)
+                .returning(StudentGroupRow.id)
+            )
+            if updated is None:
+                raise NotFound("Группа не найдена", group_id=str(group.id))
+            self._save_subgroups(group)
+
+    def delete(self, project_id: ProjectId, group_id: GroupId) -> None:
+        deleted = self._session.scalar(
+            delete(StudentGroupRow)
+            .where(StudentGroupRow.project_id == project_id, StudentGroupRow.id == group_id)
+            .returning(StudentGroupRow.id)
+        )
+        if deleted is None:
+            raise NotFound("Группа не найдена", group_id=str(group_id))
+
+    def _query(self, project_id: ProjectId) -> Select[tuple[StudentGroupRow]]:
+        return (
+            select(StudentGroupRow)
+            .where(StudentGroupRow.project_id == project_id)
+            .options(selectinload(StudentGroupRow.subgroups))
+            .execution_options(populate_existing=True)
+        )
+
+    def _save_subgroups(self, group: StudentGroup) -> None:
+        # Подгруппы сохраняются по id, а не заменяются целиком: на них будет ссылаться нагрузка
+        stored = set(
+            self._session.scalars(select(SubgroupRow.id).where(SubgroupRow.group_id == group.id))
+        )
+        removed = stored - {subgroup.id for subgroup in group.subgroups}
+        if removed:
+            # До вставки новых: освободившееся название можно сразу занять
+            self._session.execute(
+                delete(SubgroupRow).where(
+                    SubgroupRow.group_id == group.id, SubgroupRow.id.in_(removed)
+                )
+            )
+        for subgroup in group.subgroups:
+            if subgroup.id in stored:
+                self._session.execute(
+                    update(SubgroupRow)
+                    .where(SubgroupRow.group_id == group.id, SubgroupRow.id == subgroup.id)
+                    .values(name=subgroup.name, student_count=subgroup.student_count)
+                )
+            else:
+                self._session.execute(insert(SubgroupRow).values(subgroup_row(group, subgroup)))

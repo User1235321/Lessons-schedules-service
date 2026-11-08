@@ -107,5 +107,5 @@ class DeleteProject:
     def execute(self, owner_id: UserId, project_id: ProjectId) -> None:
         with self.uow:
             owned_project(self.uow, project_id, owner_id)
-            self.uow.projects.delete(project_id)
+            self.uow.projects.delete(project_id, owner_id)
             self.uow.commit()

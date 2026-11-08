@@ -9,9 +9,9 @@ from app.domain.shared.errors import NotFound
 from app.domain.shared.ids import UserId
 from app.infrastructure.persistence.errors import violated_constraint
 from app.infrastructure.persistence.mappers.users import (
-    session_columns,
     session_to_domain,
     session_to_row,
+    session_update_values,
     user_to_domain,
     user_to_row,
 )
@@ -72,7 +72,7 @@ class SqlUserSessionRepository:
         updated = self._session.scalar(
             update(UserSessionRow)
             .where(UserSessionRow.id == session.id)
-            .values(session_columns(session))
+            .values(session_update_values(session))
             .returning(UserSessionRow.id)
         )
         if updated is None:

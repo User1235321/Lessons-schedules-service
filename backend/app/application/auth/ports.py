@@ -28,7 +28,9 @@ class UserSessionRepository(Protocol):
         """
         ...
 
-    def save(self, session: UserSession) -> None: ...
+    def save(self, session: UserSession) -> None:
+        """Записывает новый хеш refresh-токена и время отзыва. Остальное задаётся при входе."""
+        ...
 
 
 class PasswordHasher(Protocol):

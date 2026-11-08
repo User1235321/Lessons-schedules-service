@@ -24,19 +24,25 @@ def user_to_domain(row: UserRow) -> User:
     )
 
 
-def session_columns(session: UserSession) -> dict[str, Any]:
-    """Значения всех колонок сессии, кроме id."""
+def session_update_values(session: UserSession) -> dict[str, Any]:
+    """Колонки, которые меняются после входа: хеш при ротации и время отзыва при выходе.
+
+    id, user_id, created_at и expires_at пишет только INSERT.
+    """
     return {
-        "user_id": session.user_id,
         "refresh_token_hash": session.refresh_token_hash,
-        "created_at": session.created_at,
-        "expires_at": session.expires_at,
         "revoked_at": session.revoked_at,
     }
 
 
 def session_to_row(session: UserSession) -> UserSessionRow:
-    return UserSessionRow(id=session.id, **session_columns(session))
+    return UserSessionRow(
+        id=session.id,
+        user_id=session.user_id,
+        created_at=session.created_at,
+        expires_at=session.expires_at,
+        **session_update_values(session),
+    )
 
 
 def session_to_domain(row: UserSessionRow) -> UserSession:

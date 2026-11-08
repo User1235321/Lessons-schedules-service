@@ -135,8 +135,60 @@ def test_deleted_project_is_gone_and_others_stay(uow: SqlUnitOfWork) -> None:
     store(uow, doomed, kept)
 
     with uow:
-        uow.projects.delete(doomed.id)
+        uow.projects.delete(doomed.id, owner.id)
         uow.commit()
 
     with uow:
         assert uow.projects.list_owned(owner.id) == [kept]
+
+
+def test_saving_does_not_change_creation_time(uow: SqlUnitOfWork) -> None:
+    owner = stored_user(uow)
+    project = a_project(owner)
+    store(uow, project)
+
+    with uow:
+        stored = uow.projects.get_owned(project.id, owner.id)
+        assert stored is not None
+        stored.created_at = NOW + timedelta(days=1)
+        stored.rename("Весенний семестр", NOW + timedelta(hours=1))
+        uow.projects.save(stored)
+        uow.commit()
+
+    with uow:
+        reloaded = uow.projects.get_owned(project.id, owner.id)
+        assert reloaded is not None
+        assert reloaded.name == "Весенний семестр"
+        assert reloaded.created_at == NOW
+
+
+def test_project_cannot_be_saved_for_another_owner(uow: SqlUnitOfWork) -> None:
+    owner = stored_user(uow, "owner@mail.ru")
+    stranger = stored_user(uow, "stranger@mail.ru")
+    project = a_project(owner)
+    store(uow, project)
+
+    with uow:
+        stored = uow.projects.get_owned(project.id, owner.id)
+        assert stored is not None
+        stored.owner_id = stranger.id
+        stored.rename("Захвачен", NOW + timedelta(hours=1))
+        with pytest.raises(NotFound):
+            uow.projects.save(stored)
+
+    with uow:
+        assert uow.projects.get_owned(project.id, owner.id) == project
+        assert uow.projects.list_owned(stranger.id) == []
+
+
+def test_foreign_project_is_not_deleted(uow: SqlUnitOfWork) -> None:
+    owner = stored_user(uow, "owner@mail.ru")
+    stranger = stored_user(uow, "stranger@mail.ru")
+    project = a_project(owner)
+    store(uow, project)
+
+    with uow, pytest.raises(NotFound):
+        uow.projects.delete(project.id, stranger.id)
+
+    with uow:
+        assert uow.projects.get_owned(project.id, owner.id) == project

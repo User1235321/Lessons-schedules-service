@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 
 from app.domain.shared.errors import (
     AlreadyExists,
+    Conflict,
     DomainError,
     InvalidValue,
     NotAuthenticated,
@@ -15,6 +16,7 @@ HTTP_STATUS: dict[type[DomainError], int] = {
     NotAuthenticated: 401,
     NotFound: 404,
     AlreadyExists: 409,
+    Conflict: 409,
     InvalidValue: 422,
 }
 

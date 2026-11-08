@@ -5,3 +5,7 @@ from uuid import UUID
 UserId = NewType("UserId", UUID)
 SessionId = NewType("SessionId", UUID)
 ProjectId = NewType("ProjectId", UUID)
+SubjectId = NewType("SubjectId", UUID)
+TeacherId = NewType("TeacherId", UUID)
+GroupId = NewType("GroupId", UUID)
+SubgroupId = NewType("SubgroupId", UUID)

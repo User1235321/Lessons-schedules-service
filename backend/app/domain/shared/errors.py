@@ -23,6 +23,12 @@ class AlreadyExists(DomainError):
     code = "ALREADY_EXISTS"
 
 
+class Conflict(DomainError):
+    """Операция противоречит текущему состоянию данных, например удаление того, что используется."""
+
+    code = "CONFLICT"
+
+
 class NotAuthenticated(DomainError):
     """Пользователь не вошёл или вход не удался (F_Auth_5, NF_Security_1)."""
 

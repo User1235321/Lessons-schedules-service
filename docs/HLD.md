@@ -416,12 +416,15 @@ Backend проверяет принадлежность проекта поль�
 
 ## 9. Модель данных
 
-### 9.1. Основные сущности
+### 9.1. ER-диаграммы
+
+На диаграммах показаны поля таблиц PostgreSQL, первичные (PK), внешние (FK) и уникальные (UK) ключи. Все поля обязательны (NOT NULL), кроме явно отмеченных как nullable. Тип varchar_array обозначает массив PostgreSQL VARCHAR(9)[]; jsonb — структурированные данные. Названия сущностей даны в единственном числе, таблиц — в подпунктах ниже.
+
+Таблицы users, user_sessions и projects уже реализованы в ORM. Остальные таблицы описывают целевую модель, миграции которой ещё не выполнены. Повторно встречающиеся на разных диаграммах сущности показаны с одним PK: их полный состав полей приведён в основной группе.
 
 #### 9.1.1. Пользователь, проект и учебные данные
 
-```mermaid
-%%{init: {"er": {"useMaxWidth": false}, "themeVariables": {"fontSize": "17px"}}}%%
+~~~mermaid
 erDiagram
     USER ||--o{ PROJECT : owns
     PROJECT ||--o{ TEACHER : contains
@@ -430,326 +433,354 @@ erDiagram
     PROJECT ||--o{ STUDENT_GROUP : contains
     PROJECT ||--o{ STUDENT_STREAM : contains
     PROJECT ||--o{ WORKLOAD : contains
-    STUDENT_GROUP ||--o{ SUBGROUP : has
-    STUDENT_STREAM ||--o{ STREAM_GROUP : has
-    STUDENT_GROUP ||--o{ STREAM_GROUP : included
-```
+    STUDENT_GROUP ||--o{ SUBGROUP : contains
+    STUDENT_STREAM ||--o{ STREAM_GROUP : includes
+    STUDENT_GROUP ||--o{ STREAM_GROUP : participates
+    SUBJECT ||--o{ WORKLOAD : describes
+    STUDENT_GROUP |o--o{ WORKLOAD : targets
+    SUBGROUP |o--o{ WORKLOAD : targets
+    STUDENT_STREAM |o--o{ WORKLOAD : targets
+
+    USER {
+        uuid id PK
+        varchar email UK
+        text password_hash
+        timestamp created_at
+    }
+    PROJECT {
+        uuid id PK
+        uuid owner_id FK
+        varchar name
+        varchar_array odd_week_days
+        varchar_array even_week_days
+        varchar time_mode
+        integer time_step_minutes "nullable"
+        varchar duration_mode
+        integer duration_minutes "nullable"
+        timestamp created_at
+        timestamp updated_at
+    }
+    TEACHER {
+        uuid id PK
+        uuid project_id FK
+        varchar full_name
+    }
+    SUBJECT {
+        uuid id PK
+        uuid project_id FK
+        varchar name
+    }
+    ROOM {
+        uuid id PK
+        uuid project_id FK
+        varchar name
+        integer capacity
+        varchar room_type
+    }
+    STUDENT_GROUP {
+        uuid id PK
+        uuid project_id FK
+        varchar name
+        integer student_count
+    }
+    SUBGROUP {
+        uuid id PK
+        uuid group_id FK
+        varchar name
+        integer student_count
+    }
+    STUDENT_STREAM {
+        uuid id PK
+        uuid project_id FK
+        varchar name
+    }
+    STREAM_GROUP {
+        uuid stream_id PK,FK
+        uuid group_id PK,FK
+    }
+    WORKLOAD {
+        uuid id PK
+        uuid project_id FK
+        uuid subject_id FK
+        varchar lesson_type
+        varchar lesson_format
+        integer occurrences_per_cycle
+        integer duration_minutes "nullable"
+        integer required_teacher_count
+        uuid group_id FK "nullable"
+        uuid subgroup_id FK "nullable"
+        uuid stream_id FK "nullable"
+    }
+~~~
 
 #### 9.1.2. Возможности и доступность ресурсов
 
-```mermaid
-%%{init: {"er": {"useMaxWidth": false}, "themeVariables": {"fontSize": "17px"}}}%%
+~~~mermaid
 erDiagram
-    TEACHER ||--o{ TEACHER_CAPABILITY : has
-    SUBJECT ||--o{ TEACHER_CAPABILITY : references
-    TEACHER ||--o{ TEACHER_AVAILABILITY : has
-    TEACHER ||--o{ TEACHER_PREFERENCE : has
-    ROOM ||--o{ ROOM_AVAILABILITY : has
-    ROOM ||--o{ ROOM_CAPABILITY : has
-    SUBJECT ||--o{ ROOM_CAPABILITY : references
-```
+    STUDENT_GROUP ||--o{ GROUP_AVAILABILITY : available
+    SUBGROUP ||--o{ SUBGROUP_AVAILABILITY : available
+    TEACHER ||--o{ TEACHER_CAPABILITY : can_teach
+    SUBJECT ||--o{ TEACHER_CAPABILITY : taught_as
+    TEACHER ||--o{ TEACHER_AVAILABILITY : available
+    TEACHER ||--o{ TEACHER_PREFERENCE : prefers
+    ROOM ||--o{ ROOM_AVAILABILITY : available
+    ROOM ||--o{ ROOM_CAPABILITY : supports
+    SUBJECT ||--o{ ROOM_CAPABILITY : requires
+
+    TEACHER {
+        uuid id PK
+    }
+    SUBJECT {
+        uuid id PK
+    }
+    ROOM {
+        uuid id PK
+    }
+    STUDENT_GROUP {
+        uuid id PK
+    }
+    SUBGROUP {
+        uuid id PK
+    }
+    GROUP_AVAILABILITY {
+        uuid id PK
+        uuid group_id FK
+        varchar week
+        varchar weekday
+        time start_time
+        time end_time
+    }
+    SUBGROUP_AVAILABILITY {
+        uuid id PK
+        uuid subgroup_id FK
+        varchar week
+        varchar weekday
+        time start_time
+        time end_time
+    }
+    TEACHER_CAPABILITY {
+        uuid teacher_id PK,FK
+        uuid subject_id PK,FK
+        varchar lesson_type PK
+    }
+    TEACHER_AVAILABILITY {
+        uuid id PK
+        uuid teacher_id FK
+        varchar week
+        varchar weekday
+        time start_time
+        time end_time
+    }
+    TEACHER_PREFERENCE {
+        uuid id PK
+        uuid teacher_id FK
+        varchar week
+        varchar weekday
+        time start_time
+        time end_time
+    }
+    ROOM_AVAILABILITY {
+        uuid id PK
+        uuid room_id FK
+        varchar week
+        varchar weekday
+        time start_time
+        time end_time
+    }
+    ROOM_CAPABILITY {
+        uuid room_id PK,FK
+        uuid subject_id PK,FK
+        varchar lesson_type PK
+    }
+~~~
 
 #### 9.1.3. Расчёты, результаты и файлы
 
-```mermaid
-%%{init: {"er": {"useMaxWidth": false}, "themeVariables": {"fontSize": "17px"}}}%%
+~~~mermaid
 erDiagram
-    USER ||--o{ USER_SESSION : has
-    PROJECT ||--o{ EXTRA_CONSTRAINT : contains
-    PROJECT ||--o{ OPTIMIZATION_CRITERION : contains
-    PROJECT ||--o{ SCHEDULE_JOB : contains
-    PROJECT ||--o{ STORED_FILE : contains
-    SCHEDULE_JOB ||--o{ SCHEDULE : produces
+    USER ||--o{ USER_SESSION : authenticates
+    PROJECT ||--o{ EXTRA_CONSTRAINT : limits
+    PROJECT ||--o{ OPTIMIZATION_CRITERION : optimizes
+    PROJECT ||--o{ SCHEDULE_JOB : launches
+    PROJECT ||--o{ SCHEDULE : contains
+    PROJECT ||--o{ STORED_FILE : stores
+    USER ||--o{ STORED_FILE : uploaded_by
+    SCHEDULE_JOB |o--o{ SCHEDULE : produces
     SCHEDULE ||--o{ SCHEDULE_ENTRY : contains
-    SCHEDULE_ENTRY ||--o{ SCHEDULE_ENTRY_TEACHER : has
-    TEACHER ||--o{ SCHEDULE_ENTRY_TEACHER : assigned
-```
+    WORKLOAD |o--o{ SCHEDULE_ENTRY : generates
+    ROOM |o--o{ SCHEDULE_ENTRY : assigned
+    SCHEDULE_ENTRY ||--o{ SCHEDULE_ENTRY_TEACHER : assigned
+    TEACHER |o--o{ SCHEDULE_ENTRY_TEACHER : leads
+    SCHEDULE |o--o{ STORED_FILE : exported_in
+    SCHEDULE_JOB |o--o{ STORED_FILE : produced_in
 
+    USER {
+        uuid id PK
+    }
+    PROJECT {
+        uuid id PK
+    }
+    ROOM {
+        uuid id PK
+    }
+    TEACHER {
+        uuid id PK
+    }
+    WORKLOAD {
+        uuid id PK
+    }
+    USER_SESSION {
+        uuid id PK
+        uuid user_id FK
+        text refresh_token_hash UK
+        timestamp created_at
+        timestamp expires_at
+        timestamp revoked_at "nullable"
+    }
+    EXTRA_CONSTRAINT {
+        uuid id PK
+        uuid project_id FK
+        varchar constraint_type
+        jsonb scope
+        jsonb parameters
+    }
+    OPTIMIZATION_CRITERION {
+        uuid project_id PK,FK
+        varchar criterion_type PK
+        integer priority
+        boolean is_active
+    }
+    SCHEDULE_JOB {
+        uuid id PK
+        uuid project_id FK
+        varchar job_type
+        varchar status
+        varchar result_mode
+        integer top_n "nullable"
+        timestamp created_at
+        timestamp started_at "nullable"
+        timestamp finished_at "nullable"
+        text error_message "nullable"
+    }
+    SCHEDULE {
+        uuid id PK
+        uuid project_id FK
+        uuid job_id FK "nullable"
+        varchar source
+        integer result_index "nullable"
+        jsonb criterion_scores "nullable"
+        timestamp created_at
+    }
+    SCHEDULE_ENTRY {
+        uuid id PK
+        uuid schedule_id FK
+        uuid workload_id FK "nullable"
+        varchar subject_name "nullable"
+        varchar participant_label "nullable"
+        varchar lesson_type "nullable"
+        varchar lesson_format "nullable"
+        varchar week
+        varchar weekday
+        time start_time
+        time end_time
+        uuid room_id FK "nullable"
+        varchar room_name "nullable"
+    }
+    SCHEDULE_ENTRY_TEACHER {
+        uuid id PK
+        uuid entry_id FK
+        uuid teacher_id FK "nullable"
+        varchar display_name
+    }
+    STORED_FILE {
+        uuid id PK
+        uuid project_id FK
+        uuid user_id FK
+        varchar category
+        varchar original_name
+        varchar file_format
+        text object_key UK
+        bigint size_bytes
+        timestamp created_at
+        uuid schedule_id FK "nullable"
+        uuid job_id FK "nullable"
+    }
+~~~
 ### 9.2. Пользователь
 
-`users`
+Таблица users: email уникален, нормализуется удалением пробелов по краям и приведением к нижнему регистру (максимум 254 символа). Пароль хранится только как адаптивный хеш.
 
-Основные данные:
-
-- `id`;
-- `email`;
-- `password_hash`;
-- `created_at`.
-
-Email перед сохранением очищается от пробелов по краям и приводится к нижнему регистру. Уникальность адреса проверяется по нормализованному значению.
-
-`user_sessions`
-
-Хранит refresh-сессии:
-
-- `id`;
-- `user_id`;
-- `refresh_token_hash`;
-- `created_at`;
-- `expires_at`;
-- `revoked_at`.
-
-Хранится хеш refresh-токена, а не сам токен. При удалении пользователя его refresh-сессии и проекты удаляются каскадно.
+Таблица user_sessions: хранится хеш refresh-токена, а не сам токен. При удалении пользователя его сессии и проекты удаляются каскадно. revoked_at заполняется при отзыве сессии.
 
 ### 9.3. Проект
 
-`projects`
+Таблица projects: имя непустое, максимум 200 символов. odd_week_days и even_week_days содержат наборы дней двухнедельного цикла; пустые наборы допустимы.
 
-Основные данные:
+Режим начала занятий: HOUR_START или STEP. Положительное значение time_step_minutes обязательно только при STEP. Режим длительности: UNIFORM или INDIVIDUAL. Положительное duration_minutes обязательно только при UNIFORM.
 
-- `id`;
-- `owner_id`;
-- `name`;
-- режим времени;
-- минимальный временной шаг;
-- режим длительности;
-- единая длительность при соответствующем режиме;
-- настройки двухнедельного цикла;
-- `created_at`;
-- `updated_at`.
+По умолчанию: понедельник–суббота для обеих недель, HOUR_START, UNIFORM, длительность **100 минут**. Локально корректные, но несовместимые настройки проверяются при построении расписания.
 
-Режим начала занятий — `HOUR_START` (только в начале часа, без параметра шага) или `STEP` (положительный `time_step_minutes`). Режим длительности — `UNIFORM` (единая положительная `duration_minutes`) или `INDIVIDUAL` (длительность задаётся отдельно для элементов учебной нагрузки).
+### 9.4. Преподаватели и дисциплины
 
-Настройки нового проекта по умолчанию: понедельник–суббота для нечётной и чётной недель, `HOUR_START` и `UNIFORM` с длительностью **100 минут**. Пользователь может изменить эти настройки. Наборы учебных дней могут быть пустыми: это допустимые для сохранения данные, противоречия которых проверяются при построении расписания.
+Таблицы teachers и subjects хранят преподавателей и дисциплины. teacher_capabilities определяет пары «дисциплина + тип занятия», доступные преподавателю; одна пара может быть связана с несколькими преподавателями.
 
-### 9.4. Преподаватели
-
-`teachers`
-
-- `id`;
-- `project_id`;
-- ФИО.
-
-`teacher_capabilities`
-
-Определяет комбинации дисциплины и типа занятия, которые преподаватель может вести.
-
-- `teacher_id`;
-- `subject_id`;
-- `lesson_type`.
-
-`teacher_availability`
-
-- преподаватель;
-- неделя;
-- день недели;
-- время начала;
-- время окончания.
-
-`teacher_preferences`
-
-Имеет ту же временную структуру, но используется только при оптимизации и не ограничивает допустимость расписания.
+teacher_availability хранит обязательные интервалы доступности, teacher_preferences — необязательные интервалы, учитываемые только при оптимизации. Для интервалов требуется start_time < end_time.
 
 ### 9.5. Аудитории
 
-`rooms`
+Таблица rooms: вместимость положительна; room_type принимает LECTURE, PRACTICE_UNIVERSAL, PRACTICE_SPECIALIZED, LABORATORY.
 
-- `id`;
-- `project_id`;
-- номер/название;
-- вместимость;
-- тип аудитории.
-
-Типы:
-
-```text
-LECTURE
-PRACTICE_UNIVERSAL
-PRACTICE_SPECIALIZED
-LABORATORY
-```
-
-`room_availability`
-
-- аудитория;
-- неделя;
-- день;
-- начало;
-- окончание.
-
-`room_capabilities`
-
-Для специализированных и лабораторных аудиторий:
-
-- аудитория;
-- дисциплина;
-- тип/вид занятия.
+room_availability хранит интервалы доступности. room_capabilities задаёт допустимые дисциплины и типы занятий для специализированных и лабораторных аудиторий.
 
 ### 9.6. Группы и подгруппы
 
-`student_groups`
+В student_groups и subgroups количество студентов положительно. Сумма количества студентов всех подгрупп одной группы не может превышать численность группы.
 
-- `id`;
-- `project_id`;
-- название;
-- количество студентов.
+group_availability и subgroup_availability задают **необязательные ограничения доступности** на нечётной и чётной неделе: неделя, день, начало и окончание интервала. Интервалы локально корректны при start_time < end_time. Если для группы или подгруппы интервалы не указаны, она считается доступной в разрешённые проектом учебные дни. Если интервалы указаны, они ограничивают время занятий в пределах этих дней.
 
-`subgroups`
-
-- `id`;
-- `group_id`;
-- название;
-- количество студентов.
-
-Суммарное количество студентов подгрупп одной группы не может превышать размер основной группы.
+Для занятия всей группы проверяется её доступность. Для занятия подгруппы одновременно проверяется доступность родительской группы и самой подгруппы. Для потока проверяется пересечение доступности **всех** входящих в поток групп. Это обеспечивает F_Rule_1 без обязательного ввода интервалов для каждой группы.
 
 ### 9.7. Потоки
 
-`student_streams`
-
-- `id`;
-- `project_id`;
-- название.
-
-`stream_groups`
-
-Связывает поток с входящими в него группами.
+student_streams хранит потоки. stream_groups связывает существующие группы с потоками с уникальной парой (stream_id, group_id). Потоки формируются вручную.
 
 ### 9.8. Учебная нагрузка
 
-`workloads`
+В workloads заполнено ровно одно поле из group_id, subgroup_id, stream_id. occurrences_per_cycle и required_teacher_count — положительные целые числа.
 
-Основные поля:
+lesson_format принимает ONSITE или REMOTE. Для REMOTE аудитория не назначается. В режиме INDIVIDUAL duration_minutes положительно; в режиме UNIFORM используется длительность проекта.
 
-- `id`;
-- `project_id`;
-- `subject_id`;
-- тип занятия;
-- формат занятия;
-- количество проведений за двухнедельный цикл;
-- длительность;
-- требуемое количество преподавателей.
-
-Цель нагрузки задаётся одной из ссылок:
-
-- `group_id`;
-- `subgroup_id`;
-- `stream_id`.
-
-Для одного элемента нагрузки должна быть заполнена ровно одна из этих ссылок.
-
-Формат:
-
-```text
-ONSITE
-REMOTE
-```
-
-Для `REMOTE` аудитория при построении не назначается.
-
-Для лекции и практики `required_teacher_count = 1`.
-
-Для лабораторной работы `required_teacher_count >= 1`.
+Для лекции или практики required_teacher_count = 1; для лабораторной работы required_teacher_count >= 1.
 
 ### 9.9. Дополнительные ограничения
 
-`extra_constraints`
-
-- `id`;
-- `project_id`;
-- тип ограничения;
-- область применения;
-- параметры ограничения.
-
-Параметры конкретного типа ограничения хранятся как структурированные данные.
-
-Примеры типов:
-
-```text
-MIN_START_TIME
-MAX_END_TIME
-ALLOWED_DAYS
-EVERY_WEEK
-CONSECUTIVE
-NOT_CONSECUTIVE
-MIN_GAP
-BEFORE
-FIXED_DAY
-TIME_RANGE
-```
+extra_constraints содержит тип, область применения и параметры в структурированном виде. Поддерживаемые типы: MIN_START_TIME, MAX_END_TIME, ALLOWED_DAYS, EVERY_WEEK, CONSECUTIVE, NOT_CONSECUTIVE, MIN_GAP, BEFORE, FIXED_DAY, TIME_RANGE.
 
 ### 9.10. Критерии оптимизации
 
-`optimization_criteria`
-
-- `project_id`;
-- тип критерия;
-- приоритет;
-- активность.
-
-Приоритет уникален в пределах активных критериев проекта.
+optimization_criteria имеет уникальную пару (project_id, criterion_type). Приоритеты активных критериев одного проекта уникальны, применяются по возрастанию priority.
 
 ### 9.11. Задания расчёта
 
-`schedule_jobs`
-
-- `id`;
-- `project_id`;
-- тип задания;
-- состояние;
-- режим результата;
-- `top_n`;
-- дата создания;
-- дата начала;
-- дата завершения;
-- описание ошибки при наличии.
-
-Состояния:
-
-```text
-QUEUED
-RUNNING
-COMPLETED
-FAILED
-CANCELLED
-```
+schedule_jobs имеет состояния QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED. Поле top_n обязательно и положительно только в режиме TOP-N. Даты начала и завершения отсутствуют до соответствующего перехода.
 
 ### 9.12. Расписания
 
-`schedules`
+Каждое schedules принадлежит проекту через обязательный project_id. Поле source принимает GENERATED или IMPORTED. Для GENERATED обязателен job_id, для IMPORTED job_id равен NULL. Значения result_index и criterion_scores обязательны для сгенерированных вариантов, а у импортированного расписания могут отсутствовать. Такое расписание сохраняется независимо от заданий Scheduler Worker.
 
-- `id`;
-- `job_id`;
-- порядковый номер результата;
-- данные оценки по критериям;
-- дата создания.
+schedule_entries хранит размещённое занятие и его собственные данные, не только ссылки: неделю, день и время, название дисциплины, обозначение группы/подгруппы/потока, тип и **фактический формат** (ONSITE/REMOTE), отображаемое название аудитории. Для GENERATED workload_id обязателен, а snapshot-поля заполняются из учебной нагрузки. Для IMPORTED workload_id может быть NULL, а отсутствующие в файле описательные поля остаются NULL. Редактирование одного занятия изменяет его запись, **не изменяя** исходный формат всех проведений нагрузки.
 
-`schedule_entries`
+При известной аудитории room_id ссылается на rooms; для REMOTE room_id и room_name равны NULL. При неполных данных импортированного очного занятия room_id допускается NULL при сохранённом room_name. schedule_entry_teachers хранит отдельные назначения: display_name обязателен, teacher_id может быть NULL, когда известен только текст из импортированного файла. При привязке к существующему преподавателю обе величины синхронизируются. Повторный teacher_id внутри занятия не допускается.
 
-- `id`;
-- `schedule_id`;
-- `workload_id`;
-- неделя;
-- день;
-- время начала;
-- время окончания;
-- `room_id`, nullable для дистанционного занятия.
-
-`schedule_entry_teachers`
-
-Связывает занятие с одним или несколькими преподавателями.
+Проверка расписания использует связанные учебные данные там, где они есть; при недостаточности данных выполняет только применимые проверки (F_Existing_1–F_Existing_4). Минимально необходимую информацию о занятиях нельзя терять при импорте. Для будущих миграций требуется CHECK согласованности source/job_id и ключей/полей формата.
 
 ### 9.13. Файлы
 
-`stored_files`
+stored_files хранит категорию UPLOAD или EXPORT, исходное имя, формат, ссылку на объект MinIO и метаданные. Ссылки на расписание и задание необязательны.
 
-- `id`;
-- `project_id`;
-- `user_id`;
-- категория файла;
-- исходное имя;
-- формат;
-- MinIO object key;
-- размер;
-- дата создания;
-- связанное расписание или задание при наличии.
+### 9.14. Статус детализации
 
-Категории:
-
-```text
-UPLOAD
-EXPORT
-```
+Реализованные колонки и ограничения users, user_sessions и projects соответствуют ORM в dev. Остальная схема представляет целевой контракт, а не существующие миграции. Правила доступности групп/подгрупп, происхождения расписаний и хранения данных импортированных занятий зафиксированы выше; они ещё не реализованы. Перечень значений типов занятия и структура параметров конкретных дополнительных ограничений потребуют дальнейшей детализации. Этот документ не инициирует миграций.
 
 ---
 

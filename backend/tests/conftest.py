@@ -13,6 +13,7 @@ from app.bootstrap.container import Container, build_container
 from app.bootstrap.settings import Settings
 from app.infrastructure.persistence.uow import SqlUnitOfWork
 from tests.database import POSTGRES_IMAGE, alembic_config
+from tests.fakes import FakeClock
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
@@ -85,6 +86,13 @@ def uow(session_factory: sessionmaker[Session]) -> SqlUnitOfWork:
 def container(session_factory: sessionmaker[Session]) -> Container:
     # Приложение пишет в ту же внешнюю транзакцию, что и тест, и после теста всё откатывается
     return replace(build_container(Settings()), session_factory=session_factory)
+
+
+@pytest.fixture
+def clock(container: Container) -> FakeClock:
+    """Подменяет часы приложения на те, что тест переводит сам."""
+    container.clock = fake = FakeClock()
+    return fake
 
 
 @pytest.fixture

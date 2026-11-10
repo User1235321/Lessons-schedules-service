@@ -14,6 +14,13 @@ from app.application.auth.use_cases import (
     Register,
     SessionIssuer,
 )
+from app.application.projects.use_cases import (
+    CreateProject,
+    DeleteProject,
+    GetProject,
+    ListProjects,
+    UpdateProject,
+)
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
 from app.bootstrap.settings import Settings
@@ -71,6 +78,21 @@ class Container:
 
     def get_current_user(self) -> GetCurrentUser:
         return GetCurrentUser(uow=self.uow())
+
+    def create_project(self) -> CreateProject:
+        return CreateProject(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_projects(self) -> ListProjects:
+        return ListProjects(uow=self.uow())
+
+    def get_project(self) -> GetProject:
+        return GetProject(uow=self.uow())
+
+    def update_project(self) -> UpdateProject:
+        return UpdateProject(uow=self.uow(), clock=self.clock)
+
+    def delete_project(self) -> DeleteProject:
+        return DeleteProject(uow=self.uow())
 
     def _session_issuer(self) -> SessionIssuer:
         return SessionIssuer(

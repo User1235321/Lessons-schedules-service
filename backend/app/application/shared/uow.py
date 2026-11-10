@@ -1,5 +1,6 @@
 from typing import Protocol, Self
 
+from app.application.academic.ports import GroupRepository, SubjectRepository, TeacherRepository
 from app.application.auth.ports import UserRepository, UserSessionRepository
 from app.application.projects.ports import ProjectRepository
 
@@ -10,6 +11,9 @@ class UnitOfWork(Protocol):
     users: UserRepository
     user_sessions: UserSessionRepository
     projects: ProjectRepository
+    subjects: SubjectRepository
+    teachers: TeacherRepository
+    groups: GroupRepository
 
     def __enter__(self) -> Self: ...
 

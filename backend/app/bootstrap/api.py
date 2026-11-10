@@ -2,7 +2,7 @@ from fastapi import FastAPI
 
 from app.api.cookies import RefreshCookie
 from app.api.errors import install_error_handlers
-from app.api.routers import auth, health, projects
+from app.api.routers import auth, groups, health, projects, subgroups, subjects, teachers
 from app.bootstrap.container import Container, build_container
 from app.bootstrap.settings import Settings
 
@@ -15,4 +15,8 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(projects.router)
+    app.include_router(subjects.router)
+    app.include_router(teachers.router)
+    app.include_router(groups.router)
+    app.include_router(subgroups.router)
     return app

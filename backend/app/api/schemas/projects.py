@@ -1,10 +1,9 @@
-from collections.abc import Iterator
-from contextlib import contextmanager
 from datetime import datetime
 from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.api.schemas.paths import inside
 from app.application.projects.use_cases import SettingsChanges
 from app.domain.projects.project import Project
 from app.domain.projects.settings import (
@@ -14,19 +13,9 @@ from app.domain.projects.settings import (
     TimeMode,
     TimeModeKind,
 )
-from app.domain.shared.errors import InvalidValue
 from app.domain.shared.week import Weekday
 
 # Форма проекта совпадает с test-data/minimal-project.json
-
-
-@contextmanager
-def _inside(block: str) -> Iterator[None]:
-    """Поле в ошибке домена — путь в JSON запроса, например time_mode.step_minutes (F_Valid_2)."""
-    try:
-        yield
-    except InvalidValue as error:
-        raise InvalidValue(error.message, field=f"{block}.{error.field}") from error
 
 
 class CycleSchema(BaseModel):
@@ -48,7 +37,7 @@ class TimeModeSchema(BaseModel):
     step_minutes: int | None = None
 
     def to_domain(self) -> TimeMode:
-        with _inside("time_mode"):
+        with inside("time_mode"):
             return TimeMode(self.type, self.step_minutes)
 
     @classmethod
@@ -61,7 +50,7 @@ class DurationModeSchema(BaseModel):
     duration_minutes: int | None = None
 
     def to_domain(self) -> DurationMode:
-        with _inside("duration_mode"):
+        with inside("duration_mode"):
             return DurationMode(self.type, self.duration_minutes)
 
     @classmethod

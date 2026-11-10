@@ -89,7 +89,11 @@ class Login:
         email = Email(credentials.email)
         with self.uow:
             user = self.uow.users.get_by_email(email)
-            if user is None or not self.passwords.verify(credentials.password, user.password_hash):
+            # Argon2 считается и для неизвестного адреса: иначе по времени ответа видно,
+            # зарегистрирован ли он
+            password_hash = user.password_hash if user else self.passwords.dummy_hash
+            password_matches = self.passwords.verify(credentials.password, password_hash)
+            if user is None or not password_matches:
                 raise InvalidCredentials("Неверный адрес электронной почты или пароль")
             tokens = self.sessions.issue(self.uow, user.id, self.clock.now())
             self.uow.commit()

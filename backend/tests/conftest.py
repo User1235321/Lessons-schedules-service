@@ -22,6 +22,12 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
             item.add_marker(pytest.mark.integration)
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    # Без APP_ENV настройки считаются боевыми и требуют свой JWT_SECRET. Тестам нужен режим
+    # разработки, в том числе в CI, где .env нет. Переменная, заданная явно, не перезаписывается
+    os.environ.setdefault("APP_ENV", "development")
+
+
 @pytest.fixture(scope="session")
 def database_url() -> Iterator[str]:
     """Чистый PostgreSQL в Docker на всю сессию тестов."""

@@ -5,9 +5,9 @@ from app.domain.projects.project import Project
 from app.domain.shared.errors import NotFound
 from app.domain.shared.ids import ProjectId, UserId
 from app.infrastructure.persistence.mappers.projects import (
-    project_columns,
     project_to_domain,
     project_to_row,
+    project_update_values,
 )
 from app.infrastructure.persistence.models import ProjectRow
 
@@ -36,16 +36,23 @@ class SqlProjectRepository:
         return [project_to_domain(row) for row in rows]
 
     def save(self, project: Project) -> None:
-        # Сразу UPDATE: прочитанную строку сессия уже отпустила, и get() снова пошёл бы в базу
+        # Сразу UPDATE: прочитанную строку сессия уже отпустила, и get() снова пошёл бы в базу.
+        # owner_id в условии — вторая проверка владельца после сценария (HLD 8)
         updated = self._session.scalar(
             update(ProjectRow)
-            .where(ProjectRow.id == project.id)
-            .values(project_columns(project))
+            .where(ProjectRow.id == project.id, ProjectRow.owner_id == project.owner_id)
+            .values(project_update_values(project))
             .returning(ProjectRow.id)
         )
         if updated is None:
             raise NotFound("Проект не найден", project_id=str(project.id))
 
-    def delete(self, project_id: ProjectId) -> None:
+    def delete(self, project_id: ProjectId, owner_id: UserId) -> None:
         # Данные проекта удалит база: внешние ключи на projects объявлены с ON DELETE CASCADE
-        self._session.execute(delete(ProjectRow).where(ProjectRow.id == project_id))
+        deleted = self._session.scalar(
+            delete(ProjectRow)
+            .where(ProjectRow.id == project_id, ProjectRow.owner_id == owner_id)
+            .returning(ProjectRow.id)
+        )
+        if deleted is None:
+            raise NotFound("Проект не найден", project_id=str(project_id))

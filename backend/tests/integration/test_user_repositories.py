@@ -125,3 +125,35 @@ def test_saving_missing_session_fails(uow: SqlUnitOfWork) -> None:
 
         with pytest.raises(NotFound):
             uow.user_sessions.save(a_session(user))
+
+
+def test_session_save_writes_only_token_hash_and_revocation(uow: SqlUnitOfWork) -> None:
+    user, other = a_user("ivan@mail.ru"), a_user("petr@mail.ru")
+    session = a_session(user, token_hash="old")
+    with uow:
+        uow.users.add(user)
+        uow.users.add(other)
+        uow.user_sessions.add(session)
+        uow.commit()
+    later = NOW + timedelta(hours=1)
+
+    with uow:
+        stored = uow.user_sessions.get_by_token_hash("old")
+        assert stored is not None
+        stored.rotate("new")
+        stored.revoke(later)
+        stored.user_id = other.id
+        stored.created_at = later
+        stored.expires_at = later
+        uow.user_sessions.save(stored)
+        uow.commit()
+
+    with uow:
+        reloaded = uow.user_sessions.get_by_token_hash("new")
+    assert reloaded is not None
+    assert reloaded.revoked_at == later
+    assert (reloaded.user_id, reloaded.created_at, reloaded.expires_at) == (
+        session.user_id,
+        session.created_at,
+        session.expires_at,
+    )

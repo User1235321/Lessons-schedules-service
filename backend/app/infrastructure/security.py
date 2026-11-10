@@ -1,6 +1,7 @@
 import hashlib
 import secrets
 from datetime import datetime, timedelta
+from functools import cache
 from uuid import UUID
 
 import argon2
@@ -10,19 +11,28 @@ from argon2.exceptions import VerifyMismatchError
 from app.domain.auth.errors import InvalidAccessToken
 from app.domain.shared.ids import UserId
 
+# Параметры argon2-cffi по умолчанию (RFC 9106). Одни и те же для настоящих и фиктивного хеша
+_ARGON2 = argon2.PasswordHasher()
+
+
+@cache
+def _dummy_hash() -> str:
+    # Один раз на процесс: Argon2 намеренно медленный
+    return _ARGON2.hash(secrets.token_urlsafe(32))
+
 
 class Argon2PasswordHasher:
-    """Реализует PasswordHasher: Argon2id с параметрами argon2-cffi по умолчанию (RFC 9106)."""
+    """Реализует PasswordHasher: Argon2id."""
 
     def __init__(self) -> None:
-        self._hasher = argon2.PasswordHasher()
+        self.dummy_hash = _dummy_hash()
 
     def hash(self, password: str) -> str:
-        return self._hasher.hash(password)
+        return _ARGON2.hash(password)
 
     def verify(self, password: str, password_hash: str) -> bool:
         try:
-            return self._hasher.verify(password_hash, password)
+            return _ARGON2.verify(password_hash, password)
         except VerifyMismatchError:
             return False
 

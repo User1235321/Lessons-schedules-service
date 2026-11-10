@@ -416,12 +416,15 @@ Backend проверяет принадлежность проекта поль�
 
 ## 9. Модель данных
 
-### 9.1. Основные сущности
+### 9.1. ER-диаграммы
+
+На диаграммах показаны поля таблиц PostgreSQL, первичные (PK), внешние (FK) и уникальные (UK) ключи. Все поля обязательны (NOT NULL), кроме явно отмеченных как nullable. Тип varchar_array обозначает массив PostgreSQL VARCHAR(9)[]; jsonb — структурированные данные. Названия сущностей даны в единственном числе, таблиц — в подпунктах ниже.
+
+Таблицы users, user_sessions и projects уже реализованы в ORM. Остальные таблицы описывают целевую модель, миграции которой ещё не выполнены. Повторно встречающиеся на разных диаграммах сущности показаны с одним PK: их полный состав полей приведён в основной группе.
 
 #### 9.1.1. Пользователь, проект и учебные данные
 
-```mermaid
-%%{init: {"er": {"useMaxWidth": false}, "themeVariables": {"fontSize": "17px"}}}%%
+~~~mermaid
 erDiagram
     USER ||--o{ PROJECT : owns
     PROJECT ||--o{ TEACHER : contains
@@ -430,417 +433,548 @@ erDiagram
     PROJECT ||--o{ STUDENT_GROUP : contains
     PROJECT ||--o{ STUDENT_STREAM : contains
     PROJECT ||--o{ WORKLOAD : contains
-    STUDENT_GROUP ||--o{ SUBGROUP : has
-    STUDENT_STREAM ||--o{ STREAM_GROUP : has
-    STUDENT_GROUP ||--o{ STREAM_GROUP : included
-```
+    STUDENT_GROUP ||--o{ SUBGROUP : contains
+    STUDENT_STREAM ||--o{ STREAM_GROUP : includes
+    STUDENT_GROUP ||--o{ STREAM_GROUP : participates
+    SUBJECT ||--o{ WORKLOAD : describes
+    STUDENT_GROUP |o--o{ WORKLOAD : targets
+    SUBGROUP |o--o{ WORKLOAD : targets
+    STUDENT_STREAM |o--o{ WORKLOAD : targets
+
+    USER {
+        uuid id PK
+        varchar email UK
+        text password_hash
+        timestamp created_at
+    }
+    PROJECT {
+        uuid id PK
+        uuid owner_id FK
+        varchar name
+        varchar_array odd_week_days
+        varchar_array even_week_days
+        varchar time_mode
+        integer time_step_minutes "nullable"
+        varchar duration_mode
+        integer duration_minutes "nullable"
+        timestamp created_at
+        timestamp updated_at
+    }
+    TEACHER {
+        uuid id PK
+        uuid project_id FK
+        varchar full_name
+    }
+    SUBJECT {
+        uuid id PK
+        uuid project_id FK
+        varchar name
+    }
+    ROOM {
+        uuid id PK
+        uuid project_id FK
+        varchar name
+        integer capacity
+        varchar room_type
+    }
+    STUDENT_GROUP {
+        uuid id PK
+        uuid project_id FK
+        varchar name
+        integer student_count
+    }
+    SUBGROUP {
+        uuid id PK
+        uuid group_id FK
+        varchar name
+        integer student_count
+    }
+    STUDENT_STREAM {
+        uuid id PK
+        uuid project_id FK
+        varchar name
+    }
+    STREAM_GROUP {
+        uuid stream_id PK,FK
+        uuid group_id PK,FK
+    }
+    WORKLOAD {
+        uuid id PK
+        uuid project_id FK
+        uuid subject_id FK
+        varchar lesson_type
+        varchar lesson_format
+        integer occurrences_per_cycle
+        integer duration_minutes "nullable"
+        integer required_teacher_count
+        uuid group_id FK "nullable"
+        uuid subgroup_id FK "nullable"
+        uuid stream_id FK "nullable"
+    }
+~~~
 
 #### 9.1.2. Возможности и доступность ресурсов
 
-```mermaid
-%%{init: {"er": {"useMaxWidth": false}, "themeVariables": {"fontSize": "17px"}}}%%
+~~~mermaid
 erDiagram
-    TEACHER ||--o{ TEACHER_CAPABILITY : has
-    SUBJECT ||--o{ TEACHER_CAPABILITY : references
-    TEACHER ||--o{ TEACHER_AVAILABILITY : has
-    TEACHER ||--o{ TEACHER_PREFERENCE : has
-    ROOM ||--o{ ROOM_AVAILABILITY : has
-    ROOM ||--o{ ROOM_CAPABILITY : has
-    SUBJECT ||--o{ ROOM_CAPABILITY : references
-```
+    STUDENT_GROUP ||--o{ GROUP_AVAILABILITY : available
+    SUBGROUP ||--o{ SUBGROUP_AVAILABILITY : available
+    TEACHER ||--o{ TEACHER_CAPABILITY : can_teach
+    SUBJECT ||--o{ TEACHER_CAPABILITY : taught_as
+    TEACHER ||--o{ TEACHER_AVAILABILITY : available
+    TEACHER ||--o{ TEACHER_PREFERENCE : prefers
+    ROOM ||--o{ ROOM_AVAILABILITY : available
+    ROOM ||--o{ ROOM_CAPABILITY : supports
+    SUBJECT ||--o{ ROOM_CAPABILITY : requires
+
+    TEACHER {
+        uuid id PK
+    }
+    SUBJECT {
+        uuid id PK
+    }
+    ROOM {
+        uuid id PK
+    }
+    STUDENT_GROUP {
+        uuid id PK
+    }
+    SUBGROUP {
+        uuid id PK
+    }
+    GROUP_AVAILABILITY {
+        uuid id PK
+        uuid group_id FK
+        varchar week
+        varchar weekday
+        time start_time
+        time end_time
+    }
+    SUBGROUP_AVAILABILITY {
+        uuid id PK
+        uuid subgroup_id FK
+        varchar week
+        varchar weekday
+        time start_time
+        time end_time
+    }
+    TEACHER_CAPABILITY {
+        uuid teacher_id PK,FK
+        uuid subject_id PK,FK
+        varchar lesson_type PK
+    }
+    TEACHER_AVAILABILITY {
+        uuid id PK
+        uuid teacher_id FK
+        varchar week
+        varchar weekday
+        time start_time
+        time end_time
+    }
+    TEACHER_PREFERENCE {
+        uuid id PK
+        uuid teacher_id FK
+        varchar week
+        varchar weekday
+        time start_time
+        time end_time
+    }
+    ROOM_AVAILABILITY {
+        uuid id PK
+        uuid room_id FK
+        varchar week
+        varchar weekday
+        time start_time
+        time end_time
+    }
+    ROOM_CAPABILITY {
+        uuid room_id PK,FK
+        uuid subject_id PK,FK
+        varchar lesson_type PK
+    }
+~~~
 
 #### 9.1.3. Расчёты, результаты и файлы
 
-```mermaid
-%%{init: {"er": {"useMaxWidth": false}, "themeVariables": {"fontSize": "17px"}}}%%
+~~~mermaid
 erDiagram
-    USER ||--o{ USER_SESSION : has
-    PROJECT ||--o{ EXTRA_CONSTRAINT : contains
-    PROJECT ||--o{ OPTIMIZATION_CRITERION : contains
-    PROJECT ||--o{ SCHEDULE_JOB : contains
-    PROJECT ||--o{ STORED_FILE : contains
-    SCHEDULE_JOB ||--o{ SCHEDULE : produces
+    USER ||--o{ USER_SESSION : authenticates
+    PROJECT ||--o{ EXTRA_CONSTRAINT : limits
+    PROJECT ||--o{ OPTIMIZATION_CRITERION : optimizes
+    PROJECT ||--o{ SCHEDULE_JOB : launches
+    PROJECT ||--o{ SCHEDULE : contains
+    PROJECT ||--o{ STORED_FILE : stores
+    USER ||--o{ STORED_FILE : uploaded_by
+    SCHEDULE_JOB |o--o{ SCHEDULE : produces
     SCHEDULE ||--o{ SCHEDULE_ENTRY : contains
-    SCHEDULE_ENTRY ||--o{ SCHEDULE_ENTRY_TEACHER : has
-    TEACHER ||--o{ SCHEDULE_ENTRY_TEACHER : assigned
-```
+    WORKLOAD |o--o{ SCHEDULE_ENTRY : generates
+    ROOM |o--o{ SCHEDULE_ENTRY : assigned
+    SCHEDULE_ENTRY ||--o{ SCHEDULE_ENTRY_TEACHER : assigned
+    TEACHER |o--o{ SCHEDULE_ENTRY_TEACHER : leads
+    SCHEDULE |o--o{ STORED_FILE : exported_in
+    SCHEDULE_JOB |o--o{ STORED_FILE : produced_in
 
+    USER {
+        uuid id PK
+    }
+    PROJECT {
+        uuid id PK
+    }
+    ROOM {
+        uuid id PK
+    }
+    TEACHER {
+        uuid id PK
+    }
+    WORKLOAD {
+        uuid id PK
+    }
+    USER_SESSION {
+        uuid id PK
+        uuid user_id FK
+        text refresh_token_hash UK
+        timestamp created_at
+        timestamp expires_at
+        timestamp revoked_at "nullable"
+    }
+    EXTRA_CONSTRAINT {
+        uuid id PK
+        uuid project_id FK
+        varchar constraint_type
+        jsonb scope
+        jsonb parameters
+    }
+    OPTIMIZATION_CRITERION {
+        uuid project_id PK,FK
+        varchar criterion_type PK
+        integer priority
+        boolean is_active
+    }
+    SCHEDULE_JOB {
+        uuid id PK
+        uuid project_id FK
+        varchar job_type
+        varchar status
+        varchar result_mode
+        integer top_n "nullable"
+        timestamp created_at
+        timestamp started_at "nullable"
+        timestamp finished_at "nullable"
+        text error_message "nullable"
+    }
+    SCHEDULE {
+        uuid id PK
+        uuid project_id FK
+        uuid job_id FK "nullable"
+        varchar source
+        integer result_index "nullable"
+        jsonb criterion_scores "nullable"
+        timestamp created_at
+    }
+    SCHEDULE_ENTRY {
+        uuid id PK
+        uuid schedule_id FK
+        uuid workload_id FK "nullable"
+        varchar subject_name "nullable"
+        varchar participant_label "nullable"
+        varchar lesson_type "nullable"
+        varchar lesson_format "nullable"
+        varchar week
+        varchar weekday
+        time start_time
+        time end_time
+        uuid room_id FK "nullable"
+        varchar room_name "nullable"
+    }
+    SCHEDULE_ENTRY_TEACHER {
+        uuid id PK
+        uuid entry_id FK
+        uuid teacher_id FK "nullable"
+        varchar display_name
+    }
+    STORED_FILE {
+        uuid id PK
+        uuid project_id FK
+        uuid user_id FK
+        varchar category
+        varchar original_name
+        varchar file_format
+        text object_key UK
+        bigint size_bytes
+        timestamp created_at
+        uuid schedule_id FK "nullable"
+        uuid job_id FK "nullable"
+    }
+~~~
 ### 9.2. Пользователь
 
-`users`
+Таблица users: email уникален, нормализуется удалением пробелов по краям и приведением к нижнему регистру (максимум 254 символа). Пароль хранится только как адаптивный хеш.
 
-Основные данные:
-
-- `id`;
-- `email`;
-- `password_hash`;
-- `created_at`.
-
-Email перед сохранением очищается от пробелов по краям и приводится к нижнему регистру. Уникальность адреса проверяется по нормализованному значению.
-
-`user_sessions`
-
-Хранит refresh-сессии:
-
-- `id`;
-- `user_id`;
-- `refresh_token_hash`;
-- `created_at`;
-- `expires_at`;
-- `revoked_at`.
-
-Хранится хеш refresh-токена, а не сам токен. При удалении пользователя его refresh-сессии и проекты удаляются каскадно.
+Таблица user_sessions: хранится хеш refresh-токена, а не сам токен. При удалении пользователя его сессии и проекты удаляются каскадно. revoked_at заполняется при отзыве сессии.
 
 ### 9.3. Проект
 
-`projects`
+Таблица projects: имя непустое, максимум 200 символов. odd_week_days и even_week_days содержат наборы дней двухнедельного цикла; пустые наборы допустимы.
 
-Основные данные:
+Режим начала занятий: HOUR_START или STEP. Положительное значение time_step_minutes обязательно только при STEP. Режим длительности: UNIFORM или INDIVIDUAL. Положительное duration_minutes обязательно только при UNIFORM.
 
-- `id`;
-- `owner_id`;
-- `name`;
-- режим времени;
-- минимальный временной шаг;
-- режим длительности;
-- единая длительность при соответствующем режиме;
-- настройки двухнедельного цикла;
-- `created_at`;
-- `updated_at`.
+По умолчанию: понедельник–суббота для обеих недель, HOUR_START, UNIFORM, длительность **100 минут**. Локально корректные, но несовместимые настройки проверяются при построении расписания.
 
-Режим начала занятий — `HOUR_START` (только в начале часа, без параметра шага) или `STEP` (положительный `time_step_minutes`). Режим длительности — `UNIFORM` (единая положительная `duration_minutes`) или `INDIVIDUAL` (длительность задаётся отдельно для элементов учебной нагрузки).
+### 9.4. Преподаватели и дисциплины
 
-Настройки нового проекта по умолчанию: понедельник–суббота для нечётной и чётной недель, `HOUR_START` и `UNIFORM` с длительностью **100 минут**. Пользователь может изменить эти настройки. Наборы учебных дней могут быть пустыми: это допустимые для сохранения данные, противоречия которых проверяются при построении расписания.
+Таблицы teachers и subjects хранят преподавателей и дисциплины. teacher_capabilities определяет пары «дисциплина + тип занятия», доступные преподавателю; одна пара может быть связана с несколькими преподавателями.
 
-### 9.4. Преподаватели
-
-`teachers`
-
-- `id`;
-- `project_id`;
-- ФИО.
-
-`teacher_capabilities`
-
-Определяет комбинации дисциплины и типа занятия, которые преподаватель может вести.
-
-- `teacher_id`;
-- `subject_id`;
-- `lesson_type`.
-
-`teacher_availability`
-
-- преподаватель;
-- неделя;
-- день недели;
-- время начала;
-- время окончания.
-
-`teacher_preferences`
-
-Имеет ту же временную структуру, но используется только при оптимизации и не ограничивает допустимость расписания.
+teacher_availability хранит обязательные интервалы доступности, teacher_preferences — необязательные интервалы, учитываемые только при оптимизации. Для интервалов требуется start_time < end_time.
 
 ### 9.5. Аудитории
 
-`rooms`
+Таблица rooms: вместимость положительна; room_type принимает LECTURE, PRACTICE_UNIVERSAL, PRACTICE_SPECIALIZED, LABORATORY.
 
-- `id`;
-- `project_id`;
-- номер/название;
-- вместимость;
-- тип аудитории.
-
-Типы:
-
-```text
-LECTURE
-PRACTICE_UNIVERSAL
-PRACTICE_SPECIALIZED
-LABORATORY
-```
-
-`room_availability`
-
-- аудитория;
-- неделя;
-- день;
-- начало;
-- окончание.
-
-`room_capabilities`
-
-Для специализированных и лабораторных аудиторий:
-
-- аудитория;
-- дисциплина;
-- тип/вид занятия.
+room_availability хранит интервалы доступности. room_capabilities задаёт допустимые дисциплины и типы занятий для специализированных и лабораторных аудиторий.
 
 ### 9.6. Группы и подгруппы
 
-`student_groups`
+В student_groups и subgroups количество студентов положительно. Сумма количества студентов всех подгрупп одной группы не может превышать численность группы.
 
-- `id`;
-- `project_id`;
-- название;
-- количество студентов.
+group_availability и subgroup_availability задают **необязательные ограничения доступности** на нечётной и чётной неделе: неделя, день, начало и окончание интервала. Интервалы локально корректны при start_time < end_time. Если для группы или подгруппы интервалы не указаны, она считается доступной в разрешённые проектом учебные дни. Если интервалы указаны, они ограничивают время занятий в пределах этих дней.
 
-`subgroups`
-
-- `id`;
-- `group_id`;
-- название;
-- количество студентов.
-
-Суммарное количество студентов подгрупп одной группы не может превышать размер основной группы.
+Для занятия всей группы проверяется её доступность. Для занятия подгруппы одновременно проверяется доступность родительской группы и самой подгруппы. Для потока проверяется пересечение доступности **всех** входящих в поток групп. Это обеспечивает F_Rule_1 без обязательного ввода интервалов для каждой группы.
 
 ### 9.7. Потоки
 
-`student_streams`
-
-- `id`;
-- `project_id`;
-- название.
-
-`stream_groups`
-
-Связывает поток с входящими в него группами.
+student_streams хранит потоки. stream_groups связывает существующие группы с потоками с уникальной парой (stream_id, group_id). Потоки формируются вручную.
 
 ### 9.8. Учебная нагрузка
 
-`workloads`
+В workloads заполнено ровно одно поле из group_id, subgroup_id, stream_id. occurrences_per_cycle и required_teacher_count — положительные целые числа.
 
-Основные поля:
+lesson_format принимает ONSITE или REMOTE. Для REMOTE аудитория не назначается. В режиме INDIVIDUAL duration_minutes положительно; в режиме UNIFORM используется длительность проекта.
 
-- `id`;
-- `project_id`;
-- `subject_id`;
-- тип занятия;
-- формат занятия;
-- количество проведений за двухнедельный цикл;
-- длительность;
-- требуемое количество преподавателей.
-
-Цель нагрузки задаётся одной из ссылок:
-
-- `group_id`;
-- `subgroup_id`;
-- `stream_id`.
-
-Для одного элемента нагрузки должна быть заполнена ровно одна из этих ссылок.
-
-Формат:
-
-```text
-ONSITE
-REMOTE
-```
-
-Для `REMOTE` аудитория при построении не назначается.
-
-Для лекции и практики `required_teacher_count = 1`.
-
-Для лабораторной работы `required_teacher_count >= 1`.
+Для лекции или практики required_teacher_count = 1; для лабораторной работы required_teacher_count >= 1.
 
 ### 9.9. Дополнительные ограничения
 
-`extra_constraints`
-
-- `id`;
-- `project_id`;
-- тип ограничения;
-- область применения;
-- параметры ограничения.
-
-Параметры конкретного типа ограничения хранятся как структурированные данные.
-
-Примеры типов:
-
-```text
-MIN_START_TIME
-MAX_END_TIME
-ALLOWED_DAYS
-EVERY_WEEK
-CONSECUTIVE
-NOT_CONSECUTIVE
-MIN_GAP
-BEFORE
-FIXED_DAY
-TIME_RANGE
-```
+extra_constraints содержит тип, область применения и параметры в структурированном виде. Поддерживаемые типы: MIN_START_TIME, MAX_END_TIME, ALLOWED_DAYS, EVERY_WEEK, CONSECUTIVE, NOT_CONSECUTIVE, MIN_GAP, BEFORE, FIXED_DAY, TIME_RANGE.
 
 ### 9.10. Критерии оптимизации
 
-`optimization_criteria`
-
-- `project_id`;
-- тип критерия;
-- приоритет;
-- активность.
-
-Приоритет уникален в пределах активных критериев проекта.
+optimization_criteria имеет уникальную пару (project_id, criterion_type). Приоритеты активных критериев одного проекта уникальны, применяются по возрастанию priority.
 
 ### 9.11. Задания расчёта
 
-`schedule_jobs`
-
-- `id`;
-- `project_id`;
-- тип задания;
-- состояние;
-- режим результата;
-- `top_n`;
-- дата создания;
-- дата начала;
-- дата завершения;
-- описание ошибки при наличии.
-
-Состояния:
-
-```text
-QUEUED
-RUNNING
-COMPLETED
-FAILED
-CANCELLED
-```
+schedule_jobs имеет состояния QUEUED, RUNNING, COMPLETED, FAILED, CANCELLED. Поле top_n обязательно и положительно только в режиме TOP-N. Даты начала и завершения отсутствуют до соответствующего перехода.
 
 ### 9.12. Расписания
 
-`schedules`
+Каждое schedules принадлежит проекту через обязательный project_id. Поле source принимает GENERATED или IMPORTED. Для GENERATED обязателен job_id, для IMPORTED job_id равен NULL. Значения result_index и criterion_scores обязательны для сгенерированных вариантов, а у импортированного расписания могут отсутствовать. Такое расписание сохраняется независимо от заданий Scheduler Worker.
 
-- `id`;
-- `job_id`;
-- порядковый номер результата;
-- данные оценки по критериям;
-- дата создания.
+schedule_entries хранит размещённое занятие и его собственные данные, не только ссылки: неделю, день и время, название дисциплины, обозначение группы/подгруппы/потока, тип и **фактический формат** (ONSITE/REMOTE), отображаемое название аудитории. Для GENERATED workload_id обязателен, а snapshot-поля заполняются из учебной нагрузки. Для IMPORTED workload_id может быть NULL, а отсутствующие в файле описательные поля остаются NULL. Редактирование одного занятия изменяет его запись, **не изменяя** исходный формат всех проведений нагрузки.
 
-`schedule_entries`
+При известной аудитории room_id ссылается на rooms; для REMOTE room_id и room_name равны NULL. При неполных данных импортированного очного занятия room_id допускается NULL при сохранённом room_name. schedule_entry_teachers хранит отдельные назначения: display_name обязателен, teacher_id может быть NULL, когда известен только текст из импортированного файла. При привязке к существующему преподавателю обе величины синхронизируются. Повторный teacher_id внутри занятия не допускается.
 
-- `id`;
-- `schedule_id`;
-- `workload_id`;
-- неделя;
-- день;
-- время начала;
-- время окончания;
-- `room_id`, nullable для дистанционного занятия.
-
-`schedule_entry_teachers`
-
-Связывает занятие с одним или несколькими преподавателями.
+Проверка расписания использует связанные учебные данные там, где они есть; при недостаточности данных выполняет только применимые проверки (F_Existing_1–F_Existing_4). Минимально необходимую информацию о занятиях нельзя терять при импорте. Для будущих миграций требуется CHECK согласованности source/job_id и ключей/полей формата.
 
 ### 9.13. Файлы
 
-`stored_files`
+stored_files хранит категорию UPLOAD или EXPORT, исходное имя, формат, ссылку на объект MinIO и метаданные. Ссылки на расписание и задание необязательны.
 
-- `id`;
-- `project_id`;
-- `user_id`;
-- категория файла;
-- исходное имя;
-- формат;
-- MinIO object key;
-- размер;
-- дата создания;
-- связанное расписание или задание при наличии.
+### 9.14. Статус детализации
 
-Категории:
-
-```text
-UPLOAD
-EXPORT
-```
+Реализованные колонки и ограничения users, user_sessions и projects соответствуют ORM в dev. Остальная схема представляет целевой контракт, а не существующие миграции. Правила доступности групп/подгрупп, происхождения расписаний и хранения данных импортированных занятий зафиксированы выше; они ещё не реализованы. Перечень значений типов занятия и структура параметров конкретных дополнительных ограничений потребуют дальнейшей детализации. Этот документ не инициирует миграций.
 
 ---
 
 ## 10. API
 
-API использует JSON для прикладных запросов и `multipart/form-data` для загрузки файлов.
+API использует JSON для прикладных данных и multipart/form-data для загрузки файлов. Путь проекта во всех запросах — UUID. Для закрытых методов используется заголовок `Authorization: Bearer <access_token>`. Исключение: обновление и завершение сессии используют httpOnly-cookie refresh_token (Path=/auth, SameSite=Strict).
 
-Основные группы маршрутов:
+**Статус контракта:** маршруты регистрации, входа, обновления токена, выхода и получения текущего пользователя реализованы в dev. Остальные маршруты ниже — **целевые контракты**, которые необходимо согласовать перед реализацией. Они не означают, что маршруты уже доступны.
 
-### Авторизация
+### 10.1. Формат данных и общие HTTP-правила
 
-```text
-POST /auth/register
-POST /auth/login
-POST /auth/refresh
-POST /auth/logout
-POST /auth/password-reset/request
-POST /auth/password-reset/confirm
-```
+- JSON передаётся с Content-Type: application/json; отсутствие тела обозначено как «нет».
+- В таблицах «запрос» означает JSON-тело, кроме явно обозначенного multipart.
+- Для пустого успешного ответа применяется 204 No Content.
+- Для создания ресурса возвращается 201 Created и объект созданного ресурса. Для асинхронного запуска — 202 Accepted с job_id.
+- Запросы списков возвращают массив объектов; порядок не гарантируется, если не указан явно. Пагинация для больших коллекций требует отдельного решения и здесь не вводится.
+- PATCH изменяет только переданные поля, отсутствующие поля не обнуляются. Неизвестные свойства и некорректные значения приводят к 422.
+- Чужой проект или связанный ресурс скрывается под 404, чтобы не раскрывать его существование.
+- Для ссылок на ресурсы внутри проекта сервер проверяет project_id и принадлежность владельцу.
 
-### Проекты
+### 10.2. Общие схемы
 
-```text
-GET    /projects
-POST   /projects
-GET    /projects/{project_id}
-PATCH  /projects/{project_id}
-DELETE /projects/{project_id}
-```
+| Схема | Поля |
+|---|---|
+| User | id: uuid; email: string |
+| Project | id: uuid; name: string; odd_week_days: string[]; even_week_days: string[]; time_mode: HOUR_START или STEP; time_step_minutes: integer или null; duration_mode: UNIFORM или INDIVIDUAL; duration_minutes: integer или null; created_at: datetime; updated_at: datetime |
+| ProjectCreate | name: string (обязательно, 1–200 символов после trim); необязательные настройки проекта |
+| ProjectPatch | любое подмножество name, odd_week_days, even_week_days, time_mode, time_step_minutes, duration_mode, duration_minutes |
+| Error | code: string; message: string; details: object |
+| Interval | week: ODD или EVEN; weekday: MONDAY…SUNDAY; start_time: HH:MM; end_time: HH:MM |
+| TeacherAssignment | teacher_id: uuid или null; display_name: string |
+| Job | id: uuid; project_id: uuid; job_type: string; status: QUEUED/RUNNING/COMPLETED/FAILED/CANCELLED; progress: number или null; error_message: string или null |
+| Schedule | id: uuid; project_id: uuid; source: GENERATED/IMPORTED; job_id: uuid или null; result_index: integer или null; criterion_scores: object или null; entries: ScheduleEntry[] |
+| ScheduleEntry | id: uuid; workload_id: uuid или null; subject_name: string или null; participant_label: string или null; lesson_type: string или null; lesson_format: ONSITE/REMOTE или null; week: ODD/EVEN; weekday: MONDAY…SUNDAY; start_time: HH:MM; end_time: HH:MM; room_id: uuid или null; room_name: string или null; teachers: TeacherAssignment[] |
+| StoredFile | id: uuid; project_id: uuid; category: UPLOAD/EXPORT; original_name: string; file_format: string; size_bytes: integer; created_at: datetime; schedule_id: uuid или null; job_id: uuid или null |
 
-### Исходные данные
+Даты передаются в ISO 8601. Типы UUID и enum показаны в человекочитаемом формате, не как отдельные примитивы JSON. Для проектируемых таблиц и API конкретные имена свойств определяют целевой контракт, но ещё не реализованные маршруты требуют проверки соответствия FS перед разработкой.
 
-```text
-/projects/{project_id}/teachers
-/projects/{project_id}/subjects
-/projects/{project_id}/rooms
-/projects/{project_id}/groups
-/projects/{project_id}/subgroups
-/projects/{project_id}/streams
-/projects/{project_id}/workloads
-```
+### 10.3. Авторизация (реализовано частично)
 
-Для коллекций применяются стандартные операции получения, создания, изменения и удаления.
+| HTTP | Маршрут | Тело запроса | Успешный ответ | Ошибки |
+|---|---|---|---|---|
+| POST | /auth/register | email: string; password: string | 201; {access_token, token_type: "bearer"}; Set-Cookie refresh_token | 409, 422, 500 |
+| POST | /auth/login | email: string; password: string | 200; {access_token, token_type: "bearer"}; Set-Cookie refresh_token | 401, 422, 500 |
+| POST | /auth/refresh | нет; cookie refresh_token | 200; {access_token, token_type: "bearer"}; Set-Cookie refresh_token | 401, 500 |
+| POST | /auth/logout | нет; cookie refresh_token | 204; нет; cookie удаляется | 401, 500 |
+| GET | /auth/me | нет; Bearer JWT | 200; User | 401, 404, 500 |
+| POST | /auth/password-reset/request | email: string | 202; {message: string} | 422, 500 |
+| POST | /auth/password-reset/confirm | token: string; password: string | 204; нет | 401, 422, 500 |
 
-### Ограничения и оптимизация
+Первые пять методов реализованы в dev; два password-reset маршрута — проектируемые. Реальный ответ refresh/logout может включать Set-Cookie; refresh-токен **не включается в JSON**. Длина пароля при регистрации и восстановлении: 6–20 символов.
 
-```text
-/projects/{project_id}/constraints
-/projects/{project_id}/optimization-criteria
-```
+Пример POST /auth/login:
 
-### Построение
-
-```text
-POST /projects/{project_id}/generation-jobs
-GET  /generation-jobs/{job_id}
-POST /generation-jobs/{job_id}/cancel
-GET  /generation-jobs/{job_id}/schedules
-```
-
-### Расписания
-
-```text
-GET   /schedules/{schedule_id}
-PATCH /schedules/{schedule_id}/entries/{entry_id}
-POST  /schedules/{schedule_id}/validate
-POST  /schedules/{schedule_id}/auto-repair
-POST  /schedules/{schedule_id}/reoptimize
-```
-
-### Импорт и экспорт
-
-```text
-POST /projects/{project_id}/imports
-GET  /projects/{project_id}/files
-POST /projects/{project_id}/exports
-GET  /files/{file_id}
-DELETE /files/{file_id}
-```
-
-### Ошибки API
-
-Ошибки возвращаются в единой форме:
-
-```json
+~~~json
 {
-  "code": "ROOM_CAPACITY_CONFLICT",
-  "message": "Вместимость аудитории недостаточна",
-  "details": {}
+  "email": "student@example.org",
+  "password": "sample-password"
 }
-```
+~~~
+
+Ответ 200:
+
+~~~json
+{
+  "access_token": "<jwt>",
+  "token_type": "bearer"
+}
+~~~
+
+### 10.4. Проекты (целевые контракты)
+
+| HTTP | Маршрут | Тело запроса | Успешный ответ | Ошибки |
+|---|---|---|---|---|
+| GET | /projects | нет | 200; Project[] | 401, 500 |
+| POST | /projects | ProjectCreate | 201; Project | 401, 422, 500 |
+| GET | /projects/{project_id} | нет | 200; Project | 401, 404, 500 |
+| PATCH | /projects/{project_id} | ProjectPatch | 200; Project | 401, 404, 422, 500 |
+| DELETE | /projects/{project_id} | нет | 204; нет | 401, 404, 500 |
+
+Пример создания проекта: { "name": "Университет, осень 2026" }. Если настройки не заданы, используются понедельник–суббота обеих недель, HOUR_START и UNIFORM/100 минут.
+
+Сейчас в dev представлены доменные модели и frontend-клиент этих маршрутов; наличие интерфейса клиента не подтверждает наличие всех соответствующих Backend endpoints.
+
+### 10.5. Исходные данные (целевые контракты)
+
+Для всех перечисленных коллекций применяются следующие методы:
+
+| HTTP | Шаблон маршрута | Тело запроса | Успешный ответ | Ошибки |
+|---|---|---|---|---|
+| GET | /projects/{project_id}/{resource} | нет | 200; Resource[] | 401, 404, 500 |
+| POST | /projects/{project_id}/{resource} | ResourceCreate | 201; Resource | 401, 404, 422, 500 |
+| GET | /projects/{project_id}/{resource}/{id} | нет | 200; Resource | 401, 404, 500 |
+| PATCH | /projects/{project_id}/{resource}/{id} | ResourcePatch | 200; Resource | 401, 404, 422, 500 |
+| DELETE | /projects/{project_id}/{resource}/{id} | нет | 204; нет | 401, 404, 409, 500 |
+
+Допустимые значения resource и соответствующие поля Create/Response:
+
+| resource | Поля ResourceCreate (кроме идентификатора) |
+|---|---|
+| subjects | name: string |
+| teachers | full_name: string; capabilities: {subject_id: uuid, lesson_type: string}[]; availability: Interval[]; preferences: Interval[] (необязательно) |
+| rooms | name: string; capacity: integer; room_type: string; availability: Interval[]; capabilities: {subject_id: uuid, lesson_type: string}[] (необязательно) |
+| groups | name: string; student_count: integer; availability: Interval[] (необязательно); subgroups: {name: string, student_count: integer, availability: Interval[]}[] (необязательно) |
+| subgroups | group_id: uuid; name: string; student_count: integer; availability: Interval[] (необязательно) |
+| streams | name: string; group_ids: uuid[] |
+| workloads | subject_id: uuid; lesson_type: string; lesson_format: ONSITE/REMOTE; occurrences_per_cycle: integer; duration_minutes: integer или null; required_teacher_count: integer; ровно одно из group_id/subgroup_id/stream_id |
+
+Response содержит id, соответствующие сохранённые поля и связанные структуры. ResourcePatch содержит подмножество полей ResourceCreate; обязательность проверяется по результату обновления. Для teachers обязательно минимум одно право преподавания и один интервал доступности. Для rooms обязательны допустимые интервалы; для groups соблюдается суммарная численность подгрупп. Если availability группы или подгруппы не задан, она доступна в учебные дни проекта; заданные интервалы ограничивают это время. Доступность подгруппы проверяется совместно с доступностью родительской группы, а потока — по пересечению входящих групп.
+
+Важно: URL /subgroups здесь является явным целевым контрактом. Перед реализацией необходимо согласовать его с маршрутизацией frontend и CRUD подгрупп внутри групп.
+
+### 10.6. Ограничения и оптимизация (целевые контракты)
+
+| HTTP | Маршрут | Тело запроса | Успешный ответ | Ошибки |
+|---|---|---|---|---|
+| GET | /projects/{project_id}/constraints | нет | 200; Constraint[] | 401, 404, 500 |
+| POST | /projects/{project_id}/constraints | {constraint_type: string, scope: object, parameters: object} | 201; Constraint | 401, 404, 422, 500 |
+| PATCH | /projects/{project_id}/constraints/{id} | подмножество полей Constraint | 200; Constraint | 401, 404, 422, 500 |
+| DELETE | /projects/{project_id}/constraints/{id} | нет | 204; нет | 401, 404, 500 |
+| GET | /projects/{project_id}/optimization-criteria | нет | 200; Criterion[] | 401, 404, 500 |
+| PUT | /projects/{project_id}/optimization-criteria | {criteria: Criterion[]} | 200; Criterion[] | 401, 404, 422, 500 |
+
+Constraint: {id, project_id, constraint_type, scope, parameters}. Criterion: {criterion_type: string, priority: integer, is_active: boolean}. У активных критериев одного проекта приоритет уникален. Для каждого типа ограничения поля parameters необходимо детализировать до реализации, поскольку сейчас они остаются расширяемой структурой.
+
+### 10.7. Построение расписания (целевые контракты)
+
+| HTTP | Маршрут | Тело запроса | Успешный ответ | Ошибки |
+|---|---|---|---|---|
+| POST | /projects/{project_id}/generation-jobs | {result_mode: "SINGLE" или "TOP_N", top_n: integer или null} | 202; {job_id: uuid, status: "QUEUED"} | 401, 404, 409, 422, 500 |
+| GET | /generation-jobs/{job_id} | нет | 200; Job | 401, 404, 500 |
+| POST | /generation-jobs/{job_id}/cancel | нет | 202; Job | 401, 404, 409, 500 |
+| GET | /generation-jobs/{job_id}/schedules | нет | 200; Schedule[] | 401, 404, 409, 500 |
+
+Состояние job запрашивается периодически. progress может отсутствовать после потери оперативного состояния Redis, но постоянный status сохраняется в PostgreSQL. Для режима TOP_N значение top_n обязательно и положительно; для SINGLE оно null.
+
+Пример запуска: { "result_mode": "TOP_N", "top_n": 5 }. Ответ 202: { "job_id": "550e8400-e29b-41d4-a716-446655440000", "status": "QUEUED" }.
+
+### 10.8. Расписания (целевые контракты)
+
+| HTTP | Маршрут | Тело запроса | Успешный ответ | Ошибки |
+|---|---|---|---|---|
+| GET | /schedules/{schedule_id} | нет | 200; Schedule | 401, 404, 500 |
+| PATCH | /schedules/{schedule_id}/entries/{entry_id} | подмножество week, weekday, start_time, end_time, subject_name, participant_label, lesson_type, lesson_format, room_id, room_name, teachers: TeacherAssignment[] | 200; {entry: ScheduleEntry, conflicts: Conflict[]} | 401, 404, 422, 500 |
+| POST | /schedules/{schedule_id}/validate | нет | 200; {status: "valid" или "invalid", conflicts: Conflict[]} | 401, 404, 500 |
+| POST | /schedules/{schedule_id}/auto-repair | {fixed_entry_ids: uuid[]} | 202; {job_id: uuid, status: "QUEUED"} | 401, 404, 409, 422, 500 |
+| POST | /schedules/{schedule_id}/reoptimize | {mode: "FULL" или "MIN_CHANGES"} | 202; {job_id: uuid, status: "QUEUED"} | 401, 404, 409, 422, 500 |
+
+Conflict: {code: string, message: string, entry_ids: uuid[], details: object}. Проверка возвращает 200 даже при статусе invalid, поскольку это результат доменной валидации, а не ошибка обработки HTTP-запроса. Конфликтное расписание сохраняется и может редактироваться.
+
+У каждого занятия есть собственное поле lesson_format. Изменение формата одного проведения не изменяет workloads.lesson_format и другие проведения. Для REMOTE должны отсутствовать room_id и room_name. В импортированном расписании без полного набора справочников значения subject_name, participant_label, room_name и teachers.display_name сохраняют исходные подписи; ссылки на соответствующие записи могут быть null. При изменении teachers передаётся полный список TeacherAssignment. Неполнота данных не блокирует сохранение, но не позволяет выполнять проверки, требующие отсутствующих справочников.
+
+### 10.9. Импорт, экспорт и файлы (целевые контракты)
+
+| HTTP | Маршрут | Тело запроса | Успешный ответ | Ошибки |
+|---|---|---|---|---|
+| POST | /projects/{project_id}/imports | multipart/form-data: file; import_mode: "SCHEDULE"/"PROJECT"/"RESOURCE"; resource: string (при RESOURCE); mapping: JSON-string (необязательно) | 200; {file: StoredFile, imported_count: integer, schedule_ids: uuid[], errors: ImportError[]} | 401, 404, 413, 415, 422, 500 |
+| GET | /projects/{project_id}/files | нет; необязательный query category=UPLOAD/EXPORT | 200; StoredFile[] | 401, 404, 422, 500 |
+| POST | /projects/{project_id}/exports | {schedule_id: uuid или null, scope: "SCHEDULE"/"PROJECT", file_format: string} | 201; StoredFile | 401, 404, 415, 422, 500 |
+| GET | /files/{file_id} | нет | 200; бинарный файл; Content-Disposition: attachment | 401, 404, 500 |
+| DELETE | /files/{file_id} | нет | 204; нет | 401, 404, 500 |
+
+ImportError: {row: integer или null, field: string или null, message: string}. import_mode определяет импорт готового расписания, полного проекта или отдельных ресурсов; resource задаётся при RESOURCE. В режиме SCHEDULE создаётся Schedule с source=IMPORTED и job_id=null; отсутствие учебных справочников не мешает сохранению расписания. schedule_ids возвращает ID созданных расписаний, пустой список — если расписания не импортировались.
+
+Поддерживаемые расширения исходных файлов: xlsx, ods, csv, json. Ошибка разбора не удаляет исходный файл. Файл скачивается через Backend после проверки прав, не напрямую из MinIO.
+
+### 10.10. Ошибки и HTTP-коды
+
+Все прикладные ошибки возвращаются в одном формате:
+
+~~~json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Проверьте введённые данные",
+  "details": {
+    "fields": [
+      {"field": "name", "reason": "Поле обязательно"}
+    ]
+  }
+}
+~~~
+
+| HTTP | Значение | Примеры code |
+|---|---|---|
+| 400 | некорректный запрос вне формальной валидации | DOMAIN_ERROR |
+| 401 | требуется аутентификация или токен недействителен | NOT_AUTHENTICATED |
+| 404 | объект отсутствует или недоступен пользователю | NOT_FOUND |
+| 409 | конфликт состояния или уникальности | ALREADY_EXISTS, JOB_NOT_CANCELLABLE |
+| 413 | файл превышает допустимый размер | FILE_TOO_LARGE |
+| 415 | неподдерживаемый формат файла | UNSUPPORTED_FILE_FORMAT |
+| 422 | ошибка проверки значений | INVALID_VALUE, VALIDATION_ERROR |
+| 500 | внутренняя ошибка сервера | INTERNAL_ERROR |
+
+Указанные в таблице коды VALIDATION_ERROR, NOT_AUTHENTICATED, NOT_FOUND, ALREADY_EXISTS, INVALID_VALUE, INTERNAL_ERROR уже отражены в обработчиках ошибок dev; остальные перечислены как будущий контракт. Не следует трактовать таблицу как доказательство реализованных маршрутов.
 
 ---
 
@@ -913,70 +1047,35 @@ DELETE /files/{file_id}
 
 ---
 
-## 14. Макет интерфейса
+## 14. Макеты пользовательского интерфейса
+
+Визуальные прототипы отражают ориентировочный desktop-дизайн, а не точные скриншоты работающей системы. Они используют визуальную основу React + MUI: синий #1565c0 (primary), светлый фон, карточки и таблицы с чёткой иерархией, состояния загрузки и конфликтов. Детали могут уточняться без изменения функциональных требований FS.
 
 ### 14.1. Список проектов
 
-```text
-┌─────────────────────────────────────────────────────┐
-│ Расписание                               Профиль     │
-├─────────────────────────────────────────────────────┤
-│ Мои проекты                          [Создать проект]│
-│                                                     │
-│ Университет, осень 2026        [Открыть] [Удалить] │
-│ Тестовое расписание             [Открыть] [Удалить] │
-└─────────────────────────────────────────────────────┘
-```
+![Список проектов: карточки проектов, даты, открытие, удаление, создание](ui/projects.svg)
 
 ### 14.2. Редактор проекта
 
-```text
-┌──────────────────────────────────────────────────────────────┐
-│ Проект: Университет, осень 2026                             │
-├──────────────────────────────────────────────────────────────┤
-│ Преподаватели │ Аудитории │ Группы │ Нагрузка │ Ограничения │
-├──────────────────────────────────────────────────────────────┤
-│                                                              │
-│                    Данные выбранного раздела                  │
-│                                                              │
-├──────────────────────────────────────────────────────────────┤
-│ [Импорт]                           [Настройки] [Рассчитать]   │
-└──────────────────────────────────────────────────────────────┘
-```
+![Редактор проекта: навигация по разделам, таблица преподавателей, редактирование и импорт](ui/project-editor.svg)
 
-### 14.3. Расчёт
+В редакторе помимо показанных разделов доступны потоки, расписания, файлы и настройки, в соответствии с маршрутизацией приложения.
 
-```text
-┌─────────────────────────────────────────────────────┐
-│ Построение расписания                               │
-├─────────────────────────────────────────────────────┤
-│ Статус: выполняется                                 │
-│ ███████████████░░░░░░░░░  63%                      │
-│                                                     │
-│                                      [Отменить]     │
-└─────────────────────────────────────────────────────┘
-```
+### 14.3. Построение расписания
+
+![Расчёт расписания: состояние выполнения, прогресс и действие отмены](ui/generation.svg)
+
+Прогресс — ориентировочный и может быть неизвестен после потери временного состояния Redis; постоянное состояние расчёта хранится в PostgreSQL.
 
 ### 14.4. Просмотр расписания
 
-```text
-┌──────────────────────────────────────────────────────────────┐
-│ Вариант 2 из 5                  [←] [→]                      │
-│ [Нечётная неделя] [Чётная неделя]                           │
-├──────────┬──────────────┬──────────────┬─────────────────────┤
-│ Время    │ Понедельник  │ Вторник      │ ...                 │
-├──────────┼──────────────┼──────────────┼─────────────────────┤
-│ 10:00    │ Физика       │ Математика   │                     │
-│          │ 301          │ 302-1        │                     │
-│          │ Иванов       │ Петров       │                     │
-├──────────┼──────────────┼──────────────┼─────────────────────┤
-│ ...                                                          │
-├──────────────────────────────────────────────────────────────┤
-│ [Проверить] [Оптимизировать] [Экспорт]                       │
-└──────────────────────────────────────────────────────────────┘
-```
+![Расписание: переключение недель и TOP-N вариантов, сетка занятий и конфликтное состояние](ui/schedule.svg)
 
-Конфликтное занятие визуально выделяется. При выборе такого занятия отображается список причин конфликта.
+Конфликтное занятие выделено цветом. При выборе отображаются конкретные причины, а пользователь может редактировать, перепроверять, оптимизировать и экспортировать расписание.
+
+### 14.5. Пределы применимости прототипов
+
+Макеты предназначены для согласования оформления и расположения элементов, а не заменяют FS или API-контракты. Перед реализацией необходимо отдельно проработать адаптивное отображение на узких экранах, состояния пустых списков, загрузки, ошибок и формы редактирования. Изображения хранятся в docs/ui и отображаются непосредственно в GitHub Markdown.
 
 ---
 

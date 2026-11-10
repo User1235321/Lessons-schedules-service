@@ -4,6 +4,32 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.api.cookies import RefreshCookie
+from app.application.academic.groups import (
+    CreateGroup,
+    CreateSubgroup,
+    DeleteGroup,
+    DeleteSubgroup,
+    GetGroup,
+    GetSubgroup,
+    ListGroups,
+    ListSubgroups,
+    UpdateGroup,
+    UpdateSubgroup,
+)
+from app.application.academic.subjects import (
+    CreateSubject,
+    DeleteSubject,
+    GetSubject,
+    ListSubjects,
+    UpdateSubject,
+)
+from app.application.academic.teachers import (
+    CreateTeacher,
+    DeleteTeacher,
+    GetTeacher,
+    ListTeachers,
+    UpdateTeacher,
+)
 from app.application.auth.use_cases import (
     Authenticate,
     GetCurrentUser,
@@ -47,6 +73,46 @@ class UseCases(Protocol):
     def update_project(self) -> UpdateProject: ...
 
     def delete_project(self) -> DeleteProject: ...
+
+    def create_subject(self) -> CreateSubject: ...
+
+    def list_subjects(self) -> ListSubjects: ...
+
+    def get_subject(self) -> GetSubject: ...
+
+    def update_subject(self) -> UpdateSubject: ...
+
+    def delete_subject(self) -> DeleteSubject: ...
+
+    def create_teacher(self) -> CreateTeacher: ...
+
+    def list_teachers(self) -> ListTeachers: ...
+
+    def get_teacher(self) -> GetTeacher: ...
+
+    def update_teacher(self) -> UpdateTeacher: ...
+
+    def delete_teacher(self) -> DeleteTeacher: ...
+
+    def create_group(self) -> CreateGroup: ...
+
+    def list_groups(self) -> ListGroups: ...
+
+    def get_group(self) -> GetGroup: ...
+
+    def update_group(self) -> UpdateGroup: ...
+
+    def delete_group(self) -> DeleteGroup: ...
+
+    def create_subgroup(self) -> CreateSubgroup: ...
+
+    def list_subgroups(self) -> ListSubgroups: ...
+
+    def get_subgroup(self) -> GetSubgroup: ...
+
+    def update_subgroup(self) -> UpdateSubgroup: ...
+
+    def delete_subgroup(self) -> DeleteSubgroup: ...
 
 
 def get_use_cases(request: Request) -> UseCases:

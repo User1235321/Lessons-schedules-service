@@ -15,7 +15,7 @@ from app.domain.academic.group import StudentGroup
 from app.domain.academic.subject import Subject
 from app.domain.academic.teacher import Teacher
 from app.domain.shared.errors import DomainError, InvalidValue, NotFound
-from app.domain.shared.ids import GroupId, ProjectId, SubjectId, TeacherId
+from app.domain.shared.ids import GroupId, ProjectId, SubgroupId, SubjectId, TeacherId
 from app.infrastructure.persistence.errors import violated_constraint
 from app.infrastructure.persistence.mappers.academic import (
     capability_rows,
@@ -254,6 +254,18 @@ class SqlGroupRepository:
         )
         return group_to_domain(row) if row else None
 
+    def get_by_subgroup(
+        self, project_id: ProjectId, subgroup_id: SubgroupId
+    ) -> StudentGroup | None:
+        row = self._session.scalar(self._by_subgroup(project_id, subgroup_id))
+        return group_to_domain(row) if row else None
+
+    def get_by_subgroup_for_update(
+        self, project_id: ProjectId, subgroup_id: SubgroupId
+    ) -> StudentGroup | None:
+        row = self._session.scalar(self._by_subgroup(project_id, subgroup_id).with_for_update())
+        return group_to_domain(row) if row else None
+
     def list_in_project(self, project_id: ProjectId) -> list[StudentGroup]:
         rows = self._session.scalars(
             self._query(project_id).order_by(func.lower(StudentGroupRow.name), StudentGroupRow.id)
@@ -290,6 +302,14 @@ class SqlGroupRepository:
             .options(selectinload(StudentGroupRow.subgroups))
             .execution_options(populate_existing=True)
         )
+
+    def _by_subgroup(
+        self, project_id: ProjectId, subgroup_id: SubgroupId
+    ) -> Select[tuple[StudentGroupRow]]:
+        group_id = select(SubgroupRow.group_id).where(
+            SubgroupRow.project_id == project_id, SubgroupRow.id == subgroup_id
+        )
+        return self._query(project_id).where(StudentGroupRow.id == group_id.scalar_subquery())
 
     def _save_subgroups(self, group: StudentGroup) -> None:
         # Подгруппы сохраняются по id, а не заменяются целиком: на них будет ссылаться нагрузка

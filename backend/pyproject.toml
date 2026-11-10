@@ -54,15 +54,15 @@ name = "Зависимости направлены внутрь"
 type = "layers"
 layers = [
     "app.bootstrap",
-    "app.api | (app.worker) | app.infrastructure",
-    "app.application",
+    "app.api | app.worker | app.infrastructure",
+    "app.application | app.scheduling",
     "app.domain"
 ]
 
 [[tool.importlinter.contracts]]
 name = "Сущности и сценарии не знают о фреймворках"
 type = "forbidden"
-source_modules = ["app.domain", "app.application"]
+source_modules = ["app.domain", "app.application", "app.scheduling"]
 forbidden_modules = [
     "fastapi",
     "starlette",

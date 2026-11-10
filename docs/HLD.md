@@ -786,92 +786,195 @@ stored_files хранит категорию UPLOAD или EXPORT, исходн�
 
 ## 10. API
 
-API использует JSON для прикладных запросов и `multipart/form-data` для загрузки файлов.
+API использует JSON для прикладных данных и multipart/form-data для загрузки файлов. Путь проекта во всех запросах — UUID. Для закрытых методов используется заголовок `Authorization: Bearer <access_token>`. Исключение: обновление и завершение сессии используют httpOnly-cookie refresh_token (Path=/auth, SameSite=Strict).
 
-Основные группы маршрутов:
+**Статус контракта:** маршруты регистрации, входа, обновления токена, выхода и получения текущего пользователя реализованы в dev. Остальные маршруты ниже — **целевые контракты**, которые необходимо согласовать перед реализацией. Они не означают, что маршруты уже доступны.
 
-### Авторизация
+### 10.1. Формат данных и общие HTTP-правила
 
-```text
-POST /auth/register
-POST /auth/login
-POST /auth/refresh
-POST /auth/logout
-POST /auth/password-reset/request
-POST /auth/password-reset/confirm
-```
+- JSON передаётся с Content-Type: application/json; отсутствие тела обозначено как «нет».
+- В таблицах «запрос» означает JSON-тело, кроме явно обозначенного multipart.
+- Для пустого успешного ответа применяется 204 No Content.
+- Для создания ресурса возвращается 201 Created и объект созданного ресурса. Для асинхронного запуска — 202 Accepted с job_id.
+- Запросы списков возвращают массив объектов; порядок не гарантируется, если не указан явно. Пагинация для больших коллекций требует отдельного решения и здесь не вводится.
+- PATCH изменяет только переданные поля, отсутствующие поля не обнуляются. Неизвестные свойства и некорректные значения приводят к 422.
+- Чужой проект или связанный ресурс скрывается под 404, чтобы не раскрывать его существование.
+- Для ссылок на ресурсы внутри проекта сервер проверяет project_id и принадлежность владельцу.
 
-### Проекты
+### 10.2. Общие схемы
 
-```text
-GET    /projects
-POST   /projects
-GET    /projects/{project_id}
-PATCH  /projects/{project_id}
-DELETE /projects/{project_id}
-```
+| Схема | Поля |
+|---|---|
+| User | id: uuid; email: string |
+| Project | id: uuid; name: string; odd_week_days: string[]; even_week_days: string[]; time_mode: HOUR_START или STEP; time_step_minutes: integer или null; duration_mode: UNIFORM или INDIVIDUAL; duration_minutes: integer или null; created_at: datetime; updated_at: datetime |
+| ProjectCreate | name: string (обязательно, 1–200 символов после trim); необязательные настройки проекта |
+| ProjectPatch | любое подмножество name, odd_week_days, even_week_days, time_mode, time_step_minutes, duration_mode, duration_minutes |
+| Error | code: string; message: string; details: object |
+| Interval | week: ODD или EVEN; weekday: MONDAY…SUNDAY; start_time: HH:MM; end_time: HH:MM |
+| TeacherAssignment | teacher_id: uuid или null; display_name: string |
+| Job | id: uuid; project_id: uuid; job_type: string; status: QUEUED/RUNNING/COMPLETED/FAILED/CANCELLED; progress: number или null; error_message: string или null |
+| Schedule | id: uuid; project_id: uuid; source: GENERATED/IMPORTED; job_id: uuid или null; result_index: integer или null; criterion_scores: object или null; entries: ScheduleEntry[] |
+| ScheduleEntry | id: uuid; workload_id: uuid или null; subject_name: string или null; participant_label: string или null; lesson_type: string или null; lesson_format: ONSITE/REMOTE или null; week: ODD/EVEN; weekday: MONDAY…SUNDAY; start_time: HH:MM; end_time: HH:MM; room_id: uuid или null; room_name: string или null; teachers: TeacherAssignment[] |
+| StoredFile | id: uuid; project_id: uuid; category: UPLOAD/EXPORT; original_name: string; file_format: string; size_bytes: integer; created_at: datetime; schedule_id: uuid или null; job_id: uuid или null |
 
-### Исходные данные
+Даты передаются в ISO 8601. Типы UUID и enum показаны в человекочитаемом формате, не как отдельные примитивы JSON. Для проектируемых таблиц и API конкретные имена свойств определяют целевой контракт, но ещё не реализованные маршруты требуют проверки соответствия FS перед разработкой.
 
-```text
-/projects/{project_id}/teachers
-/projects/{project_id}/subjects
-/projects/{project_id}/rooms
-/projects/{project_id}/groups
-/projects/{project_id}/subgroups
-/projects/{project_id}/streams
-/projects/{project_id}/workloads
-```
+### 10.3. Авторизация (реализовано частично)
 
-Для коллекций применяются стандартные операции получения, создания, изменения и удаления.
+| HTTP | Маршрут | Тело запроса | Успешный ответ | Ошибки |
+|---|---|---|---|---|
+| POST | /auth/register | email: string; password: string | 201; {access_token, token_type: "bearer"}; Set-Cookie refresh_token | 409, 422, 500 |
+| POST | /auth/login | email: string; password: string | 200; {access_token, token_type: "bearer"}; Set-Cookie refresh_token | 401, 422, 500 |
+| POST | /auth/refresh | нет; cookie refresh_token | 200; {access_token, token_type: "bearer"}; Set-Cookie refresh_token | 401, 500 |
+| POST | /auth/logout | нет; cookie refresh_token | 204; нет; cookie удаляется | 401, 500 |
+| GET | /auth/me | нет; Bearer JWT | 200; User | 401, 404, 500 |
+| POST | /auth/password-reset/request | email: string | 202; {message: string} | 422, 500 |
+| POST | /auth/password-reset/confirm | token: string; password: string | 204; нет | 401, 422, 500 |
 
-### Ограничения и оптимизация
+Первые пять методов реализованы в dev; два password-reset маршрута — проектируемые. Реальный ответ refresh/logout может включать Set-Cookie; refresh-токен **не включается в JSON**. Длина пароля при регистрации и восстановлении: 6–20 символов.
 
-```text
-/projects/{project_id}/constraints
-/projects/{project_id}/optimization-criteria
-```
+Пример POST /auth/login:
 
-### Построение
-
-```text
-POST /projects/{project_id}/generation-jobs
-GET  /generation-jobs/{job_id}
-POST /generation-jobs/{job_id}/cancel
-GET  /generation-jobs/{job_id}/schedules
-```
-
-### Расписания
-
-```text
-GET   /schedules/{schedule_id}
-PATCH /schedules/{schedule_id}/entries/{entry_id}
-POST  /schedules/{schedule_id}/validate
-POST  /schedules/{schedule_id}/auto-repair
-POST  /schedules/{schedule_id}/reoptimize
-```
-
-### Импорт и экспорт
-
-```text
-POST /projects/{project_id}/imports
-GET  /projects/{project_id}/files
-POST /projects/{project_id}/exports
-GET  /files/{file_id}
-DELETE /files/{file_id}
-```
-
-### Ошибки API
-
-Ошибки возвращаются в единой форме:
-
-```json
+~~~json
 {
-  "code": "ROOM_CAPACITY_CONFLICT",
-  "message": "Вместимость аудитории недостаточна",
-  "details": {}
+  "email": "student@example.org",
+  "password": "sample-password"
 }
-```
+~~~
+
+Ответ 200:
+
+~~~json
+{
+  "access_token": "<jwt>",
+  "token_type": "bearer"
+}
+~~~
+
+### 10.4. Проекты (целевые контракты)
+
+| HTTP | Маршрут | Тело запроса | Успешный ответ | Ошибки |
+|---|---|---|---|---|
+| GET | /projects | нет | 200; Project[] | 401, 500 |
+| POST | /projects | ProjectCreate | 201; Project | 401, 422, 500 |
+| GET | /projects/{project_id} | нет | 200; Project | 401, 404, 500 |
+| PATCH | /projects/{project_id} | ProjectPatch | 200; Project | 401, 404, 422, 500 |
+| DELETE | /projects/{project_id} | нет | 204; нет | 401, 404, 500 |
+
+Пример создания проекта: { "name": "Университет, осень 2026" }. Если настройки не заданы, используются понедельник–суббота обеих недель, HOUR_START и UNIFORM/100 минут.
+
+Сейчас в dev представлены доменные модели и frontend-клиент этих маршрутов; наличие интерфейса клиента не подтверждает наличие всех соответствующих Backend endpoints.
+
+### 10.5. Исходные данные (целевые контракты)
+
+Для всех перечисленных коллекций применяются следующие методы:
+
+| HTTP | Шаблон маршрута | Тело запроса | Успешный ответ | Ошибки |
+|---|---|---|---|---|
+| GET | /projects/{project_id}/{resource} | нет | 200; Resource[] | 401, 404, 500 |
+| POST | /projects/{project_id}/{resource} | ResourceCreate | 201; Resource | 401, 404, 422, 500 |
+| GET | /projects/{project_id}/{resource}/{id} | нет | 200; Resource | 401, 404, 500 |
+| PATCH | /projects/{project_id}/{resource}/{id} | ResourcePatch | 200; Resource | 401, 404, 422, 500 |
+| DELETE | /projects/{project_id}/{resource}/{id} | нет | 204; нет | 401, 404, 409, 500 |
+
+Допустимые значения resource и соответствующие поля Create/Response:
+
+| resource | Поля ResourceCreate (кроме идентификатора) |
+|---|---|
+| subjects | name: string |
+| teachers | full_name: string; capabilities: {subject_id: uuid, lesson_type: string}[]; availability: Interval[]; preferences: Interval[] (необязательно) |
+| rooms | name: string; capacity: integer; room_type: string; availability: Interval[]; capabilities: {subject_id: uuid, lesson_type: string}[] (необязательно) |
+| groups | name: string; student_count: integer; availability: Interval[] (необязательно); subgroups: {name: string, student_count: integer, availability: Interval[]}[] (необязательно) |
+| subgroups | group_id: uuid; name: string; student_count: integer; availability: Interval[] (необязательно) |
+| streams | name: string; group_ids: uuid[] |
+| workloads | subject_id: uuid; lesson_type: string; lesson_format: ONSITE/REMOTE; occurrences_per_cycle: integer; duration_minutes: integer или null; required_teacher_count: integer; ровно одно из group_id/subgroup_id/stream_id |
+
+Response содержит id, соответствующие сохранённые поля и связанные структуры. ResourcePatch содержит подмножество полей ResourceCreate; обязательность проверяется по результату обновления. Для teachers обязательно минимум одно право преподавания и один интервал доступности. Для rooms обязательны допустимые интервалы; для groups соблюдается суммарная численность подгрупп. Если availability группы или подгруппы не задан, она доступна в учебные дни проекта; заданные интервалы ограничивают это время. Доступность подгруппы проверяется совместно с доступностью родительской группы, а потока — по пересечению входящих групп.
+
+Важно: URL /subgroups здесь является явным целевым контрактом. Перед реализацией необходимо согласовать его с маршрутизацией frontend и CRUD подгрупп внутри групп.
+
+### 10.6. Ограничения и оптимизация (целевые контракты)
+
+| HTTP | Маршрут | Тело запроса | Успешный ответ | Ошибки |
+|---|---|---|---|---|
+| GET | /projects/{project_id}/constraints | нет | 200; Constraint[] | 401, 404, 500 |
+| POST | /projects/{project_id}/constraints | {constraint_type: string, scope: object, parameters: object} | 201; Constraint | 401, 404, 422, 500 |
+| PATCH | /projects/{project_id}/constraints/{id} | подмножество полей Constraint | 200; Constraint | 401, 404, 422, 500 |
+| DELETE | /projects/{project_id}/constraints/{id} | нет | 204; нет | 401, 404, 500 |
+| GET | /projects/{project_id}/optimization-criteria | нет | 200; Criterion[] | 401, 404, 500 |
+| PUT | /projects/{project_id}/optimization-criteria | {criteria: Criterion[]} | 200; Criterion[] | 401, 404, 422, 500 |
+
+Constraint: {id, project_id, constraint_type, scope, parameters}. Criterion: {criterion_type: string, priority: integer, is_active: boolean}. У активных критериев одного проекта приоритет уникален. Для каждого типа ограничения поля parameters необходимо детализировать до реализации, поскольку сейчас они остаются расширяемой структурой.
+
+### 10.7. Построение расписания (целевые контракты)
+
+| HTTP | Маршрут | Тело запроса | Успешный ответ | Ошибки |
+|---|---|---|---|---|
+| POST | /projects/{project_id}/generation-jobs | {result_mode: "SINGLE" или "TOP_N", top_n: integer или null} | 202; {job_id: uuid, status: "QUEUED"} | 401, 404, 409, 422, 500 |
+| GET | /generation-jobs/{job_id} | нет | 200; Job | 401, 404, 500 |
+| POST | /generation-jobs/{job_id}/cancel | нет | 202; Job | 401, 404, 409, 500 |
+| GET | /generation-jobs/{job_id}/schedules | нет | 200; Schedule[] | 401, 404, 409, 500 |
+
+Состояние job запрашивается периодически. progress может отсутствовать после потери оперативного состояния Redis, но постоянный status сохраняется в PostgreSQL. Для режима TOP_N значение top_n обязательно и положительно; для SINGLE оно null.
+
+Пример запуска: { "result_mode": "TOP_N", "top_n": 5 }. Ответ 202: { "job_id": "550e8400-e29b-41d4-a716-446655440000", "status": "QUEUED" }.
+
+### 10.8. Расписания (целевые контракты)
+
+| HTTP | Маршрут | Тело запроса | Успешный ответ | Ошибки |
+|---|---|---|---|---|
+| GET | /schedules/{schedule_id} | нет | 200; Schedule | 401, 404, 500 |
+| PATCH | /schedules/{schedule_id}/entries/{entry_id} | подмножество week, weekday, start_time, end_time, subject_name, participant_label, lesson_type, lesson_format, room_id, room_name, teachers: TeacherAssignment[] | 200; {entry: ScheduleEntry, conflicts: Conflict[]} | 401, 404, 422, 500 |
+| POST | /schedules/{schedule_id}/validate | нет | 200; {status: "valid" или "invalid", conflicts: Conflict[]} | 401, 404, 500 |
+| POST | /schedules/{schedule_id}/auto-repair | {fixed_entry_ids: uuid[]} | 202; {job_id: uuid, status: "QUEUED"} | 401, 404, 409, 422, 500 |
+| POST | /schedules/{schedule_id}/reoptimize | {mode: "FULL" или "MIN_CHANGES"} | 202; {job_id: uuid, status: "QUEUED"} | 401, 404, 409, 422, 500 |
+
+Conflict: {code: string, message: string, entry_ids: uuid[], details: object}. Проверка возвращает 200 даже при статусе invalid, поскольку это результат доменной валидации, а не ошибка обработки HTTP-запроса. Конфликтное расписание сохраняется и может редактироваться.
+
+У каждого занятия есть собственное поле lesson_format. Изменение формата одного проведения не изменяет workloads.lesson_format и другие проведения. Для REMOTE должны отсутствовать room_id и room_name. В импортированном расписании без полного набора справочников значения subject_name, participant_label, room_name и teachers.display_name сохраняют исходные подписи; ссылки на соответствующие записи могут быть null. При изменении teachers передаётся полный список TeacherAssignment. Неполнота данных не блокирует сохранение, но не позволяет выполнять проверки, требующие отсутствующих справочников.
+
+### 10.9. Импорт, экспорт и файлы (целевые контракты)
+
+| HTTP | Маршрут | Тело запроса | Успешный ответ | Ошибки |
+|---|---|---|---|---|
+| POST | /projects/{project_id}/imports | multipart/form-data: file; import_mode: "SCHEDULE"/"PROJECT"/"RESOURCE"; resource: string (при RESOURCE); mapping: JSON-string (необязательно) | 200; {file: StoredFile, imported_count: integer, schedule_ids: uuid[], errors: ImportError[]} | 401, 404, 413, 415, 422, 500 |
+| GET | /projects/{project_id}/files | нет; необязательный query category=UPLOAD/EXPORT | 200; StoredFile[] | 401, 404, 422, 500 |
+| POST | /projects/{project_id}/exports | {schedule_id: uuid или null, scope: "SCHEDULE"/"PROJECT", file_format: string} | 201; StoredFile | 401, 404, 415, 422, 500 |
+| GET | /files/{file_id} | нет | 200; бинарный файл; Content-Disposition: attachment | 401, 404, 500 |
+| DELETE | /files/{file_id} | нет | 204; нет | 401, 404, 500 |
+
+ImportError: {row: integer или null, field: string или null, message: string}. import_mode определяет импорт готового расписания, полного проекта или отдельных ресурсов; resource задаётся при RESOURCE. В режиме SCHEDULE создаётся Schedule с source=IMPORTED и job_id=null; отсутствие учебных справочников не мешает сохранению расписания. schedule_ids возвращает ID созданных расписаний, пустой список — если расписания не импортировались.
+
+Поддерживаемые расширения исходных файлов: xlsx, ods, csv, json. Ошибка разбора не удаляет исходный файл. Файл скачивается через Backend после проверки прав, не напрямую из MinIO.
+
+### 10.10. Ошибки и HTTP-коды
+
+Все прикладные ошибки возвращаются в одном формате:
+
+~~~json
+{
+  "code": "VALIDATION_ERROR",
+  "message": "Проверьте введённые данные",
+  "details": {
+    "fields": [
+      {"field": "name", "reason": "Поле обязательно"}
+    ]
+  }
+}
+~~~
+
+| HTTP | Значение | Примеры code |
+|---|---|---|
+| 400 | некорректный запрос вне формальной валидации | DOMAIN_ERROR |
+| 401 | требуется аутентификация или токен недействителен | NOT_AUTHENTICATED |
+| 404 | объект отсутствует или недоступен пользователю | NOT_FOUND |
+| 409 | конфликт состояния или уникальности | ALREADY_EXISTS, JOB_NOT_CANCELLABLE |
+| 413 | файл превышает допустимый размер | FILE_TOO_LARGE |
+| 415 | неподдерживаемый формат файла | UNSUPPORTED_FILE_FORMAT |
+| 422 | ошибка проверки значений | INVALID_VALUE, VALIDATION_ERROR |
+| 500 | внутренняя ошибка сервера | INTERNAL_ERROR |
+
+Указанные в таблице коды VALIDATION_ERROR, NOT_AUTHENTICATED, NOT_FOUND, ALREADY_EXISTS, INVALID_VALUE, INTERNAL_ERROR уже отражены в обработчиках ошибок dev; остальные перечислены как будущий контракт. Не следует трактовать таблицу как доказательство реализованных маршрутов.
 
 ---
 

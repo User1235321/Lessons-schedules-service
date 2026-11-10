@@ -4,7 +4,14 @@ from uuid import uuid4
 
 import pytest
 
-from app.domain.scheduling.job import Job, JobProgress, JobStatus, JobType, ResultMode, ResultOptions
+from app.domain.scheduling.job import (
+    Job,
+    JobProgress,
+    JobStatus,
+    JobType,
+    ResultMode,
+    ResultOptions,
+)
 from app.domain.scheduling.schedule import (
     CriterionScore,
     LessonFormat,

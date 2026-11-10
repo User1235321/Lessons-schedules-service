@@ -56,9 +56,10 @@ class Job:
     error_message: str | None = None
 
     def __post_init__(self) -> None:
-        if self.status is JobStatus.QUEUED:
-            if self.started_at is not None or self.finished_at is not None:
-                raise InvalidValue("Задание в очереди ещё не начато", field="status")
+        if self.status is JobStatus.QUEUED and (
+            self.started_at is not None or self.finished_at is not None
+        ):
+            raise InvalidValue("Задание в очереди ещё не начато", field="status")
         if self.status in (JobStatus.RUNNING, JobStatus.COMPLETED) and self.started_at is None:
             raise InvalidValue("Нужно время начала расчёта", field="started_at")
         terminal = self.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)

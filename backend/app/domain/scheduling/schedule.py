@@ -44,9 +44,10 @@ class ScheduleEntry:
     def __post_init__(self) -> None:
         if self.end_time <= self.start_time:
             raise InvalidValue("Окончание должно быть позже начала", field="end_time")
-        if self.lesson_format is LessonFormat.REMOTE:
-            if self.room_id is not None or self.room_name is not None:
-                raise InvalidValue("Для дистанционного занятия аудитория не задаётся", field="room_id")
+        if self.lesson_format is LessonFormat.REMOTE and (
+            self.room_id is not None or self.room_name is not None
+        ):
+            raise InvalidValue("Для дистанционного занятия аудитория не задаётся", field="room_id")
         teacher_ids = [teacher.teacher_id for teacher in self.teachers if teacher.teacher_id]
         if len(teacher_ids) != len(set(teacher_ids)):
             raise InvalidValue("Преподаватель назначен на занятие повторно", field="teachers")

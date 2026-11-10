@@ -4,8 +4,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.infrastructure.persistence.repositories.academic import (
     SqlGroupRepository,
+    SqlRoomRepository,
+    SqlStreamRepository,
     SqlSubjectRepository,
     SqlTeacherRepository,
+    SqlWorkloadRepository,
 )
 from app.infrastructure.persistence.repositories.projects import SqlProjectRepository
 from app.infrastructure.persistence.repositories.users import (
@@ -23,6 +26,9 @@ class SqlUnitOfWork:
     subjects: SqlSubjectRepository
     teachers: SqlTeacherRepository
     groups: SqlGroupRepository
+    rooms: SqlRoomRepository
+    streams: SqlStreamRepository
+    workloads: SqlWorkloadRepository
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
@@ -35,6 +41,9 @@ class SqlUnitOfWork:
         self.subjects = SqlSubjectRepository(self._session)
         self.teachers = SqlTeacherRepository(self._session)
         self.groups = SqlGroupRepository(self._session)
+        self.rooms = SqlRoomRepository(self._session)
+        self.streams = SqlStreamRepository(self._session)
+        self.workloads = SqlWorkloadRepository(self._session)
         return self
 
     def __exit__(self, *exc: object) -> None:

@@ -8,10 +8,11 @@ from pydantic import BaseModel, BeforeValidator, Field, PlainSerializer, WithJso
 from app.api.schemas.paths import inside
 from app.application.academic.groups import SubgroupInGroup
 from app.application.academic.teachers import TeacherChanges, TeacherDraft
+from app.domain.academic.capability import Capability
 from app.domain.academic.group import StudentGroup
 from app.domain.academic.lesson_type import LessonType
 from app.domain.academic.subject import Subject
-from app.domain.academic.teacher import Capability, Teacher
+from app.domain.academic.teacher import Teacher
 from app.domain.shared.ids import SubjectId
 from app.domain.shared.week import Week, Weekday, WeeklyInterval
 

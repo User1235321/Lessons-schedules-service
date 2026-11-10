@@ -1,30 +1,55 @@
+from dataclasses import replace
 from datetime import UTC, datetime, time
 from uuid import uuid4
 
 import pytest
 from sqlalchemy import Connection, func, select
 
+from app.domain.academic.capability import Capability
 from app.domain.academic.errors import (
+    GroupInUse,
     GroupNameTaken,
+    RoomNameTaken,
+    StreamInUse,
+    StreamNameTaken,
+    SubgroupInUse,
     SubjectInUse,
     SubjectNameTaken,
 )
 from app.domain.academic.group import StudentGroup, Subgroup
 from app.domain.academic.lesson_type import LessonType
+from app.domain.academic.room import Room, RoomType
+from app.domain.academic.stream import Stream
 from app.domain.academic.subject import Subject
-from app.domain.academic.teacher import Capability, Teacher
+from app.domain.academic.teacher import Teacher
+from app.domain.academic.workload import LessonFormat, TargetType, Workload, WorkloadTarget
 from app.domain.auth.user import Email, User
 from app.domain.projects.project import Project
 from app.domain.shared.errors import InvalidValue, NotFound
-from app.domain.shared.ids import GroupId, ProjectId, SubgroupId, SubjectId, TeacherId, UserId
+from app.domain.shared.ids import (
+    GroupId,
+    ProjectId,
+    RoomId,
+    StreamId,
+    SubgroupId,
+    SubjectId,
+    TeacherId,
+    UserId,
+    WorkloadId,
+)
 from app.domain.shared.week import Week, Weekday, WeeklyInterval
 from app.infrastructure.persistence.models import (
+    RoomCapabilityRow,
+    RoomRow,
+    StreamGroupRow,
+    StreamRow,
     StudentGroupRow,
     SubgroupRow,
     SubjectRow,
     TeacherAvailabilityRow,
     TeacherCapabilityRow,
     TeacherRow,
+    WorkloadRow,
 )
 from app.infrastructure.persistence.uow import SqlUnitOfWork
 
@@ -154,7 +179,9 @@ def test_subject_in_use_is_not_deleted_and_users_are_named(uow: SqlUnitOfWork) -
         uow.subjects.delete(project, math.id)
 
     assert error.value.details == {
-        "teachers": [{"id": str(petrova.id), "full_name": "Петрова А. В."}]
+        "teachers": [{"id": str(petrova.id), "full_name": "Петрова А. В."}],
+        "rooms": [],
+        "workloads": [],
     }
     with uow:
         uow.subjects.delete(project, physics.id)
@@ -337,12 +364,317 @@ def test_deleting_project_removes_its_academic_data(
     project = stored_project(uow)
     subject = stored_subject(uow, project.id)
     stored_teacher(uow, a_teacher(project.id, subject))
-    stored_group(uow, a_group(project.id, "301", a_subgroup("301-1")))
+    subgroup = a_subgroup("301-1")
+    group = stored_group(uow, a_group(project.id, "301", subgroup))
+    stored_room(uow, a_room(project.id, subject))
+    stream = stored_stream(uow, a_stream(project.id, group))
+    for target in (
+        WorkloadTarget(TargetType.GROUP, group.id),
+        WorkloadTarget(TargetType.SUBGROUP, subgroup.id),
+        WorkloadTarget(TargetType.STREAM, stream.id),
+    ):
+        stored_workload(uow, a_workload(project.id, subject, target))
 
-    # Занятая дисциплина уходит вместе с проектом: NO ACTION проверяется после каскада
+    # Всё, на что ссылаются, уходит вместе с проектом: проверка ссылок отложена до commit
     with uow:
         uow.projects.delete(project.id, project.owner_id)
         uow.commit()
 
-    for table in (SubjectRow, TeacherRow, TeacherCapabilityRow, StudentGroupRow, SubgroupRow):
+    for table in (
+        SubjectRow,
+        TeacherRow,
+        TeacherCapabilityRow,
+        StudentGroupRow,
+        SubgroupRow,
+        RoomRow,
+        RoomCapabilityRow,
+        StreamRow,
+        StreamGroupRow,
+        WorkloadRow,
+    ):
         assert count(db_connection, table) == 0
+
+
+# --- Аудитории, потоки и нагрузка
+
+
+def a_room(project_id: ProjectId, subject: Subject, name: str = "215") -> Room:
+    return Room(
+        id=RoomId(uuid4()),
+        project_id=project_id,
+        name=name,
+        capacity=30,
+        type=RoomType.LABORATORY,
+        availability=(ANY_TUESDAY,),
+        capabilities=(Capability(subject.id, LessonType.LAB),),
+    )
+
+
+def stored_room(uow: SqlUnitOfWork, room: Room) -> Room:
+    with uow:
+        uow.rooms.add(room)
+        uow.commit()
+    return room
+
+
+def a_stream(project_id: ProjectId, *groups: StudentGroup, name: str = "Поток") -> Stream:
+    return Stream(
+        id=StreamId(uuid4()),
+        project_id=project_id,
+        name=name,
+        group_ids=tuple(group.id for group in groups),
+    )
+
+
+def stored_stream(uow: SqlUnitOfWork, stream: Stream) -> Stream:
+    with uow:
+        uow.streams.add(stream)
+        uow.commit()
+    return stream
+
+
+def a_workload(
+    project_id: ProjectId, subject: Subject, target: WorkloadTarget, **overrides: object
+) -> Workload:
+    values: dict[str, object] = {
+        "id": WorkloadId(uuid4()),
+        "project_id": project_id,
+        "target": target,
+        "subject_id": subject.id,
+        "lesson_type": LessonType.LAB,
+        "format": LessonFormat.ONSITE,
+        "occurrences_per_cycle": 2,
+        "duration_minutes": 120,
+        "required_teacher_count": 2,
+    }
+    return Workload(**(values | overrides))
+
+
+def stored_workload(uow: SqlUnitOfWork, workload: Workload) -> Workload:
+    with uow:
+        uow.workloads.add(workload)
+        uow.commit()
+    return workload
+
+
+def test_room_is_stored_listed_and_saved(uow: SqlUnitOfWork) -> None:  # F_Data_7, F_Data_9
+    project = stored_project(uow).id
+    physics = stored_subject(uow, project, "Физика")
+    lab = stored_room(uow, a_room(project, physics, "215"))
+    hall = stored_room(
+        uow,
+        Room(
+            id=RoomId(uuid4()),
+            project_id=project,
+            name="212",
+            capacity=60,
+            type=RoomType.LECTURE,
+            availability=(MONDAY_MORNING, ANY_TUESDAY),
+        ),
+    )
+
+    with uow:
+        assert uow.rooms.list_in_project(project) == [hall, lab]
+        stored = uow.rooms.get_for_update(project, lab.id)
+        assert stored == lab
+        stored.change_capacity(24)
+        stored.change_type(RoomType.PRACTICE_UNIVERSAL, ())
+        stored.change_availability([MONDAY_MORNING])
+        uow.rooms.save(stored)
+        uow.commit()
+
+    with uow:
+        assert uow.rooms.get(project, lab.id) == stored
+
+
+def test_room_errors_are_translated(uow: SqlUnitOfWork) -> None:
+    project, other = stored_project(uow).id, stored_project(uow).id
+    physics = stored_subject(uow, project, "Физика")
+    stored_room(uow, a_room(project, physics, "215а"))
+
+    with uow, pytest.raises(RoomNameTaken):
+        uow.rooms.add(a_room(project, physics, "215А"))
+    with uow, pytest.raises(InvalidValue) as error:
+        uow.rooms.add(a_room(project, stored_subject(uow, other, "Химия"), "216"))
+    assert error.value.field == "capabilities"
+
+
+def test_stream_is_stored_and_its_groups_change(uow: SqlUnitOfWork) -> None:  # F_Data_14
+    project = stored_project(uow).id
+    g301, g302 = (
+        stored_group(uow, a_group(project, "301")),
+        stored_group(uow, a_group(project, "302")),
+    )
+    stream = stored_stream(uow, a_stream(project, g301, g302, name="301 + 302"))
+
+    with uow:
+        assert uow.streams.list_in_project(project) == [stream]
+        stored = uow.streams.get_for_update(project, stream.id)
+        assert stored == stream
+        stored.change_groups([g302.id])
+        uow.streams.save(stored)
+        uow.commit()
+
+    with uow:
+        assert uow.streams.get(project, stream.id) == stored
+
+
+def test_stream_errors_are_translated(uow: SqlUnitOfWork) -> None:
+    project, other = stored_project(uow).id, stored_project(uow).id
+    group = stored_group(uow, a_group(project, "301"))
+    stored_stream(uow, a_stream(project, group, name="Лекционный"))
+
+    with uow, pytest.raises(StreamNameTaken):
+        uow.streams.add(a_stream(project, group, name="ЛЕКЦИОННЫЙ"))
+    with uow, pytest.raises(InvalidValue) as error:
+        uow.streams.add(a_stream(project, stored_group(uow, a_group(other, "999"))))
+    assert error.value.field == "group_ids"
+
+
+def test_workloads_of_every_target_are_stored(uow: SqlUnitOfWork) -> None:  # F_Data_16, F_Data_17
+    project = stored_project(uow).id
+    physics, algebra = (
+        stored_subject(uow, project, "Физика"),
+        stored_subject(uow, project, "алгебра"),
+    )
+    subgroup = a_subgroup("301-1")
+    group = stored_group(uow, a_group(project, "301", subgroup))
+    stream = stored_stream(uow, a_stream(project, group))
+    lab = stored_workload(
+        uow, a_workload(project, physics, WorkloadTarget(TargetType.GROUP, group.id))
+    )
+    remote = stored_workload(
+        uow,
+        a_workload(
+            project,
+            algebra,
+            WorkloadTarget(TargetType.SUBGROUP, subgroup.id),
+            lesson_type=LessonType.PRACTICE,
+            format=LessonFormat.REMOTE,
+            duration_minutes=None,
+            required_teacher_count=1,
+        ),
+    )
+    lecture = stored_workload(
+        uow,
+        a_workload(
+            project,
+            algebra,
+            WorkloadTarget(TargetType.STREAM, stream.id),
+            lesson_type=LessonType.LECTURE,
+            required_teacher_count=1,
+        ),
+    )
+
+    with uow:
+        assert uow.workloads.list_in_project(project) == [lecture, remote, lab]
+        stored = uow.workloads.get_for_update(project, lab.id)
+        changed = replace(stored, target=WorkloadTarget(TargetType.STREAM, stream.id))
+        uow.workloads.save(changed)
+        uow.commit()
+
+    with uow:
+        assert uow.workloads.get(project, lab.id) == changed
+
+
+def test_workload_must_reference_data_of_its_project(uow: SqlUnitOfWork) -> None:
+    project, other = stored_project(uow).id, stored_project(uow).id
+    physics = stored_subject(uow, project, "Физика")
+    group = stored_group(uow, a_group(project))
+    foreign_group = stored_group(uow, a_group(other))
+    foreign_subject = stored_subject(uow, other, "Химия")
+
+    with uow, pytest.raises(InvalidValue) as wrong_target:
+        uow.workloads.add(
+            a_workload(project, physics, WorkloadTarget(TargetType.GROUP, foreign_group.id))
+        )
+    with uow, pytest.raises(InvalidValue) as wrong_subject:
+        uow.workloads.add(
+            a_workload(project, foreign_subject, WorkloadTarget(TargetType.GROUP, group.id))
+        )
+
+    assert (wrong_target.value.field, wrong_subject.value.field) == ("target.id", "subject_id")
+
+
+def test_subject_in_use_by_room_and_workload_is_not_deleted(uow: SqlUnitOfWork) -> None:
+    project = stored_project(uow).id
+    physics = stored_subject(uow, project, "Физика")
+    room = stored_room(uow, a_room(project, physics))
+    group = stored_group(uow, a_group(project))
+    workload = stored_workload(
+        uow, a_workload(project, physics, WorkloadTarget(TargetType.GROUP, group.id))
+    )
+
+    with uow, pytest.raises(SubjectInUse) as error:
+        uow.subjects.delete(project, physics.id)
+
+    assert error.value.details == {
+        "teachers": [],
+        "rooms": [{"id": str(room.id), "name": "215"}],
+        "workloads": [{"id": str(workload.id)}],
+    }
+
+
+def test_group_in_stream_or_with_workload_is_not_deleted(uow: SqlUnitOfWork) -> None:
+    project = stored_project(uow).id
+    physics = stored_subject(uow, project, "Физика")
+    subgroup = a_subgroup("301-1")
+    group = stored_group(uow, a_group(project, "301", subgroup))
+    stream = stored_stream(uow, a_stream(project, group, name="Лекционный"))
+    on_subgroup = stored_workload(
+        uow, a_workload(project, physics, WorkloadTarget(TargetType.SUBGROUP, subgroup.id))
+    )
+
+    with uow, pytest.raises(GroupInUse) as error:
+        uow.groups.delete(project, group.id)
+
+    assert error.value.details == {
+        "streams": [{"id": str(stream.id), "name": "Лекционный"}],
+        "workloads": [{"id": str(on_subgroup.id)}],
+    }
+    with uow:
+        assert uow.groups.get(project, group.id) == group
+
+
+def test_subgroup_with_workload_is_not_removed(uow: SqlUnitOfWork) -> None:
+    project = stored_project(uow).id
+    subgroup = a_subgroup("301-1")
+    group = stored_group(uow, a_group(project, "301", subgroup))
+    workload = stored_workload(
+        uow,
+        a_workload(
+            project,
+            stored_subject(uow, project),
+            WorkloadTarget(TargetType.SUBGROUP, subgroup.id),
+        ),
+    )
+
+    with uow, pytest.raises(SubgroupInUse) as error:
+        stored = uow.groups.get_for_update(project, group.id)
+        assert stored is not None
+        stored.remove_subgroup(subgroup.id)
+        uow.groups.save(stored)
+
+    assert error.value.details == {"workloads": [{"id": str(workload.id)}]}
+
+
+def test_stream_with_workload_is_not_deleted(uow: SqlUnitOfWork) -> None:
+    project = stored_project(uow).id
+    stream = stored_stream(uow, a_stream(project, stored_group(uow, a_group(project))))
+    workload = stored_workload(
+        uow,
+        a_workload(
+            project, stored_subject(uow, project), WorkloadTarget(TargetType.STREAM, stream.id)
+        ),
+    )
+
+    with uow, pytest.raises(StreamInUse) as error:
+        uow.streams.delete(project, stream.id)
+
+    assert error.value.details == {"workloads": [{"id": str(workload.id)}]}
+    with uow:
+        uow.workloads.delete(project, workload.id)
+        uow.streams.delete(project, stream.id)
+        uow.commit()
+    with uow:
+        assert uow.streams.list_in_project(project) == []

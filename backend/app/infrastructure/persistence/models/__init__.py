@@ -6,6 +6,11 @@
 
 from app.infrastructure.persistence.base import Base
 from app.infrastructure.persistence.models.academic import (
+    RoomAvailabilityRow,
+    RoomCapabilityRow,
+    RoomRow,
+    StreamGroupRow,
+    StreamRow,
     StudentGroupRow,
     SubgroupRow,
     SubjectRow,
@@ -13,6 +18,7 @@ from app.infrastructure.persistence.models.academic import (
     TeacherCapabilityRow,
     TeacherPreferenceRow,
     TeacherRow,
+    WorkloadRow,
 )
 from app.infrastructure.persistence.models.projects import ProjectRow
 from app.infrastructure.persistence.models.users import UserRow, UserSessionRow
@@ -20,6 +26,11 @@ from app.infrastructure.persistence.models.users import UserRow, UserSessionRow
 __all__ = [
     "Base",
     "ProjectRow",
+    "RoomAvailabilityRow",
+    "RoomCapabilityRow",
+    "RoomRow",
+    "StreamGroupRow",
+    "StreamRow",
     "StudentGroupRow",
     "SubgroupRow",
     "SubjectRow",
@@ -29,4 +40,5 @@ __all__ = [
     "TeacherRow",
     "UserRow",
     "UserSessionRow",
+    "WorkloadRow",
 ]

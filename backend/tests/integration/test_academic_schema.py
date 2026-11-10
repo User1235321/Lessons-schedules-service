@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.infrastructure.persistence.models import (
     ProjectRow,
+    StreamRow,
     StudentGroupRow,
     SubgroupRow,
     SubjectRow,
@@ -16,6 +17,7 @@ from app.infrastructure.persistence.models import (
     TeacherCapabilityRow,
     TeacherRow,
     UserRow,
+    WorkloadRow,
 )
 
 NOW = datetime(2026, 11, 8, 12, 0, tzinfo=UTC)
@@ -118,4 +120,67 @@ def test_interval_columns_are_checked(
         )
 
         with pytest.raises(IntegrityError, match=constraint):
+            session.flush()
+
+
+def a_workload(project: UUID, subject: UUID, **overrides: object) -> WorkloadRow:
+    values: dict[str, object] = {
+        "id": uuid4(),
+        "project_id": project,
+        "subject_id": subject,
+        "lesson_type": "LECTURE",
+        "format": "ONSITE",
+        "occurrences_per_cycle": 2,
+        "required_teacher_count": 1,
+    }
+    return WorkloadRow(**(values | overrides))
+
+
+@pytest.mark.parametrize(
+    ("targets", "overrides", "constraint"),
+    [
+        ((), {}, "ck_workloads_one_target"),
+        (("group", "stream"), {}, "ck_workloads_one_target"),
+        (("group",), {"required_teacher_count": 2}, "ck_workloads_single_teacher_unless_lab"),
+    ],
+    ids=["no target", "two targets", "two teachers at lecture"],
+)
+def test_workload_columns_are_checked(
+    session_factory: sessionmaker[Session],
+    targets: tuple[str, ...],
+    overrides: dict[str, object],
+    constraint: str,
+) -> None:  # HLD 9.8
+    with session_factory() as session:
+        project = a_project(session)
+        subject = SubjectRow(id=uuid4(), project_id=project, name="Физика")
+        group = StudentGroupRow(id=uuid4(), project_id=project, name="301", student_count=24)
+        stream = StreamRow(id=uuid4(), project_id=project, name="Поток")
+        session.add_all([subject, group, stream])
+        session.flush()
+        ids = {"group": {"group_id": group.id}, "stream": {"stream_id": stream.id}}
+        target = {key: value for name in targets for key, value in ids[name].items()}
+        session.add(a_workload(project, subject.id, **target, **overrides))
+
+        with pytest.raises(IntegrityError, match=constraint):
+            session.flush()
+
+
+def test_workload_cannot_target_subgroup_of_another_project(
+    session_factory: sessionmaker[Session],
+) -> None:
+    with session_factory() as session:
+        project, other = a_project(session), a_project(session)
+        subject = SubjectRow(id=uuid4(), project_id=project, name="Физика")
+        group = StudentGroupRow(id=uuid4(), project_id=other, name="301", student_count=24)
+        session.add_all([subject, group])
+        session.flush()
+        subgroup = SubgroupRow(
+            id=uuid4(), project_id=other, group_id=group.id, name="301-1", student_count=12
+        )
+        session.add(subgroup)
+        session.flush()
+        session.add(a_workload(project, subject.id, subgroup_id=subgroup.id))
+
+        with pytest.raises(IntegrityError, match="fk_workloads_subgroup"):
             session.flush()

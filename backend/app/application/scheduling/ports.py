@@ -1,6 +1,7 @@
 from typing import Protocol
 
 from app.domain.scheduling.job import Job, JobMessage, JobProgress, ResultOptions
+from app.domain.scheduling.problem import ScheduleProblem
 from app.domain.scheduling.schedule import Schedule
 from app.domain.scheduling.solver import SolverControl, SolverResult
 from app.domain.shared.ids import JobId, ProjectId, ScheduleId
@@ -58,3 +59,6 @@ class ScheduleSolver[InputT](Protocol):
     def solve(
         self, problem: InputT, options: ResultOptions, control: SolverControl
     ) -> SolverResult: ...
+
+
+type ScheduleProblemSolver = ScheduleSolver[ScheduleProblem]

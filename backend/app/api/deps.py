@@ -12,6 +12,11 @@ from app.application.auth.use_cases import (
     Refresh,
     Register,
 )
+from app.application.scheduling.use_cases import (
+    CancelGenerationJob,
+    CreateGenerationJob,
+    GetGenerationJob,
+)
 from app.domain.shared.errors import NotAuthenticated
 from app.domain.shared.ids import UserId
 
@@ -30,6 +35,12 @@ class UseCases(Protocol):
     def authenticate(self) -> Authenticate: ...
 
     def get_current_user(self) -> GetCurrentUser: ...
+
+    def create_generation_job(self) -> CreateGenerationJob: ...
+
+    def get_generation_job(self) -> GetGenerationJob: ...
+
+    def cancel_generation_job(self) -> CancelGenerationJob: ...
 
 
 def get_use_cases(request: Request) -> UseCases:

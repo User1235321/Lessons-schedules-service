@@ -9,8 +9,8 @@ from app.domain.scheduling.resources import (
     LessonType,
     RoomSnapshot,
     StreamSnapshot,
-    SubjectSnapshot,
     SubgroupSnapshot,
+    SubjectSnapshot,
     TeacherSnapshot,
 )
 from app.domain.scheduling.schedule import LessonFormat

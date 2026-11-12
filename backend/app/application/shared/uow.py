@@ -2,6 +2,7 @@ from typing import Protocol, Self
 
 from app.application.auth.ports import UserRepository, UserSessionRepository
 from app.application.projects.ports import ProjectRepository
+from app.application.scheduling.ports import JobOutbox, JobRepository, ScheduleRepository
 
 
 class UnitOfWork(Protocol):
@@ -10,6 +11,9 @@ class UnitOfWork(Protocol):
     users: UserRepository
     user_sessions: UserSessionRepository
     projects: ProjectRepository
+    jobs: JobRepository
+    job_outbox: JobOutbox
+    schedules: ScheduleRepository
 
     def __enter__(self) -> Self: ...
 

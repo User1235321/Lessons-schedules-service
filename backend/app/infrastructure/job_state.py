@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from redis import Redis
 from redis.exceptions import RedisError
 
@@ -35,6 +37,17 @@ class RedisJobStateStore:
             return bool(self._client.exists(self._key(job_id, "cancel")))
         except RedisError as error:
             raise JobStateStoreError("Не удалось прочитать запрос отмены задания") from error
+
+    def complete(self, job_id: JobId, expires_at: datetime) -> None:
+        try:
+            with self._client.pipeline(transaction=True) as pipeline:
+                pipeline.set(
+                    self._key(job_id, "progress"), "100", pxat=int(expires_at.timestamp() * 1000)
+                )
+                pipeline.delete(self._key(job_id, "cancel"))
+                pipeline.execute()
+        except RedisError as error:
+            raise JobStateStoreError("Не удалось сохранить финальный прогресс задания") from error
 
     def clear(self, job_id: JobId) -> None:
         try:

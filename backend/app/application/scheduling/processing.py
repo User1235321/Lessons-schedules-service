@@ -1,5 +1,6 @@
 import logging
 from dataclasses import dataclass, replace
+from datetime import timedelta
 
 from app.application.scheduling.ports import (
     JobExecutionLock,
@@ -16,6 +17,7 @@ from app.domain.scheduling.solver import SolverResult, SolverStatus
 from app.domain.shared.ids import JobId, ScheduleEntryId, ScheduleId
 
 logger = logging.getLogger(__name__)
+FINAL_PROGRESS_RETENTION = timedelta(hours=24)
 
 
 @dataclass
@@ -56,16 +58,15 @@ class ProcessJob:
                 logger.warning("Получено неизвестное задание: %s", message.job_id)
                 return None
             if job.is_terminal:
-                self._clear_state(job.id)
+                self._finalize_state(job)
                 return None
             if job.status is JobStatus.RUNNING:
-                self.uow.jobs.save(
-                    job.finish(
-                        JobStatus.FAILED, self.clock.now(), "Выполнение прервано аварией Worker"
-                    )
+                failed = job.finish(
+                    JobStatus.FAILED, self.clock.now(), "Выполнение прервано аварией Worker"
                 )
+                self.uow.jobs.save(failed)
                 self.uow.commit()
-                self._clear_state(job.id)
+                self._finalize_state(failed)
                 return None
             running = job.start(self.clock.now())
             self.uow.jobs.save(running)
@@ -120,7 +121,7 @@ class ProcessJob:
                 self._save_variants(finished, result)
             self.uow.jobs.save(finished)
             self.uow.commit()
-        self._clear_state(job.id)
+        self._finalize_state(finished)
 
     def _save_variants(self, job: Job, result: SolverResult) -> None:
         for index, variant in enumerate(result.variants, start=1):
@@ -140,8 +141,13 @@ class ProcessJob:
                 )
             )
 
-    def _clear_state(self, job_id: JobId) -> None:
+    def _finalize_state(self, job: Job) -> None:
         try:
-            self.state.clear(job_id)
+            if job.status is JobStatus.COMPLETED:
+                self.state.complete(job.id, job.finished_at + FINAL_PROGRESS_RETENTION)
+            else:
+                self.state.clear(job.id)
         except JobStateStoreError:
-            logger.warning("Не удалось очистить Redis для задания %s", job_id, exc_info=True)
+            logger.warning(
+                "Не удалось завершить состояние Redis для задания %s", job.id, exc_info=True
+            )

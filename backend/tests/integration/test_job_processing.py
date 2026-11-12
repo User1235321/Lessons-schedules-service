@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import time
+from datetime import time, timedelta
 from threading import Event
 from unittest.mock import Mock
 from uuid import uuid4
@@ -59,7 +59,7 @@ def test_success_and_redelivery_persist_exactly_one_result(scheduling_context: t
     assert process.execute(message)
     assert process.execute(message)
     assert current_job(container, job).status is JobStatus.COMPLETED
-    assert container.job_state().get_progress(job.id) is None
+    assert container.get_generation_job().execute(owner.id, job.id).progress == JobProgress(100)
     process.solver.solve.assert_called_once()
     with container.uow() as uow:
         schedules = uow.schedules.list_for_job(project.id, job.id)
@@ -78,6 +78,10 @@ def test_solver_outcomes_without_variants(scheduling_context: tuple, status: Sol
     assert process.execute(message)
     expected = JobStatus.CANCELLED if status is SolverStatus.CANCELLED else JobStatus.COMPLETED
     assert current_job(container, job).status is expected
+    assert container.job_state().get_progress(job.id) == (
+        JobProgress(100) if expected is JobStatus.COMPLETED else None
+    )
+    assert not container.job_state().is_cancel_requested(job.id)
     with container.uow() as uow:
         assert uow.schedules.list_for_job(project.id, job.id) == []
 
@@ -199,3 +203,44 @@ def test_default_worker_reports_missing_core(scheduling_context: tuple) -> None:
     failed = current_job(container, job)
     assert failed.status is JobStatus.FAILED
     assert "ещё не реализована" in failed.error_message
+
+
+def test_final_progress_is_written_after_commit_and_recovers_on_redelivery(
+    scheduling_context: tuple, monkeypatch
+) -> None:
+    container, owner, project = scheduling_context
+    job, process, message = prepare(scheduling_context)
+    complete = process.state.complete
+
+    def fail_after_commit(job_id, expires_at):
+        finished = current_job(container, job)
+        assert finished.status is JobStatus.COMPLETED
+        assert expires_at == finished.finished_at + timedelta(hours=24)
+        with container.uow() as uow:
+            assert len(uow.schedules.list_for_job(project.id, job.id)) == 1
+        raise JobStateStoreError("Redis offline after commit")
+
+    monkeypatch.setattr(process.state, "complete", fail_after_commit)
+    assert process.execute(message)
+    assert current_job(container, job).status is JobStatus.COMPLETED
+    assert process.state.get_progress(job.id) == JobProgress(0)
+
+    monkeypatch.setattr(process.state, "complete", complete)
+    assert process.execute(message)
+    assert container.get_generation_job().execute(owner.id, job.id).progress == JobProgress(100)
+    process.solver.solve.assert_called_once()
+    expected_expiry = current_job(container, job).finished_at + timedelta(hours=24)
+    assert container.redis.pexpiretime(f"schedule-job:{job.id}:progress") == int(
+        expected_expiry.timestamp() * 1000
+    )
+
+
+def test_redelivery_does_not_extend_progress_retention(scheduling_context: tuple) -> None:
+    container, _, _ = scheduling_context
+    job, process, message = prepare(scheduling_context)
+    assert process.execute(message)
+    key = f"schedule-job:{job.id}:progress"
+    expiry = container.redis.pexpiretime(key)
+    assert process.execute(message)
+    assert container.redis.pexpiretime(key) == expiry
+    process.solver.solve.assert_called_once()

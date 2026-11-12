@@ -1,9 +1,11 @@
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domain.scheduling.job import Job
-from app.domain.shared.errors import NotFound
+from app.domain.shared.errors import AlreadyExists, NotFound
 from app.domain.shared.ids import JobId, ProjectId, UserId
+from app.infrastructure.persistence.errors import violated_constraint
 from app.infrastructure.persistence.mappers.jobs import (
     job_to_domain,
     job_to_row,
@@ -19,7 +21,12 @@ class SqlJobRepository:
 
     def add(self, job: Job) -> None:
         self._session.add(job_to_row(job))
-        self._session.flush()
+        try:
+            self._session.flush()
+        except IntegrityError as error:
+            if violated_constraint(error) in ("pk_schedule_jobs", "uq_schedule_jobs_project_id"):
+                raise AlreadyExists("Задание уже существует", job_id=str(job.id)) from error
+            raise
 
     def get(self, project_id: ProjectId, job_id: JobId) -> Job | None:
         row = self._session.scalar(

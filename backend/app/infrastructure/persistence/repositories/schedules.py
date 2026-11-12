@@ -1,11 +1,13 @@
 from collections import defaultdict
 
 from sqlalchemy import delete, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domain.scheduling.schedule import Schedule
-from app.domain.shared.errors import NotFound
+from app.domain.shared.errors import AlreadyExists, NotFound
 from app.domain.shared.ids import JobId, ProjectId, ScheduleId
+from app.infrastructure.persistence.errors import violated_constraint
 from app.infrastructure.persistence.mappers.schedules import (
     entry_to_domain,
     entry_to_row,
@@ -25,7 +27,14 @@ class SqlScheduleRepository:
 
     def add(self, schedule: Schedule) -> None:
         self._session.add(schedule_to_row(schedule))
-        self._session.flush()
+        try:
+            self._session.flush()
+        except IntegrityError as error:
+            if violated_constraint(error) in ("pk_schedules", "uq_schedules_job_id"):
+                raise AlreadyExists(
+                    "Расписание или вариант задания уже существует", schedule_id=str(schedule.id)
+                ) from error
+            raise
         self._add_entries(schedule)
 
     def get(self, project_id: ProjectId, schedule_id: ScheduleId) -> Schedule | None:
@@ -57,7 +66,7 @@ class SqlScheduleRepository:
         rows = self._session.scalars(
             select(ScheduleRow)
             .where(ScheduleRow.project_id == project_id)
-            .order_by(ScheduleRow.created_at, ScheduleRow.id)
+            .order_by(ScheduleRow.created_at.desc(), ScheduleRow.id)
         ).all()
         return [self._load(row) for row in rows]
 

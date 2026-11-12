@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 from uuid import uuid4
 
@@ -51,3 +52,10 @@ def test_corrupt_progress_is_not_reported_as_missing(value: str) -> None:
     client.get.return_value = value
     with pytest.raises(JobStateStoreError):
         RedisJobStateStore(client).get_progress(JobId(uuid4()))
+
+
+def test_failed_completion_is_reported_as_state_store_error() -> None:
+    client = MagicMock()
+    client.pipeline.side_effect = ConnectionError("offline")
+    with pytest.raises(JobStateStoreError):
+        RedisJobStateStore(client).complete(JobId(uuid4()), datetime(2026, 11, 13, tzinfo=UTC))

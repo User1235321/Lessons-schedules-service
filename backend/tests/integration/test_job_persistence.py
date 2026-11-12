@@ -1,13 +1,15 @@
+from dataclasses import replace
 from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from app.application.scheduling.delivery import DeliverPendingJob
 from app.application.scheduling.ports import JobPublishError
 from app.domain.scheduling.job import JobMessage, JobStatus, ResultOptions
-from app.domain.shared.errors import InvalidValue
-from app.domain.shared.ids import UserId
+from app.domain.shared.errors import AlreadyExists, InvalidValue
+from app.domain.shared.ids import ProjectId, UserId
 from app.infrastructure.persistence.models.jobs import JobOutboxRow
 from app.infrastructure.persistence.repositories.job_outbox import SqlJobOutbox
 
@@ -72,3 +74,20 @@ def test_terminal_job_cannot_restart(scheduling_context: tuple) -> None:
         completed.start(container.clock.now())
     with container.uow() as uow:
         assert uow.jobs.get(project.id, job.id) == completed
+
+
+def test_duplicate_job_raises_already_exists(scheduling_context: tuple) -> None:
+    container, owner, project = scheduling_context
+    job = container.create_generation_job().execute(owner.id, project.id, ResultOptions())
+    with pytest.raises(AlreadyExists), container.uow() as uow:
+        uow.jobs.add(job)
+    with container.uow() as uow:
+        assert uow.jobs.get(project.id, job.id) == job
+
+
+def test_other_job_integrity_errors_remain_database_errors(scheduling_context: tuple) -> None:
+    container, owner, project = scheduling_context
+    job = container.create_generation_job().execute(owner.id, project.id, ResultOptions())
+    invalid = replace(job, id=container.ids.new_id(), project_id=ProjectId(uuid4()))
+    with pytest.raises(IntegrityError), container.uow() as uow:
+        uow.jobs.add(invalid)

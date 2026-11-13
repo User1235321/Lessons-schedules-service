@@ -149,7 +149,7 @@ describe("Subjects section", () => {
     const dialog = await screen.findByRole("dialog", { name: "Удалить?" });
     await user.click(within(dialog).getByRole("button", { name: "Удалить" }));
 
-    expect(await within(dialog).findByText("Дисциплина используется")).toBeTruthy();
+    expect(await within(dialog).findByText("Используется в нагрузке")).toBeTruthy();
     expect(within(list).getByText("Математика")).toBeTruthy();
   });
 });

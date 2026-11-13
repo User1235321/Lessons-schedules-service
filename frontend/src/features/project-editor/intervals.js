@@ -31,12 +31,26 @@ export const ROOM_TYPES = [
   { value: "LABORATORY", label: "Лаборатория", hasCapabilities: true }
 ];
 
-export const newInterval =() => ({ week: "ANY", day: "MONDAY", start: "09:00", end: "18:00" });
+// Дистанционному занятию аудитория не назначается (F_Data_17)
+export const LESSON_FORMATS = [
+  { value: "ONSITE", label: "Очно" },
+  { value: "REMOTE", label: "Дистанционно" }
+];
+
+// Для кого нагрузка: ровно одна группа, подгруппа или поток (F_Data_16)
+export const TARGET_TYPES = [
+  { value: "GROUP", label: "Группа" },
+  { value: "SUBGROUP", label: "Подгруппа" },
+  { value: "STREAM", label: "Поток" }
+];
+
+export const newInterval = () => ({ week: "ANY", day: "MONDAY", start: "09:00", end: "18:00" });
 
 const labelOf = (options, value) => options.find((option) => option.value === value)?.label ?? value;
 
 export const lessonTypeLabel = (value) => labelOf(LESSON_TYPES, value);
 export const roomTypeLabel = (value) => labelOf(ROOM_TYPES, value);
+export const lessonFormatLabel = (value) => labelOf(LESSON_FORMATS, value);
 export const roomTypeHasCapabilities = (value) =>
   ROOM_TYPES.find((type) => type.value === value)?.hasCapabilities ?? false;
 

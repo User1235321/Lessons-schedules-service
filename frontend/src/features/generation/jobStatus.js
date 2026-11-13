@@ -4,7 +4,9 @@ export const JOB_STATUS = {
   RUNNING: { label: "Выполняется", color: "info" },
   COMPLETED: { label: "Завершён", color: "success" },
   FAILED: { label: "Ошибка", color: "error" },
-  CANCELLED: { label: "Отменён", color: "warning" }
+  CANCELLED: { label: "Отменён", color: "warning" },
+  // Состояние не удалось получить (сеть): показываем честно, а не придумываем статус
+  UNKNOWN: { label: "Неизвестно", color: "default" }
 };
 
 const FINAL = ["COMPLETED", "FAILED", "CANCELLED"];

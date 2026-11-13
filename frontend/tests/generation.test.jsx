@@ -11,7 +11,10 @@ const isJobGet = ([url, init]) =>
   /^\/api\/generation-jobs\/[^/]+$/.test(url) && (init?.method ?? "GET") === "GET";
 
 // Опрос идёт по таймеру: часы подменены, но идут сами, чтобы работали ожидания Testing Library
-beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+beforeEach(() => {
+  sessionStorage.clear();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+});
 afterEach(() => vi.useRealTimers());
 
 const nextPoll = () => vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS);
@@ -267,5 +270,73 @@ describe("Generation: cancel", () => {
 
     expect(await screen.findByText(/Сервер недоступен/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "Отменить расчёт" }).disabled).toBe(false);
+  });
+});
+
+describe("Generation: returning to the page", () => {
+  const RUNNING = () => ({ status: "RUNNING", progress: 60, error_message: null });
+
+  it("restores the calculation after switching project tabs", async () => {
+    const job = { status: "QUEUED", progress: null, error_message: null };
+    const { user, fetchMock } = await startCalculation({ job });
+
+    await user.click(screen.getByRole("tab", { name: "Настройки" }));
+    await findHeading("Настройки проекта");
+    Object.assign(job, RUNNING());
+    await user.click(screen.getByRole("tab", { name: "Расчёт" }));
+
+    expect(await screen.findByText("Выполняется")).toBeTruthy();
+    expect(screen.getByText("60%")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Запустить расчёт" }).disabled).toBe(true);
+    expect(fetchMock.mock.calls.some(isJobGet)).toBe(true);
+  });
+
+  it("restores a calculation after a page reload", async () => {
+    sessionStorage.setItem("generation-job:42", "job-1");
+
+    renderRoute("/projects/42/generation", undefined, { job: RUNNING() });
+
+    expect(await screen.findByText("Выполняется")).toBeTruthy();
+    expect(screen.getByText("60%")).toBeTruthy();
+  });
+
+  it("forgets a job that no longer exists", async () => {
+    sessionStorage.setItem("generation-job:42", "job-gone");
+
+    renderRoute("/projects/42/generation");
+    await findHeading("Построение расписания");
+
+    await vi.waitFor(() => expect(sessionStorage.getItem("generation-job:42")).toBeNull());
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("button", { name: "Запустить расчёт" }).disabled).toBe(false);
+  });
+
+  it("keeps following the job when the state cannot be fetched at once", async () => {
+    sessionStorage.setItem("generation-job:42", "job-1");
+    const job = RUNNING();
+    const { fetchMock } = renderRoute("/projects/42/generation", undefined, { job });
+    const respond = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (url, init) =>
+      isJobGet([url, init]) ? Promise.reject(new TypeError("Failed to fetch")) : respond(url, init)
+    );
+    await findHeading("Построение расписания");
+
+    expect(await screen.findByText("Неизвестно")).toBeTruthy();
+    expect(screen.getByText(/Не удаётся получить состояние расчёта/)).toBeTruthy();
+
+    fetchMock.mockImplementation(respond);
+    await nextPoll();
+    expect(await screen.findByText("Выполняется")).toBeTruthy();
+  });
+
+  it("does not show a calculation of another project", async () => {
+    sessionStorage.setItem("generation-job:42", "job-1");
+
+    const { fetchMock } = renderRoute("/projects/43/generation", undefined, { job: RUNNING() });
+    await findHeading("Построение расписания");
+
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(fetchMock.mock.calls.some(isJobGet)).toBe(false);
+    expect(screen.getByRole("button", { name: "Запустить расчёт" }).disabled).toBe(false);
   });
 });

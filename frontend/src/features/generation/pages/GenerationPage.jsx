@@ -29,8 +29,14 @@ function validateTopN(value) {
 
 export default function GenerationPage() {
   const { projectId } = useParams();
+  // key: при смене проекта состояние расчёта прошлого проекта не должно остаться
+  return <GenerationView key={projectId} projectId={projectId} />;
+}
+
+function GenerationView({ projectId }) {
   const {
     job,
+    restoring,
     starting,
     startError,
     pollError,
@@ -40,8 +46,8 @@ export default function GenerationPage() {
     start,
     cancel
   } = useGenerationJob(projectId);
-  // Пока расчёт идёт, запустить второй нельзя
-  const running = job !== null && !isFinal(job.status);
+  // Пока расчёт идёт или его состояние уточняется, запустить второй нельзя
+  const running = restoring || (job !== null && !isFinal(job.status));
   const [mode, setMode] = useState("SINGLE");
   const [topN, setTopN] = useState(DEFAULT_TOP_N);
   const [topNError, setTopNError] = useState(null);

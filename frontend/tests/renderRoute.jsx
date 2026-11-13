@@ -154,6 +154,9 @@ export function stubBackend({
         store.splice(index, 1);
         return json(204);
       }
+      if (method === "PATCH") {
+        store[index] = { ...store[index], ...body, updated_at: new Date().toISOString() };
+      }
       return json(200, store[index]);
     }
 

@@ -20,7 +20,7 @@ import { resourceApi } from "../api.js";
 
 // Раздел редактора: таблица ресурсов проекта с добавлением, изменением и удалением.
 // FormDialog({ open, item, projectId, onClose, onSaved }) — диалог раздела. item === null
-// для создания. columns: [{ label, render(item) }]. itemLabel(item) — название для подписей
+// для создания, dialogProps передаются диалогу как есть. columns: [{ label, render(item) }]. itemLabel(item) — название для подписей
 export default function ResourceSection({
   title,
   description,
@@ -31,7 +31,8 @@ export default function ResourceSection({
   addLabel,
   emptyText,
   deleteText,
-  FormDialog
+  FormDialog,
+  dialogProps
 }) {
   const api = useMemo(() => resourceApi(projectId, resource), [projectId, resource]);
   const [items, setItems] = useState(null);
@@ -148,6 +149,7 @@ export default function ResourceSection({
         projectId={projectId}
         onClose={() => setDialog((current) => ({ ...current, open: false }))}
         onSaved={handleSaved}
+        {...dialogProps}
       />
       <ConfirmDialog
         open={deletion.open}

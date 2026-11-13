@@ -3,8 +3,9 @@ import { describe, expect, it } from "vitest";
 
 import { findHeading, renderRoute, TEST_PROJECTS } from "./renderRoute.jsx";
 
+// implemented: раздел уже работает с API и не показывает заглушку «В разработке»
 const editorSections = [
-  { path: "teachers", label: "Преподаватели", heading: "Преподаватели" },
+  { path: "teachers", label: "Преподаватели", heading: "Преподаватели", implemented: true },
   { path: "rooms", label: "Аудитории", heading: "Аудитории" },
   { path: "groups", label: "Группы", heading: "Группы и подгруппы" },
   { path: "streams", label: "Потоки", heading: "Потоки" },
@@ -23,8 +24,10 @@ describe("project editor", () => {
       expect(screen.getByRole("heading", { level: 1, name: project.name })).toBeTruthy();
       expect(router.state.location.pathname).toBe(pathname);
       expect(screen.getByRole("tab", { name: section.label, selected: true })).toBeTruthy();
-      expect(screen.getByText("В разработке")).toBeTruthy();
-      expect(screen.getByRole("list", { name: "Планируемые функции" })).toBeTruthy();
+      if (!section.implemented) {
+        expect(screen.getByText("В разработке")).toBeTruthy();
+        expect(screen.getByRole("list", { name: "Планируемые функции" })).toBeTruthy();
+      }
       expect(fetchMock).toHaveBeenCalledWith(`/api/projects/${project.id}`, expect.anything());
     });
 
@@ -46,7 +49,8 @@ describe("project editor", () => {
         expect(tab.getAttribute("aria-selected")).toBe("true");
       }
 
-      const projectRequests = fetchMock.mock.calls.filter(([url]) => /^\/api\/projects\//.test(url));
+      // Проект грузится один раз; запросы данных разделов идут по адресам глубже
+      const projectRequests = fetchMock.mock.calls.filter(([url]) => /^\/api\/projects\/[^/]+$/.test(url));
       expect(projectRequests.map(([url]) => url)).toEqual([`/api/projects/${project.id}`]);
     });
   });

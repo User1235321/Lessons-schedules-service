@@ -306,9 +306,12 @@ describe("Generation: returning to the page", () => {
     renderRoute("/projects/42/generation");
     await findHeading("Построение расписания");
 
-    await vi.waitFor(() => expect(sessionStorage.getItem("generation-job:42")).toBeNull());
+    // Пока состояние уточняется, кнопка запуска выключена; ждём, когда она включится
+    await vi.waitFor(() =>
+      expect(screen.getByRole("button", { name: "Запустить расчёт" }).disabled).toBe(false)
+    );
+    expect(sessionStorage.getItem("generation-job:42")).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.getByRole("button", { name: "Запустить расчёт" }).disabled).toBe(false);
   });
 
   it("keeps following the job when the state cannot be fetched at once", async () => {

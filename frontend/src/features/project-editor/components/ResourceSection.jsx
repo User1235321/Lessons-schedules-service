@@ -32,13 +32,15 @@ export default function ResourceSection({
   emptyText,
   deleteText,
   FormDialog,
-  dialogProps
+  dialogProps,
+  rowActions = []
 }) {
   const api = useMemo(() => resourceApi(projectId, resource), [projectId, resource]);
   const [items, setItems] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [dialog, setDialog] = useState({ open: false, item: null });
   const [deletion, setDeletion] = useState({ open: false, item: null });
+  const [action, setAction] = useState({ index: null, itemId: null });
 
   const load = useCallback(async () => {
     setItems(null);
@@ -54,12 +56,15 @@ export default function ResourceSection({
     load();
   }, [load]);
 
-  const handleSaved = (saved) => {
+  const replaceItem = (saved) =>
     setItems((current) =>
       current.some((item) => item.id === saved.id)
         ? current.map((item) => (item.id === saved.id ? saved : item))
         : [...current, saved]
     );
+
+  const handleSaved = (saved) => {
+    replaceItem(saved);
     setDialog((current) => ({ ...current, open: false }));
   };
 
@@ -120,6 +125,16 @@ export default function ResourceSection({
                     <TableCell key={column.label}>{column.render(item)}</TableCell>
                   ))}
                   <TableCell align="right" sx={{ whiteSpace: "nowrap" }}>
+                    {rowActions.map((rowAction, index) => (
+                      <Button
+                        key={rowAction.label}
+                        size="small"
+                        aria-label={`${rowAction.label}: ${itemLabel(item)}`}
+                        onClick={() => setAction({ index, itemId: item.id })}
+                      >
+                        {rowAction.label}
+                      </Button>
+                    ))}
                     <Button
                       size="small"
                       aria-label={`Изменить: ${itemLabel(item)}`}
@@ -151,6 +166,17 @@ export default function ResourceSection({
         onSaved={handleSaved}
         {...dialogProps}
       />
+      {rowActions.map(({ label, Dialog }, index) => (
+        <Dialog
+          key={label}
+          open={action.index === index}
+          // Строка берётся из текущего списка: диалог видит изменения, которые сам внёс
+          item={items?.find((item) => item.id === action.itemId) ?? null}
+          projectId={projectId}
+          onClose={() => setAction((current) => ({ ...current, index: null }))}
+          onChanged={replaceItem}
+        />
+      ))}
       <ConfirmDialog
         open={deletion.open}
         title="Удалить?"

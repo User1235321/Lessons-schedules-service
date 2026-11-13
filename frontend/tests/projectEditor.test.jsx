@@ -7,7 +7,7 @@ import { findHeading, renderRoute, TEST_PROJECTS } from "./renderRoute.jsx";
 const editorSections = [
   { path: "teachers", label: "Преподаватели", heading: "Преподаватели", implemented: true },
   { path: "rooms", label: "Аудитории", heading: "Аудитории" },
-  { path: "groups", label: "Группы", heading: "Группы и подгруппы" },
+  { path: "groups", label: "Группы", heading: "Группы и подгруппы", implemented: true },
   { path: "streams", label: "Потоки", heading: "Потоки" },
   { path: "workloads", label: "Нагрузка", heading: "Учебная нагрузка" },
   { path: "constraints", label: "Ограничения", heading: "Ограничения" },

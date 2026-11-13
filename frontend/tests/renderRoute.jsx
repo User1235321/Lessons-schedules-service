@@ -117,6 +117,9 @@ export function stubBackend({
           return invalid;
         }
         const created = { ...body, id: String(nextId++) };
+        if (name === "groups") {
+          created.subgroups = []; // бэкенд всегда отдаёт подгруппы в ответе группы
+        }
         items.push(created);
         return json(201, created);
       }
@@ -125,7 +128,7 @@ export function stubBackend({
       }
       if (method === "DELETE") {
         if (blockedDeletes.includes(id)) {
-          return json(409, { code: "SUBJECT_IN_USE", message: "Дисциплина используется", details: {} });
+          return json(409, { code: "IN_USE", message: "Используется в нагрузке", details: {} });
         }
         items.splice(index, 1);
         return json(204);

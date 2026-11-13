@@ -8,7 +8,7 @@ const editorSections = [
   { path: "teachers", label: "Преподаватели", heading: "Преподаватели", implemented: true },
   { path: "rooms", label: "Аудитории", heading: "Аудитории", implemented: true },
   { path: "groups", label: "Группы", heading: "Группы и подгруппы", implemented: true },
-  { path: "streams", label: "Потоки", heading: "Потоки" },
+  { path: "streams", label: "Потоки", heading: "Потоки", implemented: true },
   { path: "workloads", label: "Нагрузка", heading: "Учебная нагрузка" },
   { path: "constraints", label: "Ограничения", heading: "Ограничения" },
   { path: "optimization", label: "Оптимизация", heading: "Оптимизация" }

@@ -6,7 +6,7 @@ import { findHeading, renderRoute, TEST_PROJECTS } from "./renderRoute.jsx";
 // implemented: раздел уже работает с API и не показывает заглушку «В разработке»
 const editorSections = [
   { path: "teachers", label: "Преподаватели", heading: "Преподаватели", implemented: true },
-  { path: "rooms", label: "Аудитории", heading: "Аудитории" },
+  { path: "rooms", label: "Аудитории", heading: "Аудитории", implemented: true },
   { path: "groups", label: "Группы", heading: "Группы и подгруппы", implemented: true },
   { path: "streams", label: "Потоки", heading: "Потоки" },
   { path: "workloads", label: "Нагрузка", heading: "Учебная нагрузка" },

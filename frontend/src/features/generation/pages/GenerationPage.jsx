@@ -29,7 +29,17 @@ function validateTopN(value) {
 
 export default function GenerationPage() {
   const { projectId } = useParams();
-  const { job, starting, startError, pollError, start } = useGenerationJob(projectId);
+  const {
+    job,
+    starting,
+    startError,
+    pollError,
+    cancelling,
+    cancelRequested,
+    cancelError,
+    start,
+    cancel
+  } = useGenerationJob(projectId);
   // Пока расчёт идёт, запустить второй нельзя
   const running = job !== null && !isFinal(job.status);
   const [mode, setMode] = useState("SINGLE");
@@ -101,7 +111,17 @@ export default function GenerationPage() {
         </Stack>
       </Box>
 
-      {job && <JobPanel job={job} projectId={projectId} pollError={pollError} />}
+      {job && (
+        <JobPanel
+          job={job}
+          projectId={projectId}
+          pollError={pollError}
+          cancelling={cancelling}
+          cancelRequested={cancelRequested}
+          cancelError={cancelError}
+          onCancel={cancel}
+        />
+      )}
     </Box>
   );
 }

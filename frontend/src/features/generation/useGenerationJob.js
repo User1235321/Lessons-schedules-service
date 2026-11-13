@@ -12,12 +12,17 @@ export function useGenerationJob(projectId) {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState(null);
   const [pollError, setPollError] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelRequested, setCancelRequested] = useState(false);
+  const [cancelError, setCancelError] = useState(null);
   // Растёт после неудачного опроса, чтобы эффект запланировал следующий
   const [attempt, setAttempt] = useState(0);
 
   const start = async (options) => {
     setStartError(null);
     setPollError(null);
+    setCancelError(null);
+    setCancelRequested(false);
     setStarting(true);
     try {
       const { job_id: id, status } = await generationApi.start(projectId, options);
@@ -26,6 +31,29 @@ export function useGenerationJob(projectId) {
       setStartError(error);
     } finally {
       setStarting(false);
+    }
+  };
+
+  const cancel = async () => {
+    setCancelError(null);
+    setCancelling(true);
+    try {
+      const next = await generationApi.cancel(job.id);
+      setJob(next);
+      // Воркер может остановиться не сразу: пока статус не конечный, отмена только запрошена
+      setCancelRequested(!isFinal(next.status));
+    } catch (error) {
+      setCancelError(error);
+      if (error.code === "JOB_NOT_CANCELLABLE") {
+        // Расчёт успел закончиться: показываем его итог вместо устаревшего статуса
+        try {
+          setJob(await generationApi.get(job.id));
+        } catch {
+          // Итог подтянет обычный опрос
+        }
+      }
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -64,5 +92,15 @@ export function useGenerationJob(projectId) {
     };
   }, [job, attempt]);
 
-  return { job, starting, startError, pollError, start };
+  return {
+    job,
+    starting,
+    startError,
+    pollError,
+    cancelling,
+    cancelRequested,
+    cancelError,
+    start,
+    cancel
+  };
 }

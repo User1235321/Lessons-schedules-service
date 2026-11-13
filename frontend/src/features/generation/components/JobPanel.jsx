@@ -2,7 +2,7 @@ import { Alert, Box, Button, Chip, LinearProgress, Stack, Typography } from "@mu
 import { Link as RouterLink } from "react-router";
 
 import { paths } from "../../../app/paths.js";
-import { isFinal, JOB_STATUS } from "../jobStatus.js";
+import { isCancellable, isFinal, JOB_STATUS } from "../jobStatus.js";
 
 // Идентификатор расписания для перехода к тестовому результату: список расписаний расчёта
 // появится вместе с API расписаний (HLD 10.7, GET /generation-jobs/{id}/schedules)
@@ -65,7 +65,15 @@ function Outcome({ job, projectId }) {
 }
 
 // Состояние расчёта. aria-live сообщает об изменении статуса без перехода фокуса
-export default function JobPanel({ job, projectId, pollError }) {
+export default function JobPanel({
+  job,
+  projectId,
+  pollError,
+  cancelling,
+  cancelRequested,
+  cancelError,
+  onCancel
+}) {
   const status = JOB_STATUS[job.status] ?? { label: job.status, color: "default" };
 
   return (
@@ -76,6 +84,29 @@ export default function JobPanel({ job, projectId, pollError }) {
       </Stack>
 
       {isFinal(job.status) ? <Outcome job={job} projectId={projectId} /> : <Progress job={job} />}
+
+      {isCancellable(job.status) && (
+        <Stack direction="row" spacing={2} sx={{ mt: 2, alignItems: "center" }}>
+          <Button
+            color="error"
+            variant="outlined"
+            onClick={onCancel}
+            disabled={cancelling || cancelRequested}
+          >
+            Отменить расчёт
+          </Button>
+          {cancelRequested && (
+            <Typography variant="body2" color="text.secondary">
+              Отмена запрошена, останавливаем расчёт…
+            </Typography>
+          )}
+        </Stack>
+      )}
+      {cancelError && (
+        <Alert severity="error" sx={{ mt: 2 }}>
+          {cancelError.message}
+        </Alert>
+      )}
 
       {pollError && !isFinal(job.status) && (
         <Alert severity="warning" sx={{ mt: 2 }}>

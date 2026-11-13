@@ -204,3 +204,68 @@ describe("Generation: progress and result", () => {
     expect(screen.getByRole("button", { name: "Запустить расчёт" }).disabled).toBe(false);
   });
 });
+
+describe("Generation: cancel", () => {
+  const isCancel = ([url, init]) =>
+    /^\/api\/generation-jobs\/[^/]+\/cancel$/.test(url) && init?.method === "POST";
+
+  it("cancels a running calculation (F_Gen_10)", async () => {
+    const { user, fetchMock } = await startCalculation();
+
+    await user.click(screen.getByRole("button", { name: "Отменить расчёт" }));
+
+    expect(await screen.findByText("Расчёт отменён.")).toBeTruthy();
+    expect(screen.getByText("Отменён")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Отменить расчёт" })).toBeNull();
+    expect(fetchMock.mock.calls.filter(isCancel)).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Запустить расчёт" }).disabled).toBe(false);
+  });
+
+  it("waits for the worker when the cancel is only accepted", async () => {
+    const job = { status: "QUEUED", progress: null, error_message: null };
+    const { user, fetchMock } = await startCalculation({ job });
+    const respond = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (url, init) =>
+      isCancel([url, init])
+        ? new Response(
+            JSON.stringify({ id: "job-1", project_id: "42", job_type: "GENERATE", status: "RUNNING", progress: 55, error_message: null }),
+            { status: 202 }
+          )
+        : respond(url, init)
+    );
+
+    await user.click(screen.getByRole("button", { name: "Отменить расчёт" }));
+
+    expect(await screen.findByText(/Отмена запрошена/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Отменить расчёт" }).disabled).toBe(true);
+
+    job.status = "CANCELLED";
+    await nextPoll();
+    expect(await screen.findByText("Расчёт отменён.")).toBeTruthy();
+    expect(screen.queryByText(/Отмена запрошена/)).toBeNull();
+  });
+
+  it("shows the real outcome when the calculation finished before the cancel", async () => {
+    const job = { status: "QUEUED", progress: null, error_message: null };
+    const { user } = await startCalculation({ job });
+
+    job.status = "COMPLETED"; // интерфейс ещё не знает: опрос не успел
+    await user.click(screen.getByRole("button", { name: "Отменить расчёт" }));
+
+    expect(await screen.findByText("Расчёт уже завершён и не может быть отменён")).toBeTruthy();
+    expect(await screen.findByText("Расчёт завершён.")).toBeTruthy();
+  });
+
+  it("shows a cancel error and lets the user try again", async () => {
+    const { user, fetchMock } = await startCalculation();
+    const respond = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (url, init) =>
+      isCancel([url, init]) ? Promise.reject(new TypeError("Failed to fetch")) : respond(url, init)
+    );
+
+    await user.click(screen.getByRole("button", { name: "Отменить расчёт" }));
+
+    expect(await screen.findByText(/Сервер недоступен/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Отменить расчёт" }).disabled).toBe(false);
+  });
+});

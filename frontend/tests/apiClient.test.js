@@ -315,6 +315,65 @@ describe("refresh across tabs", () => {
     expect(results[1].value).toBe(tabB.getAccessToken());
   });
 
+  it("does not give a token to a tab that signed out", async () => {
+    const [tabA, tabB, control] = [await openTab(), await openTab(), await openTab()];
+    [tabA, tabB, control].forEach((tab) => tab.setAccessToken(expired));
+    tabB.clearSession(); // вкладка B вышла
+
+    // expired — токен, с которым запрос получил 401, поэтому A идёт на сервер за новым
+    const token = await tabA.refreshAccessToken(expired);
+    expect(token).not.toBe(expired);
+
+    // control получила токен, значит сообщение дошло и до B, но B его не взяла
+    await vi.waitFor(() => expect(control.getAccessToken()).toBe(token));
+    expect(tabB.getAccessToken()).toBeNull();
+  });
+
+  it("does not give a token to a tab with another account", async () => {
+    const [tabA, tabB, control] = [await openTab(), await openTab(), await openTab()];
+    const otherAccount = fakeJwt("user-2", "own");
+    tabA.setAccessToken(expired);
+    control.setAccessToken(expired);
+    tabB.setAccessToken(otherAccount);
+
+    const token = await tabA.refreshAccessToken(expired);
+    expect(token).not.toBe(expired);
+
+    await vi.waitFor(() => expect(control.getAccessToken()).toBe(token));
+    expect(tabB.getAccessToken()).toBe(otherAccount);
+  });
+
+  it("does not switch accounts silently when the cookie belongs to another user", async () => {
+    const tab = await openTab();
+    const onExpired = vi.fn();
+    tab.onSessionExpired(onExpired);
+    tab.setAccessToken(expired);
+    backend.subject = "user-2"; // в другой вкладке вошли под другой учётной записью
+
+    const error = await tab.api.get("/projects").catch((e) => e);
+
+    expect(error).toMatchObject({ code: "SESSION_CHANGED" });
+    expect(tab.getAccessToken()).toBeNull();
+    expect(onExpired).toHaveBeenCalledTimes(1);
+  });
+
+  it("a waiting tab does not take a token of another account", async () => {
+    const [tabA, tabB] = [await openTab(), await openTab()];
+    tabA.setAccessToken(fakeJwt("user-2", "old"));
+    tabB.setAccessToken(fakeJwt("user-1", "old"));
+    backend.subject = "user-2"; // cookie уже принадлежит user-2
+
+    // A обменивает токен, B ждёт, получает токен user-2, не берёт его и обменивает сам
+    const results = await Promise.allSettled([
+      tabA.refreshAccessToken(fakeJwt("user-2", "old")),
+      tabB.refreshAccessToken(fakeJwt("user-1", "old"))
+    ]);
+
+    expect(results[0].status).toBe("fulfilled");
+    expect(results[1]).toMatchObject({ status: "rejected", reason: { code: "SESSION_CHANGED" } });
+    expect(tabB.getAccessToken()).toBeNull();
+  });
+
   it("without Web Locks the second tab would hit a rotated token", async () => {
     vi.stubGlobal("navigator", { ...navigator, locks: undefined });
     const [tabA, tabB] = [await openTab(), await openTab()];

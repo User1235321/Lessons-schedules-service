@@ -20,11 +20,36 @@ export const TEST_PROJECTS = [
   { id: "43", name: "Весенний семестр", created_at: "2026-10-01T10:00:00Z", updated_at: "2026-10-01T10:00:00Z" }
 ];
 
+// Те же проверки названия, что на бэкенде: непустое и уникальное без учёта регистра
+function validateResource(name, values, items, ownId) {
+  if ("name" in values) {
+    const value = String(values.name).trim();
+    if (!value) {
+      return json(422, { code: "INVALID_VALUE", message: "Укажите название", details: { field: "name" } });
+    }
+    const taken = items.some((item) => item.id !== ownId && item.name?.toLowerCase() === value.toLowerCase());
+    if (taken) {
+      return json(409, { code: "NAME_TAKEN", message: "Такое название уже есть", details: { field: "name" } });
+    }
+  }
+  return null;
+}
+
 const notFound = () => json(404, { code: "NOT_FOUND", message: "Проект не найден", details: {} });
 
-export function stubBackend({ authenticated = true, projects = TEST_PROJECTS } = {}) {
+export function stubBackend({
+  authenticated = true,
+  projects = TEST_PROJECTS,
+  resources = {},
+  blockedDeletes = []
+} = {}) {
   const store = projects.map((project) => ({ ...project }));
   let nextId = 100;
+  // Коллекции проекта в памяти. Для простоты они общие для всех проектов
+  const collections = Object.fromEntries(
+    Object.entries(resources).map(([name, items]) => [name, items.map((item) => ({ ...item }))])
+  );
+  const collection = (name) => (collections[name] ??= []);
 
   const fetchMock = vi.fn(async (url, init = {}) => {
     const method = init.method ?? "GET";
@@ -75,6 +100,47 @@ export function stubBackend({ authenticated = true, projects = TEST_PROJECTS } =
       store.push(project);
       return json(201, project);
     }
+    const resource = url.match(
+      /^\/api\/projects\/[^/]+\/(subjects|teachers|rooms|groups|subgroups|streams|workloads|constraints)(?:\/([^/]+))?$/
+    );
+    if (resource) {
+      const [, name, id] = resource;
+      const items = collection(name);
+      const index = id ? items.findIndex((item) => item.id === id) : -1;
+
+      if (!id && method === "GET") {
+        return json(200, items);
+      }
+      if (!id && method === "POST") {
+        const invalid = validateResource(name, body, items, null);
+        if (invalid) {
+          return invalid;
+        }
+        const created = { ...body, id: String(nextId++) };
+        items.push(created);
+        return json(201, created);
+      }
+      if (index === -1) {
+        return notFound();
+      }
+      if (method === "DELETE") {
+        if (blockedDeletes.includes(id)) {
+          return json(409, { code: "SUBJECT_IN_USE", message: "Дисциплина используется", details: {} });
+        }
+        items.splice(index, 1);
+        return json(204);
+      }
+      if (method === "PATCH") {
+        const invalid = validateResource(name, { ...items[index], ...body }, items, id);
+        if (invalid) {
+          return invalid;
+        }
+        items[index] = { ...items[index], ...body };
+        return json(200, items[index]);
+      }
+      return json(200, items[index]);
+    }
+
     const match = url.match(/^\/api\/projects\/([^/]+)$/);
     if (match) {
       const index = store.findIndex((project) => project.id === decodeURIComponent(match[1]));

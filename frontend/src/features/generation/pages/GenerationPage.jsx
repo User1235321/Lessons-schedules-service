@@ -15,6 +15,7 @@ import {
 import { useParams } from "react-router";
 
 import JobPanel from "../components/JobPanel.jsx";
+import { isFinal } from "../jobStatus.js";
 import { useGenerationJob } from "../useGenerationJob.js";
 
 const DEFAULT_TOP_N = "5";
@@ -28,7 +29,9 @@ function validateTopN(value) {
 
 export default function GenerationPage() {
   const { projectId } = useParams();
-  const { job, starting, startError, start } = useGenerationJob(projectId);
+  const { job, starting, startError, pollError, start } = useGenerationJob(projectId);
+  // Пока расчёт идёт, запустить второй нельзя
+  const running = job !== null && !isFinal(job.status);
   const [mode, setMode] = useState("SINGLE");
   const [topN, setTopN] = useState(DEFAULT_TOP_N);
   const [topNError, setTopNError] = useState(null);
@@ -58,6 +61,7 @@ export default function GenerationPage() {
       <Box component="form" noValidate onSubmit={handleSubmit}>
         <Stack spacing={2} sx={{ maxWidth: 480 }}>
           {startError && !serverTopNError && <Alert severity="error">{startError.message}</Alert>}
+          {!job && pollError && <Alert severity="error">{pollError.message}</Alert>}
 
           <FormControl>
             <FormLabel id="result-mode-label">Сколько вариантов построить</FormLabel>
@@ -90,14 +94,14 @@ export default function GenerationPage() {
           )}
 
           <Box>
-            <Button type="submit" variant="contained" disabled={starting}>
+            <Button type="submit" variant="contained" disabled={starting || running}>
               Запустить расчёт
             </Button>
           </Box>
         </Stack>
       </Box>
 
-      {job && <JobPanel job={job} />}
+      {job && <JobPanel job={job} projectId={projectId} pollError={pollError} />}
     </Box>
   );
 }

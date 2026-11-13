@@ -50,3 +50,22 @@ export function validateIntervals(intervals, { required }) {
   }
   return null;
 }
+
+// Ошибка набора пар «дисциплина + тип занятия» или null. Одна пара не должна повторяться
+export function validateCapabilities(capabilities, { required }) {
+  if (required && capabilities.length === 0) {
+    return "Добавьте хотя бы одну пару «дисциплина + тип занятия»";
+  }
+  const seen = new Set();
+  for (const { subject_id: subjectId, lesson_type: lessonType } of capabilities) {
+    if (!subjectId) {
+      return "Выберите дисциплину";
+    }
+    const key = `${subjectId}:${lessonType}`;
+    if (seen.has(key)) {
+      return "Пары не должны повторяться";
+    }
+    seen.add(key);
+  }
+  return null;
+}

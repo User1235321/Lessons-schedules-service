@@ -4,7 +4,11 @@ import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
 import IntervalsField from "../src/features/project-editor/components/IntervalsField.jsx";
-import { formatInterval, validateIntervals } from "../src/features/project-editor/intervals.js";
+import {
+  formatInterval,
+  validateCapabilities,
+  validateIntervals
+} from "../src/features/project-editor/intervals.js";
 
 describe("intervals helpers", () => {
   it("formats an interval for a table", () => {
@@ -67,5 +71,19 @@ describe("IntervalsField", () => {
     await user.click(screen.getByRole("button", { name: "Удалить: Доступность, промежуток 1" }));
     expect(latest).toHaveLength(1);
     expect(latest[0]).toMatchObject({ week: "ANY", day: "MONDAY" });
+  });
+});
+
+describe("validateCapabilities", () => {
+  const pair = { subject_id: "s1", lesson_type: "LECTURE" };
+
+  it("requires a pair when asked and forbids duplicates", () => {
+    expect(validateCapabilities([], { required: true })).toMatch(/хотя бы одну пару/);
+    expect(validateCapabilities([], { required: false })).toBeNull();
+    expect(validateCapabilities([pair, pair], { required: true })).toBe("Пары не должны повторяться");
+    expect(validateCapabilities([pair, { ...pair, lesson_type: "LAB" }], { required: true })).toBeNull();
+    expect(validateCapabilities([{ ...pair, subject_id: "" }], { required: true })).toBe(
+      "Выберите дисциплину"
+    );
   });
 });

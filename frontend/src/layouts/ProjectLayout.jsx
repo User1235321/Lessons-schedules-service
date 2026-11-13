@@ -93,7 +93,8 @@ export default function ProjectLayout() {
         </Tabs>
       </Box>
 
-      <Outlet />
+      {/* Разделы читают настройки проекта, а страница настроек обновляет их здесь */}
+      <Outlet context={{ project, onProjectChange: setProject }} />
     </Box>
   );
 }

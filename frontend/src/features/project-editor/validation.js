@@ -16,14 +16,18 @@ export function validateName(name, missing) {
 // Предел хранения на backend (колонка integer), а не правило предметной области
 export const MAX_STUDENT_COUNT = 2 ** 31 - 1;
 
-// Число студентов — положительное целое (F_Valid_1). Принимает строку из поля ввода
-export function validateStudentCount(value) {
+// Положительное целое (F_Valid_1). Принимает строку из поля ввода
+export function validatePositiveInteger(value, invalid) {
   const text = String(value).trim();
   if (!/^\d+$/.test(text) || Number(text) <= 0) {
-    return "Нужно положительное целое число студентов";
+    return invalid;
   }
   if (Number(text) > MAX_STUDENT_COUNT) {
     return "Слишком большое число";
   }
   return null;
+}
+
+export function validateStudentCount(value) {
+  return validatePositiveInteger(value, "Нужно положительное целое число студентов");
 }

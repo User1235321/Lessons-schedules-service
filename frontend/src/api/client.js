@@ -110,30 +110,55 @@ export const BROADCAST_WAIT_MS = 500;
 
 const channel = typeof BroadcastChannel === "function" ? new BroadcastChannel("auth") : null;
 
+// Идентификатор пользователя из access JWT (claim sub) или null, если токен не разобрать.
+// Подпись здесь не проверяется: это не защита, а способ понять, чей токен пришёл
+function tokenSubject(token) {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const { sub } = JSON.parse(atob(payload));
+    return typeof sub === "string" ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
+// Токен из другой вкладки годится, только если у этой вкладки есть сессия и она того же
+// пользователя. Вышедшая вкладка и вкладка, где вошли под другой учётной записью, его не берут
+function belongsToThisSession(token) {
+  const own = accessToken && tokenSubject(accessToken);
+  return Boolean(own) && own === tokenSubject(token);
+}
+
+// Вкладки, которые ждут итог refresh в другой вкладке. Каждая получает новый токен или null
+const waiters = new Set();
+
 channel?.addEventListener("message", ({ data }) => {
   if (data?.type === "refreshed") {
-    setAccessToken(data.token);
+    const accepted = belongsToThisSession(data.token);
+    if (accepted) {
+      setAccessToken(data.token);
+    }
+    // Чужой токен ждущей вкладке не нужен: она обновит свой сама
+    waiters.forEach((finish) => finish(accepted ? data.token : null));
+  } else if (data?.type === "refresh-failed") {
+    waiters.forEach((finish) => finish(null));
   }
 });
 
-// Ждёт итог refresh в другой вкладке: новый токен или null, если там не вышло или время истекло
+// Ждёт итог refresh в другой вкладке: новый токен или null, если там не вышло,
+// токен чужой или время истекло
 function waitForOtherTab() {
-  let cancel;
+  let finish;
   const result = new Promise((resolve) => {
-    const onMessage = ({ data }) => {
-      if (data?.type === "refreshed" || data?.type === "refresh-failed") {
-        cancel(data.token ?? null);
-      }
-    };
-    const timer = setTimeout(() => cancel(null), BROADCAST_WAIT_MS);
-    cancel = (value) => {
+    const timer = setTimeout(() => finish(null), BROADCAST_WAIT_MS);
+    finish = (token) => {
       clearTimeout(timer);
-      channel?.removeEventListener("message", onMessage);
-      resolve(value);
+      waiters.delete(finish);
+      resolve(token);
     };
-    channel?.addEventListener("message", onMessage);
+    waiters.add(finish);
   });
-  return { result, cancel: () => cancel(null) };
+  return { result, cancel: () => finish(null) };
 }
 
 async function exchangeRefreshToken() {
@@ -143,6 +168,18 @@ async function exchangeRefreshToken() {
       throw await toApiError(response);
     }
     const { access_token: token } = await readBody(response);
+
+    // Cookie общая на все вкладки. Если в другой вкладке вошли под другой учётной записью,
+    // cookie уже её, и молча подменить пользователя в этой вкладке нельзя
+    const own = accessToken && tokenSubject(accessToken);
+    if (own && own !== tokenSubject(token)) {
+      throw new ApiError({
+        status: 401,
+        code: "SESSION_CHANGED",
+        message: "В другой вкладке выполнен вход под другой учётной записью. Войдите заново"
+      });
+    }
+
     setAccessToken(token);
     channel?.postMessage({ type: "refreshed", token });
     return token;

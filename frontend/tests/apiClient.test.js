@@ -20,6 +20,13 @@ function jsonResponse(status, body) {
 const unauthorized = () =>
   jsonResponse(401, { code: "NOT_AUTHENTICATED", message: "Требуется вход", details: {} });
 
+// Токен в виде JWT без подписи: клиент читает из него только sub
+function fakeJwt(sub, id) {
+  const encode = (value) =>
+    btoa(JSON.stringify(value)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+  return `${encode({ alg: "none" })}.${encode({ sub, id })}.signature`;
+}
+
 let fetchMock;
 
 beforeEach(() => {
@@ -208,7 +215,15 @@ describe("refresh across tabs", () => {
 
   // Бэкенд с ротацией refresh-токена: старый сгорает при обмене, как в use case Refresh
   function fakeBackend() {
-    const state = { cookie: "r1", current: "r1", issued: 0, refreshCalls: [], validTokens: new Set() };
+    // subject — владелец cookie: чей токен выдаст refresh
+    const state = {
+      cookie: "r1",
+      current: "r1",
+      issued: 0,
+      subject: "user-1",
+      refreshCalls: [],
+      validTokens: new Set()
+    };
     const delay = () => new Promise((resolve) => setTimeout(resolve, 10));
 
     state.fetch = vi.fn(async (url, init) => {
@@ -225,7 +240,7 @@ describe("refresh across tabs", () => {
         }
         state.issued += 1;
         state.current = state.cookie = `r${state.issued + 1}`;
-        const token = `access-${state.issued}`;
+        const token = fakeJwt(state.subject, `access-${state.issued}`);
         state.validTokens.add(token);
         return jsonResponse(200, { access_token: token });
       }
@@ -240,6 +255,7 @@ describe("refresh across tabs", () => {
     return import("../src/api/client.js");
   }
 
+  const expired = fakeJwt("user-1", "expired");
   let backend;
 
   beforeEach(() => {
@@ -250,22 +266,22 @@ describe("refresh across tabs", () => {
 
   it("refreshes once when the access token expires in two tabs at the same time", async () => {
     const [tabA, tabB] = [await openTab(), await openTab()];
-    tabA.setAccessToken("expired");
-    tabB.setAccessToken("expired");
-    const expired = vi.fn();
-    tabA.onSessionExpired(expired);
-    tabB.onSessionExpired(expired);
+    tabA.setAccessToken(expired);
+    tabB.setAccessToken(expired);
+    const onExpired = vi.fn();
+    tabA.onSessionExpired(onExpired);
+    tabB.onSessionExpired(onExpired);
 
     await Promise.all([tabA.api.get("/projects"), tabB.api.get("/projects")]);
 
     expect(backend.refreshCalls).toEqual(["r1"]);
     expect(tabB.getAccessToken()).toBe(tabA.getAccessToken());
-    expect(expired).not.toHaveBeenCalled();
+    expect(onExpired).not.toHaveBeenCalled();
   });
 
   it("never sends a refresh token that was already rotated", async () => {
     const tabs = [await openTab(), await openTab(), await openTab()];
-    tabs.forEach((tab) => tab.setAccessToken("expired"));
+    tabs.forEach((tab) => tab.setAccessToken(expired));
 
     await Promise.all(tabs.flatMap((tab) => [tab.api.get("/projects"), tab.api.get("/projects")]));
 
@@ -274,6 +290,7 @@ describe("refresh across tabs", () => {
 
   it("shares the new token with tabs that did not refresh", async () => {
     const [tabA, tabB] = [await openTab(), await openTab()];
+    tabB.setAccessToken(expired);
 
     const token = await tabA.refreshAccessToken();
     await vi.waitFor(() => expect(tabB.getAccessToken()).toBe(token));
@@ -294,14 +311,15 @@ describe("refresh across tabs", () => {
     ]);
 
     expect(results[0]).toMatchObject({ status: "rejected", reason: { code: "NETWORK_ERROR" } });
-    expect(results[1]).toMatchObject({ status: "fulfilled", value: "access-1" });
+    expect(results[1]).toMatchObject({ status: "fulfilled" });
+    expect(results[1].value).toBe(tabB.getAccessToken());
   });
 
   it("without Web Locks the second tab would hit a rotated token", async () => {
     vi.stubGlobal("navigator", { ...navigator, locks: undefined });
     const [tabA, tabB] = [await openTab(), await openTab()];
-    tabA.setAccessToken("expired");
-    tabB.setAccessToken("expired");
+    tabA.setAccessToken(expired);
+    tabB.setAccessToken(expired);
 
     const results = await Promise.allSettled([tabA.api.get("/projects"), tabB.api.get("/projects")]);
 

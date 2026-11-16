@@ -1,6 +1,13 @@
 from typing import Protocol, Self
 
-from app.application.academic.ports import GroupRepository, SubjectRepository, TeacherRepository
+from app.application.academic.ports import (
+    GroupRepository,
+    RoomRepository,
+    StreamRepository,
+    SubjectRepository,
+    TeacherRepository,
+    WorkloadRepository,
+)
 from app.application.auth.ports import UserRepository, UserSessionRepository
 from app.application.projects.ports import ProjectRepository
 from app.application.scheduling.ports import JobOutbox, JobRepository, ScheduleRepository
@@ -15,6 +22,9 @@ class UnitOfWork(Protocol):
     subjects: SubjectRepository
     teachers: TeacherRepository
     groups: GroupRepository
+    rooms: RoomRepository
+    streams: StreamRepository
+    workloads: WorkloadRepository
     jobs: JobRepository
     job_outbox: JobOutbox
     schedules: ScheduleRepository

@@ -5,7 +5,8 @@ from app.application.academic.changes import project_data_changed
 from app.application.auth.access import owned_project
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
-from app.domain.academic.teacher import Capability, Teacher
+from app.domain.academic.capability import Capability
+from app.domain.academic.teacher import Teacher
 from app.domain.shared.errors import InvalidValue, NotFound
 from app.domain.shared.ids import ProjectId, TeacherId, UserId
 from app.domain.shared.week import WeeklyInterval

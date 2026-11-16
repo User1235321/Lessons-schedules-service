@@ -4,8 +4,11 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.infrastructure.persistence.repositories.academic import (
     SqlGroupRepository,
+    SqlRoomRepository,
+    SqlStreamRepository,
     SqlSubjectRepository,
     SqlTeacherRepository,
+    SqlWorkloadRepository,
 )
 from app.infrastructure.persistence.repositories.job_outbox import SqlJobOutbox
 from app.infrastructure.persistence.repositories.jobs import SqlJobRepository
@@ -26,6 +29,9 @@ class SqlUnitOfWork:
     subjects: SqlSubjectRepository
     teachers: SqlTeacherRepository
     groups: SqlGroupRepository
+    rooms: SqlRoomRepository
+    streams: SqlStreamRepository
+    workloads: SqlWorkloadRepository
     jobs: SqlJobRepository
     job_outbox: SqlJobOutbox
     schedules: SqlScheduleRepository
@@ -41,6 +47,9 @@ class SqlUnitOfWork:
         self.subjects = SqlSubjectRepository(self._session)
         self.teachers = SqlTeacherRepository(self._session)
         self.groups = SqlGroupRepository(self._session)
+        self.rooms = SqlRoomRepository(self._session)
+        self.streams = SqlStreamRepository(self._session)
+        self.workloads = SqlWorkloadRepository(self._session)
         self.jobs = SqlJobRepository(self._session)
         self.job_outbox = SqlJobOutbox(self._session)
         self.schedules = SqlScheduleRepository(self._session)

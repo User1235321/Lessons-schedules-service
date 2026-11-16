@@ -79,8 +79,12 @@ def test_subject_in_use_is_not_deleted(api: TestClient) -> None:
     assert response.status_code == 409
     assert response.json() == {
         "code": "SUBJECT_IN_USE",
-        "message": "Дисциплина используется у преподавателей",
-        "details": {"teachers": [{"id": petrova["id"], "full_name": "Петрова А. В."}]},
+        "message": "Дисциплина используется в данных проекта",
+        "details": {
+            "teachers": [{"id": petrova["id"], "full_name": "Петрова А. В."}],
+            "rooms": [],
+            "workloads": [],
+        },
     }
 
 

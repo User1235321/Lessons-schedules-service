@@ -302,13 +302,20 @@ class SqlTeacherRepository:
 
     def _insert_parts(self, teacher: Teacher) -> None:
         with _translated():
-            self._session.execute(insert(TeacherCapabilityRow), capability_rows(teacher))
+            self._session.execute(
+                insert(TeacherCapabilityRow),
+                capability_rows(
+                    teacher.project_id, {"teacher_id": teacher.id}, teacher.capabilities
+                ),
+            )
         self._session.execute(
-            insert(TeacherAvailabilityRow), interval_rows(teacher, teacher.availability)
+            insert(TeacherAvailabilityRow),
+            interval_rows({"teacher_id": teacher.id}, teacher.availability),
         )
         if teacher.preferences:
             self._session.execute(
-                insert(TeacherPreferenceRow), interval_rows(teacher, teacher.preferences)
+                insert(TeacherPreferenceRow),
+                interval_rows({"teacher_id": teacher.id}, teacher.preferences),
             )
 
 

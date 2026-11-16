@@ -1,9 +1,11 @@
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, timedelta
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import Connection, func, select
+from sqlalchemy import Connection, Engine, delete, func, select
+from sqlalchemy.orm import sessionmaker
 
+from app.application.academic.changes import project_data_changed
 from app.domain.academic.errors import (
     GroupNameTaken,
     SubjectInUse,
@@ -15,6 +17,7 @@ from app.domain.academic.subject import Subject
 from app.domain.academic.teacher import Capability, Teacher
 from app.domain.auth.user import Email, User
 from app.domain.projects.project import Project
+from app.domain.projects.settings import DurationMode, ProjectSettings, StudyCycle, TimeMode
 from app.domain.shared.errors import InvalidValue, NotFound
 from app.domain.shared.ids import GroupId, ProjectId, SubgroupId, SubjectId, TeacherId, UserId
 from app.domain.shared.week import Week, Weekday, WeeklyInterval
@@ -25,6 +28,7 @@ from app.infrastructure.persistence.models import (
     TeacherAvailabilityRow,
     TeacherCapabilityRow,
     TeacherRow,
+    UserRow,
 )
 from app.infrastructure.persistence.uow import SqlUnitOfWork
 
@@ -94,6 +98,60 @@ def stored_group(uow: SqlUnitOfWork, group: StudentGroup) -> StudentGroup:
 
 def count(db_connection: Connection, table: type) -> int:
     return db_connection.scalar(select(func.count()).select_from(table)) or 0
+
+
+def test_academic_change_preserves_concurrent_project_settings(
+    migrated_engine: Engine,
+) -> None:
+    sessions = sessionmaker(bind=migrated_engine, expire_on_commit=False)
+    project = stored_project(SqlUnitOfWork(sessions))
+    settings = ProjectSettings(
+        cycle=StudyCycle((Weekday.MONDAY,), (Weekday.TUESDAY,)),
+        time_mode=TimeMode.step(30),
+        duration_mode=DurationMode.individual(),
+    )
+    changed_at = NOW + timedelta(minutes=2)
+    subject = Subject(
+        id=SubjectId(uuid4()),
+        project_id=project.id,
+        name="Математика",
+    )
+
+    try:
+        with SqlUnitOfWork(sessions) as request_a:
+            stale_project = request_a.projects.get_owned(project.id, project.owner_id)
+            assert stale_project is not None
+            assert stale_project.name == "Осень"
+
+            with SqlUnitOfWork(sessions) as request_b:
+                updated_project = request_b.projects.get_owned(project.id, project.owner_id)
+                assert updated_project is not None
+                updated_project.rename("Весна", NOW + timedelta(minutes=1))
+                updated_project.change_settings(settings, NOW + timedelta(minutes=1))
+                request_b.projects.save(updated_project)
+                request_b.commit()
+
+            request_a.subjects.add(subject)
+            project_data_changed(request_a, stale_project, changed_at)
+            request_a.commit()
+
+        with SqlUnitOfWork(sessions) as check:
+            saved = check.projects.get_owned(project.id, project.owner_id)
+            assert saved is not None
+            assert saved.name == "Весна"
+            assert saved.settings == settings
+            assert saved.updated_at.replace(tzinfo=None) == changed_at.replace(tzinfo=None)
+            assert check.subjects.get(project.id, subject.id) == subject
+    finally:
+        with migrated_engine.begin() as connection:
+            connection.execute(delete(UserRow).where(UserRow.id == project.owner_id))
+
+
+def test_touch_project_rejects_another_owner(uow: SqlUnitOfWork) -> None:
+    project = stored_project(uow)
+
+    with uow, pytest.raises(NotFound):
+        uow.projects.touch(project.id, UserId(uuid4()), NOW)
 
 
 # --- Дисциплины

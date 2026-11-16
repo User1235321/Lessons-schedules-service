@@ -148,6 +148,8 @@ def test_generation_schedules_reject_cancelled_job(scheduling_context: tuple) ->
     )
     assert response.status_code == 409
     assert response.json()["code"] == "JOB_RESULTS_UNAVAILABLE"
+
+
 def test_api_reads_running_progress_and_missing_redis_progress(
     scheduling_context: tuple,
 ) -> None:

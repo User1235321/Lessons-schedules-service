@@ -11,7 +11,6 @@ from app.domain.scheduling.problem import (
     WorkloadTarget,
     WorkloadTargetKind,
 )
-from app.domain.scheduling.resources import LessonType
 from app.domain.scheduling.schedule import LessonFormat
 from app.domain.scheduling.solver import ScheduleVariant, SolverResult, SolverStatus
 from app.scheduling.preview import PreviewScheduleSolver
@@ -55,7 +54,7 @@ def test_preview_refuses_to_ignore_real_workload() -> None:
         id=uuid4(),
         target=WorkloadTarget(WorkloadTargetKind.GROUP, uuid4()),
         subject_id=uuid4(),
-        lesson_type=LessonType.LECTURE,
+        lesson_type="LECTURE",
         lesson_format=LessonFormat.ONSITE,
         occurrences_per_cycle=1,
         required_teacher_count=1,

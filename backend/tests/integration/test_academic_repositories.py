@@ -52,6 +52,7 @@ from app.infrastructure.persistence.models import (
     TeacherAvailabilityRow,
     TeacherCapabilityRow,
     TeacherRow,
+    UserRow,
     WorkloadRow,
 )
 from app.infrastructure.persistence.uow import SqlUnitOfWork

@@ -16,6 +16,7 @@ from app.application.scheduling.use_cases import (
     CancelGenerationJob,
     CreateGenerationJob,
     GetGenerationJob,
+    GetGenerationSchedules,
 )
 from app.domain.shared.errors import NotAuthenticated
 from app.domain.shared.ids import UserId
@@ -39,6 +40,8 @@ class UseCases(Protocol):
     def create_generation_job(self) -> CreateGenerationJob: ...
 
     def get_generation_job(self) -> GetGenerationJob: ...
+
+    def get_generation_schedules(self) -> GetGenerationSchedules: ...
 
     def cancel_generation_job(self) -> CancelGenerationJob: ...
 

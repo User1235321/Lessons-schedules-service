@@ -122,6 +122,14 @@ def test_subject_name_is_unique_in_project_regardless_of_case(uow: SqlUnitOfWork
     assert error.value.details == {"field": "name"}
 
 
+def test_subject_names_are_unique_after_unicode_casefold(uow: SqlUnitOfWork) -> None:
+    project = stored_project(uow).id
+    stored_subject(uow, project, "Straße")
+
+    with uow, pytest.raises(SubjectNameTaken):
+        uow.subjects.add(Subject(id=SubjectId(uuid4()), project_id=project, name="STRASSE"))
+
+
 def test_subject_cannot_be_renamed_to_a_taken_name(uow: SqlUnitOfWork) -> None:
     project = stored_project(uow).id
     stored_subject(uow, project, "Математика")
@@ -280,6 +288,14 @@ def test_group_name_is_unique_in_project_regardless_of_case(uow: SqlUnitOfWork) 
         uow.groups.add(a_group(project, "301А"))
 
 
+def test_group_names_are_unique_after_unicode_casefold(uow: SqlUnitOfWork) -> None:
+    project = stored_project(uow).id
+    stored_group(uow, a_group(project, "Straße"))
+
+    with uow, pytest.raises(GroupNameTaken):
+        uow.groups.add(a_group(project, "STRASSE"))
+
+
 def test_saving_group_keeps_subgroup_ids(uow: SqlUnitOfWork) -> None:
     project = stored_project(uow).id
     first, second = a_subgroup("301-1"), a_subgroup("301-2")
@@ -301,6 +317,30 @@ def test_saving_group_keeps_subgroup_ids(uow: SqlUnitOfWork) -> None:
     assert reloaded == stored
     assert reloaded is not None
     assert {subgroup.id for subgroup in reloaded.subgroups} == {first.id, third.id}
+
+
+def test_swapping_subgroup_names_preserves_their_ids(uow: SqlUnitOfWork) -> None:
+    project = stored_project(uow).id
+    first, second = a_subgroup("301-А"), a_subgroup("301-Б")
+    group = stored_group(uow, a_group(project, "301", first, second))
+    swapped = StudentGroup(
+        id=group.id,
+        project_id=project,
+        name=group.name,
+        student_count=group.student_count,
+        subgroups=(
+            Subgroup(id=first.id, name=second.name, student_count=first.student_count),
+            Subgroup(id=second.id, name=first.name, student_count=second.student_count),
+        ),
+    )
+
+    with uow:
+        assert uow.groups.get_for_update(project, group.id) is not None
+        uow.groups.save(swapped)
+        uow.commit()
+
+    with uow:
+        assert uow.groups.get(project, group.id) == swapped
 
 
 def test_group_of_another_project_is_neither_saved_nor_deleted(uow: SqlUnitOfWork) -> None:

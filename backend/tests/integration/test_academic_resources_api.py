@@ -126,7 +126,7 @@ def test_rooms_reject_invalid_values_and_duplicate_names(api: TestClient) -> Non
     assert invalid_interval.status_code == 422
     assert invalid_interval.json()["details"]["field"] == "availability.0.end_time"
     assert invalid_capabilities.status_code == 422
-    assert invalid_capabilities.json()["details"]["field"] == "capabilities"
+    assert invalid_capabilities.json()["details"]["field"] == "capabilities.0.subject_id"
     assert unknown_property.status_code == 422
     assert unknown_property.json()["details"]["fields"][0]["field"] == "unexpected"
 
@@ -262,7 +262,7 @@ def test_workloads_reject_invalid_numbers_targets_and_references(api: TestClient
     )
     assert conflicting.status_code == 422
     assert unknown_subject.json()["details"]["field"] == "subject_id"
-    assert unknown_target.json()["details"]["field"] == "target.id"
+    assert unknown_target.json()["details"]["field"] == "group_id"
 
 
 def test_referenced_stream_cannot_be_deleted(api: TestClient) -> None:

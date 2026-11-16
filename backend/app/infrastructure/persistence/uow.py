@@ -2,6 +2,11 @@ from typing import Self
 
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.infrastructure.persistence.repositories.academic import (
+    SqlGroupRepository,
+    SqlSubjectRepository,
+    SqlTeacherRepository,
+)
 from app.infrastructure.persistence.repositories.job_outbox import SqlJobOutbox
 from app.infrastructure.persistence.repositories.jobs import SqlJobRepository
 from app.infrastructure.persistence.repositories.projects import SqlProjectRepository
@@ -18,6 +23,9 @@ class SqlUnitOfWork:
     users: SqlUserRepository
     user_sessions: SqlUserSessionRepository
     projects: SqlProjectRepository
+    subjects: SqlSubjectRepository
+    teachers: SqlTeacherRepository
+    groups: SqlGroupRepository
     jobs: SqlJobRepository
     job_outbox: SqlJobOutbox
     schedules: SqlScheduleRepository
@@ -30,6 +38,9 @@ class SqlUnitOfWork:
         self.users = SqlUserRepository(self._session)
         self.user_sessions = SqlUserSessionRepository(self._session)
         self.projects = SqlProjectRepository(self._session)
+        self.subjects = SqlSubjectRepository(self._session)
+        self.teachers = SqlTeacherRepository(self._session)
+        self.groups = SqlGroupRepository(self._session)
         self.jobs = SqlJobRepository(self._session)
         self.job_outbox = SqlJobOutbox(self._session)
         self.schedules = SqlScheduleRepository(self._session)

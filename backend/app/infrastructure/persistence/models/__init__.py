@@ -5,6 +5,15 @@
 """
 
 from app.infrastructure.persistence.base import Base
+from app.infrastructure.persistence.models.academic import (
+    StudentGroupRow,
+    SubgroupRow,
+    SubjectRow,
+    TeacherAvailabilityRow,
+    TeacherCapabilityRow,
+    TeacherPreferenceRow,
+    TeacherRow,
+)
 from app.infrastructure.persistence.models.jobs import JobOutboxRow, JobRow
 from app.infrastructure.persistence.models.projects import ProjectRow
 from app.infrastructure.persistence.models.schedules import (
@@ -22,6 +31,13 @@ __all__ = [
     "ScheduleEntryRow",
     "ScheduleEntryTeacherRow",
     "ScheduleRow",
+    "StudentGroupRow",
+    "SubgroupRow",
+    "SubjectRow",
+    "TeacherAvailabilityRow",
+    "TeacherCapabilityRow",
+    "TeacherPreferenceRow",
+    "TeacherRow",
     "UserRow",
     "UserSessionRow",
 ]

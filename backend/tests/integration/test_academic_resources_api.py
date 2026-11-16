@@ -262,7 +262,7 @@ def test_workloads_reject_invalid_numbers_targets_and_references(api: TestClient
     )
     assert conflicting.status_code == 422
     assert unknown_subject.json()["details"]["field"] == "subject_id"
-    assert unknown_target.json()["details"]["field"] == "group_id"
+    assert unknown_target.json()["details"]["field"] == "target.id"
 
 
 def test_referenced_stream_cannot_be_deleted(api: TestClient) -> None:
@@ -331,17 +331,36 @@ def test_cross_project_links_are_rejected(api: TestClient) -> None:
     assert workload.json()["details"]["field"] == "subject_id"
 
 
-@pytest.mark.parametrize(
-    "room_type",
-    ["LECTURE", "PRACTICE_UNIVERSAL", "PRACTICE_SPECIALIZED", "LABORATORY"],
-)
-def test_each_room_type_is_supported(api: TestClient, room_type: str) -> None:
+@pytest.mark.parametrize("target_key", ["group_id", "subgroup_id", "stream_id"])
+def test_workload_rejects_foreign_project_targets(
+    api: TestClient, target_key: str
+) -> None:
     user = sign_in(api)
-    project_id = new_project(api, user)
-    room = created(
+    first_project = new_project(api, user, "Первый")
+    other_project = new_project(api, user, "Второй")
+    first_subject = subject(api, user, first_project)
+    other_group = group(api, user, other_project, "303")
+    subgroup = created(
         api,
-        path(project_id, "rooms"),
+        path(other_project, "subgroups"),
         user,
-        {**room_payload(), "room_type": room_type},
+        {"group_id": other_group["id"], "name": "303-1", "student_count": 10},
     )
-    assert room["room_type"] == room_type
+    stream = created(
+        api,
+        path(other_project, "streams"),
+        user,
+        {"name": "Чужой поток", "group_ids": [other_group["id"]]},
+    )
+    targets = {
+        "group_id": other_group["id"],
+        "subgroup_id": subgroup["id"],
+        "stream_id": stream["id"],
+    }
+    response = api.post(
+        path(first_project, "workloads"),
+        json=workload_payload(first_subject["id"], target_key, targets[target_key]),
+        headers=user,
+    )
+    assert response.status_code == 422
+    assert response.json()["details"]["field"] == target_key

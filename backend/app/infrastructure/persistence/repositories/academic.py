@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from sqlalchemy import Select, and_, delete, insert, select, text, update
+from sqlalchemy import Select, and_, delete, func, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -121,7 +121,7 @@ class SqlSubjectRepository:
                 TeacherCapabilityRow.subject_id == subject_id,
             )
             .distinct()
-            .order_by(TeacherRow.full_name, TeacherRow.id)
+            .order_by(func.lower(TeacherRow.full_name), TeacherRow.id)
         ).all()
         if teachers:
             raise _subject_in_use([{"id": str(id_), "full_name": name} for id_, name in teachers])

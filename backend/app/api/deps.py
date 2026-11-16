@@ -45,6 +45,12 @@ from app.application.projects.use_cases import (
     ListProjects,
     UpdateProject,
 )
+from app.application.scheduling.use_cases import (
+    CancelGenerationJob,
+    CreateGenerationJob,
+    GetGenerationJob,
+    GetGenerationSchedules,
+)
 from app.domain.shared.errors import NotAuthenticated
 from app.domain.shared.ids import UserId
 
@@ -65,6 +71,7 @@ class UseCases(Protocol):
     def get_current_user(self) -> GetCurrentUser: ...
 
     def create_project(self) -> CreateProject: ...
+    def create_generation_job(self) -> CreateGenerationJob: ...
 
     def list_projects(self) -> ListProjects: ...
 
@@ -113,6 +120,13 @@ class UseCases(Protocol):
     def update_subgroup(self) -> UpdateSubgroup: ...
 
     def delete_subgroup(self) -> DeleteSubgroup: ...
+
+
+    def get_generation_job(self) -> GetGenerationJob: ...
+
+    def get_generation_schedules(self) -> GetGenerationSchedules: ...
+
+    def cancel_generation_job(self) -> CancelGenerationJob: ...
 
 
 def get_use_cases(request: Request) -> UseCases:

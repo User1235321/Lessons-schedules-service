@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.domain.scheduling.errors import JobNotCancellable, JobResultsUnavailable
 from app.domain.shared.errors import (
     AlreadyExists,
     Conflict,
@@ -13,6 +14,8 @@ from app.domain.shared.errors import (
 
 # Порядок важен: подкласс с другим кодом ответа должен стоять выше своего родителя.
 HTTP_STATUS: dict[type[DomainError], int] = {
+    JobNotCancellable: 409,
+    JobResultsUnavailable: 409,
     NotAuthenticated: 401,
     NotFound: 404,
     AlreadyExists: 409,

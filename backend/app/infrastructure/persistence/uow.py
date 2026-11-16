@@ -7,7 +7,10 @@ from app.infrastructure.persistence.repositories.academic import (
     SqlSubjectRepository,
     SqlTeacherRepository,
 )
+from app.infrastructure.persistence.repositories.job_outbox import SqlJobOutbox
+from app.infrastructure.persistence.repositories.jobs import SqlJobRepository
 from app.infrastructure.persistence.repositories.projects import SqlProjectRepository
+from app.infrastructure.persistence.repositories.schedules import SqlScheduleRepository
 from app.infrastructure.persistence.repositories.users import (
     SqlUserRepository,
     SqlUserSessionRepository,
@@ -23,6 +26,9 @@ class SqlUnitOfWork:
     subjects: SqlSubjectRepository
     teachers: SqlTeacherRepository
     groups: SqlGroupRepository
+    jobs: SqlJobRepository
+    job_outbox: SqlJobOutbox
+    schedules: SqlScheduleRepository
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
@@ -35,6 +41,9 @@ class SqlUnitOfWork:
         self.subjects = SqlSubjectRepository(self._session)
         self.teachers = SqlTeacherRepository(self._session)
         self.groups = SqlGroupRepository(self._session)
+        self.jobs = SqlJobRepository(self._session)
+        self.job_outbox = SqlJobOutbox(self._session)
+        self.schedules = SqlScheduleRepository(self._session)
         return self
 
     def __exit__(self, *exc: object) -> None:

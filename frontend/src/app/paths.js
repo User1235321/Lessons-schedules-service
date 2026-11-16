@@ -9,6 +9,7 @@ export const projectSections = [
   { path: "streams", label: "Потоки" },
   { path: "workloads", label: "Нагрузка" },
   { path: "constraints", label: "Ограничения" },
+  { path: "optimization", label: "Оптимизация" },
   { path: "generation", label: "Расчёт" },
   { path: "schedules", label: "Расписания" },
   { path: "files", label: "Файлы" },

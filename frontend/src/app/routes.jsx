@@ -133,6 +133,12 @@ export const routes = [
                             )
                           },
                           {
+                            path: "optimization",
+                            lazy: page(() =>
+                              import("../features/constraints/pages/OptimizationPage.jsx")
+                            )
+                          },
+                          {
                             path: "generation",
                             lazy: page(() =>
                               import("../features/generation/pages/GenerationPage.jsx")

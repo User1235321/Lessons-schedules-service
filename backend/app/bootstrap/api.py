@@ -11,9 +11,12 @@ from app.api.routers import (
     health,
     jobs,
     projects,
+    rooms,
+    streams,
     subgroups,
     subjects,
     teachers,
+    workloads,
 )
 from app.bootstrap.container import Container, build_container
 from app.bootstrap.settings import Settings
@@ -40,5 +43,8 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(teachers.router)
     app.include_router(groups.router)
     app.include_router(subgroups.router)
+    app.include_router(rooms.router)
+    app.include_router(streams.router)
+    app.include_router(workloads.router)
     app.include_router(jobs.router)
     return app

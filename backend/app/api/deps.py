@@ -16,6 +16,20 @@ from app.application.academic.groups import (
     UpdateGroup,
     UpdateSubgroup,
 )
+from app.application.academic.rooms import (
+    CreateRoom,
+    DeleteRoom,
+    GetRoom,
+    ListRooms,
+    UpdateRoom,
+)
+from app.application.academic.streams import (
+    CreateStream,
+    DeleteStream,
+    GetStream,
+    ListStreams,
+    UpdateStream,
+)
 from app.application.academic.subjects import (
     CreateSubject,
     DeleteSubject,
@@ -29,6 +43,13 @@ from app.application.academic.teachers import (
     GetTeacher,
     ListTeachers,
     UpdateTeacher,
+)
+from app.application.academic.workloads import (
+    CreateWorkload,
+    DeleteWorkload,
+    GetWorkload,
+    ListWorkloads,
+    UpdateWorkload,
 )
 from app.application.auth.use_cases import (
     Authenticate,
@@ -121,6 +142,36 @@ class UseCases(Protocol):
 
     def delete_subgroup(self) -> DeleteSubgroup: ...
 
+
+    def create_room(self) -> CreateRoom: ...
+
+    def list_rooms(self) -> ListRooms: ...
+
+    def get_room(self) -> GetRoom: ...
+
+    def update_room(self) -> UpdateRoom: ...
+
+    def delete_room(self) -> DeleteRoom: ...
+
+    def create_stream(self) -> CreateStream: ...
+
+    def list_streams(self) -> ListStreams: ...
+
+    def get_stream(self) -> GetStream: ...
+
+    def update_stream(self) -> UpdateStream: ...
+
+    def delete_stream(self) -> DeleteStream: ...
+
+    def create_workload(self) -> CreateWorkload: ...
+
+    def list_workloads(self) -> ListWorkloads: ...
+
+    def get_workload(self) -> GetWorkload: ...
+
+    def update_workload(self) -> UpdateWorkload: ...
+
+    def delete_workload(self) -> DeleteWorkload: ...
 
     def get_generation_job(self) -> GetGenerationJob: ...
 

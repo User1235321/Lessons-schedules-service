@@ -1,7 +1,7 @@
 """add subjects, teachers and student groups
 
 Revision ID: 82939baba47b
-Revises: fa66cf515842
+Revises: e5820ab67f31
 Create Date: 2026-11-08 19:48:57.527241
 
 """

@@ -14,11 +14,15 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.academic.lesson_type import LessonType
 from app.domain.academic.names import MAX_NAME_LENGTH, name_key
+from app.domain.academic.room import RoomType
+from app.domain.academic.workload import LessonFormat
 from app.domain.shared.week import Week, Weekday
 from app.infrastructure.persistence.base import Base
 from app.infrastructure.persistence.checks import one_of
 
 LESSON_TYPE_LENGTH = 16
+ROOM_TYPE_LENGTH = 32
+FORMAT_LENGTH = 16
 WEEK_LENGTH = 4
 WEEKDAY_LENGTH = 9  # WEDNESDAY
 
@@ -172,3 +176,145 @@ class SubgroupRow(Base):
     name_key: Mapped[str] = mapped_column(Text, default=_name_key_default)
     student_count: Mapped[int]
 
+
+def _in_project(columns: list[str], table: str, name: str) -> ForeignKeyConstraint:
+    """Ссылка на данные того же проекта. Занятое удалить нельзя, а вместе с проектом можно:
+    DEFERRABLE позволяет удалению проекта отложить проверку до commit (см. SqlProjectRepository).
+    """
+    return ForeignKeyConstraint(
+        ["project_id", *columns],
+        [f"{table}.project_id", f"{table}.id"],
+        name=name,
+        deferrable=True,
+        initially="IMMEDIATE",
+    )
+
+
+class RoomRow(Base):
+    __tablename__ = "rooms"
+    __table_args__ = (
+        UniqueConstraint("project_id", "id", name="uq_rooms_project_id_id"),
+        UniqueConstraint("project_id", "name_key", name="uq_rooms_project_id_name"),
+        CheckConstraint("btrim(name) <> ''", name="name_not_blank"),
+        CheckConstraint("capacity > 0", name="capacity_positive"),
+        CheckConstraint(one_of("type", RoomType), name="type_known"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(MAX_NAME_LENGTH))
+    name_key: Mapped[str] = mapped_column(Text, default=_name_key_default)
+    capacity: Mapped[int]
+    type: Mapped[str] = mapped_column(String(ROOM_TYPE_LENGTH))
+
+    availability: Mapped[list["RoomAvailabilityRow"]] = relationship(viewonly=True, lazy="raise")
+    capabilities: Mapped[list["RoomCapabilityRow"]] = relationship(viewonly=True, lazy="raise")
+
+
+class RoomAvailabilityRow(Base):
+    __tablename__ = "room_availability"
+    __table_args__ = _interval_checks()
+
+    room_id: Mapped[UUID] = mapped_column(
+        ForeignKey("rooms.id", ondelete="CASCADE"), primary_key=True
+    )
+    week: Mapped[str] = mapped_column(String(WEEK_LENGTH), primary_key=True)
+    day: Mapped[str] = mapped_column(String(WEEKDAY_LENGTH), primary_key=True)
+    start_time: Mapped[time] = mapped_column(primary_key=True)
+    end_time: Mapped[time] = mapped_column(primary_key=True)
+
+class RoomCapabilityRow(Base):
+    """Для чего годится специализированная или лабораторная аудитория (F_Data_9)."""
+
+    __tablename__ = "room_capabilities"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "room_id"],
+            ["rooms.project_id", "rooms.id"],
+            name="fk_room_capabilities_room",
+            ondelete="CASCADE",
+        ),
+        _in_project(["subject_id"], "subjects", "fk_room_capabilities_subject"),
+        CheckConstraint(one_of("lesson_type", LessonType), name="lesson_type_known"),
+        Index("ix_room_capabilities_project_id_subject_id", "project_id", "subject_id"),
+    )
+
+    project_id: Mapped[UUID]
+    room_id: Mapped[UUID] = mapped_column(primary_key=True)
+    subject_id: Mapped[UUID] = mapped_column(primary_key=True)
+    lesson_type: Mapped[str] = mapped_column(String(LESSON_TYPE_LENGTH), primary_key=True)
+
+
+class StreamRow(Base):
+    __tablename__ = "student_streams"
+    __table_args__ = (
+        UniqueConstraint("project_id", "id", name="uq_student_streams_project_id_id"),
+        UniqueConstraint("project_id", "name_key", name="uq_student_streams_project_id_name"),
+        CheckConstraint("btrim(name) <> ''", name="name_not_blank"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(MAX_NAME_LENGTH))
+    name_key: Mapped[str] = mapped_column(Text, default=_name_key_default)
+
+    groups: Mapped[list["StreamGroupRow"]] = relationship(viewonly=True, lazy="raise")
+
+
+class StreamGroupRow(Base):
+    """Группа в составе потока (HLD 9.7)."""
+
+    __tablename__ = "stream_groups"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["project_id", "stream_id"],
+            ["student_streams.project_id", "student_streams.id"],
+            name="fk_stream_groups_stream",
+            ondelete="CASCADE",
+        ),
+        _in_project(["group_id"], "student_groups", "fk_stream_groups_group"),
+        Index("ix_stream_groups_project_id_group_id", "project_id", "group_id"),
+    )
+
+    project_id: Mapped[UUID]
+    stream_id: Mapped[UUID] = mapped_column(primary_key=True)
+    group_id: Mapped[UUID] = mapped_column(primary_key=True)
+
+
+class WorkloadRow(Base):
+    """Элемент учебной нагрузки (HLD 9.8). Цель — ровно одна из group_id, subgroup_id, stream_id."""
+
+    __tablename__ = "workloads"
+    __table_args__ = (
+        UniqueConstraint("project_id", "id", name="uq_workloads_project_id_id"),
+        _in_project(["subject_id"], "subjects", "fk_workloads_subject"),
+        _in_project(["group_id"], "student_groups", "fk_workloads_group"),
+        _in_project(["subgroup_id"], "subgroups", "fk_workloads_subgroup"),
+        _in_project(["stream_id"], "student_streams", "fk_workloads_stream"),
+        CheckConstraint("num_nonnulls(group_id, subgroup_id, stream_id) = 1", name="one_target"),
+        CheckConstraint(one_of("lesson_type", LessonType), name="lesson_type_known"),
+        CheckConstraint(one_of("format", LessonFormat), name="format_known"),
+        CheckConstraint("occurrences_per_cycle > 0", name="occurrences_positive"),
+        CheckConstraint("duration_minutes > 0", name="duration_positive"),
+        CheckConstraint("required_teacher_count >= 1", name="teacher_count_positive"),
+        CheckConstraint(
+            "lesson_type = 'LAB' OR required_teacher_count = 1",
+            name="single_teacher_unless_lab",
+        ),
+        Index("ix_workloads_project_id_subject_id", "project_id", "subject_id"),
+        Index("ix_workloads_project_id_group_id", "project_id", "group_id"),
+        Index("ix_workloads_project_id_subgroup_id", "project_id", "subgroup_id"),
+        Index("ix_workloads_project_id_stream_id", "project_id", "stream_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    subject_id: Mapped[UUID]
+    lesson_type: Mapped[str] = mapped_column(String(LESSON_TYPE_LENGTH))
+    format: Mapped[str] = mapped_column(String(FORMAT_LENGTH))
+    occurrences_per_cycle: Mapped[int]
+    duration_minutes: Mapped[int | None]
+    required_teacher_count: Mapped[int]
+    group_id: Mapped[UUID | None]
+    subgroup_id: Mapped[UUID | None]
+    stream_id: Mapped[UUID | None]

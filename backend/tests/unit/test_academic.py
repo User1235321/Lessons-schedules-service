@@ -3,11 +3,12 @@ from uuid import uuid4
 
 import pytest
 
+from app.domain.academic.capability import Capability
 from app.domain.academic.errors import SubgroupNameTaken, SubgroupsExceedGroup
 from app.domain.academic.group import StudentGroup, Subgroup
 from app.domain.academic.lesson_type import LessonType
 from app.domain.academic.subject import Subject
-from app.domain.academic.teacher import Capability, Teacher
+from app.domain.academic.teacher import Teacher
 from app.domain.shared.errors import InvalidValue, NotFound
 from app.domain.shared.ids import GroupId, ProjectId, SubgroupId, SubjectId, TeacherId
 from app.domain.shared.week import Week, Weekday, WeeklyInterval, ordered_intervals

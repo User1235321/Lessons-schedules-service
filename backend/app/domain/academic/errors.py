@@ -19,10 +19,44 @@ class SubgroupNameTaken(AlreadyExists):
     code = "SUBGROUP_NAME_TAKEN"
 
 
+class RoomNameTaken(AlreadyExists):
+    """В проекте уже есть аудитория с таким названием."""
+
+    code = "ROOM_NAME_TAKEN"
+
+
+class StreamNameTaken(AlreadyExists):
+    """В проекте уже есть поток с таким названием."""
+
+    code = "STREAM_NAME_TAKEN"
+
+
+# Удалить то, на что ссылаются другие данные проекта, нельзя: ничего не пропадает молча.
+# В details — списки тех, кто ссылается, чтобы пользователь мог их поправить.
+
+
 class SubjectInUse(Conflict):
-    """Дисциплину нельзя удалить, пока на неё ссылаются. В details — кто ссылается."""
+    """details: teachers, rooms, workloads."""
 
     code = "SUBJECT_IN_USE"
+
+
+class GroupInUse(Conflict):
+    """details: streams — потоки с этой группой, workloads — нагрузка группы и её подгрупп."""
+
+    code = "GROUP_IN_USE"
+
+
+class SubgroupInUse(Conflict):
+    """details: workloads."""
+
+    code = "SUBGROUP_IN_USE"
+
+
+class StreamInUse(Conflict):
+    """details: workloads."""
+
+    code = "STREAM_IN_USE"
 
 
 class SubgroupsExceedGroup(InvalidValue):

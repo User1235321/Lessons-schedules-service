@@ -1,22 +1,13 @@
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from app.domain.academic.lesson_type import LessonType
+from app.domain.academic.capability import Capability, ordered_capabilities
 from app.domain.academic.names import clean_name
 from app.domain.shared.errors import InvalidValue
-from app.domain.shared.ids import ProjectId, SubjectId, TeacherId
+from app.domain.shared.ids import ProjectId, TeacherId
 from app.domain.shared.week import WeeklyInterval, ordered_intervals
 
 _MISSING_NAME = "Укажите ФИО преподавателя"
-_LESSON_TYPE_ORDER = {lesson_type: index for index, lesson_type in enumerate(LessonType)}
-
-
-@dataclass(frozen=True)
-class Capability:
-    """Дисциплина и тип занятия, которые преподаватель может вести (HLD 9.4)."""
-
-    subject_id: SubjectId
-    lesson_type: LessonType
 
 
 @dataclass(kw_only=True)
@@ -45,15 +36,12 @@ class Teacher:
         self.full_name = clean_name(full_name, field="full_name", missing=_MISSING_NAME)
 
     def change_capabilities(self, capabilities: Iterable[Capability]) -> None:
-        unique = sorted(
-            set(capabilities),
-            key=lambda pair: (str(pair.subject_id), _LESSON_TYPE_ORDER[pair.lesson_type]),
-        )
+        unique = ordered_capabilities(capabilities)
         if not unique:
             raise InvalidValue(
                 "Укажите хотя бы одну дисциплину с типом занятия", field="capabilities"
             )
-        self.capabilities = tuple(unique)
+        self.capabilities = unique
 
     def change_availability(self, availability: Iterable[WeeklyInterval]) -> None:
         ordered = ordered_intervals(availability)

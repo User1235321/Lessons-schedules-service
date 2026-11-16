@@ -196,13 +196,18 @@ def test_result_and_completion_roll_back_together(scheduling_context: tuple, mon
     process.solver.solve.assert_called_once()
 
 
-def test_default_worker_reports_missing_core(scheduling_context: tuple) -> None:
-    container, _, _ = scheduling_context
-    job, _, message = prepare(scheduling_context)
+def test_default_worker_generates_empty_project_schedule(scheduling_context: tuple) -> None:
+    container, owner, project = scheduling_context
+    job = container.create_generation_job().execute(owner.id, project.id, ResultOptions())
+    message = JobMessage(job.id, project.id, job.job_type)
+
     assert container.process_job().execute(message)
-    failed = current_job(container, job)
-    assert failed.status is JobStatus.FAILED
-    assert "ещё не реализована" in failed.error_message
+    assert current_job(container, job).status is JobStatus.COMPLETED
+    assert container.get_generation_job().execute(owner.id, job.id).progress == JobProgress(100)
+    with container.uow() as uow:
+        schedules = uow.schedules.list_for_job(project.id, job.id)
+    assert len(schedules) == 1
+    assert schedules[0].entries == ()
 
 
 def test_final_progress_is_written_after_commit_and_recovers_on_redelivery(

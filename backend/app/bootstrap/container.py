@@ -23,6 +23,7 @@ from app.application.scheduling.use_cases import (
     CancelGenerationJob,
     CreateGenerationJob,
     GetGenerationJob,
+    GetGenerationSchedules,
 )
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
@@ -31,13 +32,11 @@ from app.infrastructure.job_state import RedisJobStateStore
 from app.infrastructure.messaging.kafka import KafkaJobPublisher
 from app.infrastructure.persistence.database import create_database_engine, create_session_factory
 from app.infrastructure.persistence.job_lock import PostgresJobExecutionLock
+from app.infrastructure.persistence.job_problem import SqlJobProblemSource
 from app.infrastructure.persistence.uow import SqlUnitOfWork
 from app.infrastructure.security import Argon2PasswordHasher, JwtTokenService
 from app.infrastructure.system import SystemClock, UuidGenerator
-from app.infrastructure.unavailable_scheduling import (
-    UnavailableJobProblemSource,
-    UnavailableScheduleSolver,
-)
+from app.scheduling.preview import PreviewScheduleSolver
 
 
 @dataclass
@@ -103,6 +102,9 @@ class Container:
     def get_generation_job(self) -> GetGenerationJob:
         return GetGenerationJob(uow=self.uow(), state=self.job_state())
 
+    def get_generation_schedules(self) -> GetGenerationSchedules:
+        return GetGenerationSchedules(uow=self.uow())
+
     def cancel_generation_job(self) -> CancelGenerationJob:
         return CancelGenerationJob(uow=self.uow(), state=self.job_state())
 
@@ -129,8 +131,8 @@ class Container:
             uow=self.uow(),
             lock=PostgresJobExecutionLock(self.engine),
             state=self.job_state(),
-            problems=problems if problems is not None else UnavailableJobProblemSource(),
-            solver=solver if solver is not None else UnavailableScheduleSolver(),
+            problems=problems if problems is not None else SqlJobProblemSource(self.session_factory),
+            solver=solver if solver is not None else PreviewScheduleSolver(),
             clock=self.clock,
             ids=self.ids,
         )

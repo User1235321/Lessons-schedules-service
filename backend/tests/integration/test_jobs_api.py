@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.bootstrap.api import create_app
-from app.domain.scheduling.job import JobStatus, ResultOptions
+from app.domain.scheduling.job import JobMessage, JobStatus, ResultOptions
 from app.domain.shared.ids import UserId
 
 
@@ -52,6 +52,7 @@ def test_api_hides_foreign_jobs_and_projects(scheduling_context: tuple) -> None:
         == 404
     )
     assert client.get(f"/generation-jobs/{job.id}", headers=stranger).status_code == 404
+    assert client.get(f"/generation-jobs/{job.id}/schedules", headers=stranger).status_code == 404
     assert client.post(f"/generation-jobs/{job.id}/cancel", headers=stranger).status_code == 404
     assert not container.job_state().is_cancel_requested(job.id)
 
@@ -95,9 +96,51 @@ def test_jobs_api_requires_authentication(scheduling_context: tuple) -> None:
     container, _, project = scheduling_context
     client = TestClient(create_app(container))
     assert client.get(f"/generation-jobs/{uuid4()}").status_code == 401
+    assert client.get(f"/generation-jobs/{uuid4()}/schedules").status_code == 401
     assert (
         client.post(
             f"/projects/{project.id}/generation-jobs", json={"result_mode": "SINGLE"}
         ).status_code
         == 401
     )
+
+
+def test_generation_schedules_are_available_after_completion(
+    scheduling_context: tuple,
+) -> None:
+    container, owner, project = scheduling_context
+    job = container.create_generation_job().execute(owner.id, project.id, ResultOptions())
+    client = TestClient(create_app(container))
+    auth = headers(container, owner.id)
+    url = f"/generation-jobs/{job.id}/schedules"
+
+    pending = client.get(url, headers=auth)
+    assert pending.status_code == 409
+    assert pending.json()["code"] == "JOB_RESULTS_UNAVAILABLE"
+
+    assert container.process_job().execute(JobMessage(job.id, project.id, job.job_type))
+
+    response = client.get(url, headers=auth)
+    assert response.status_code == 200
+    assert len(response.json()) == 1
+    schedule = response.json()[0]
+    assert schedule["project_id"] == str(project.id)
+    assert schedule["job_id"] == str(job.id)
+    assert schedule["source"] == "GENERATED"
+    assert schedule["result_index"] == 1
+    assert schedule["criterion_scores"] == {}
+    assert schedule["entries"] == []
+
+
+def test_generation_schedules_reject_cancelled_job(scheduling_context: tuple) -> None:
+    container, owner, project = scheduling_context
+    job = container.create_generation_job().execute(owner.id, project.id, ResultOptions())
+    container.cancel_generation_job().execute(owner.id, job.id)
+    assert container.process_job().execute(JobMessage(job.id, project.id, job.job_type))
+
+    client = TestClient(create_app(container))
+    response = client.get(
+        f"/generation-jobs/{job.id}/schedules", headers=headers(container, owner.id)
+    )
+    assert response.status_code == 409
+    assert response.json()["code"] == "JOB_RESULTS_UNAVAILABLE"

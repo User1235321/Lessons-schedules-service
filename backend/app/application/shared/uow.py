@@ -10,6 +10,7 @@ from app.application.academic.ports import (
 )
 from app.application.auth.ports import UserRepository, UserSessionRepository
 from app.application.projects.ports import ProjectRepository
+from app.application.scheduling.ports import JobOutbox, JobRepository, ScheduleRepository
 
 
 class UnitOfWork(Protocol):
@@ -24,6 +25,9 @@ class UnitOfWork(Protocol):
     rooms: RoomRepository
     streams: StreamRepository
     workloads: WorkloadRepository
+    jobs: JobRepository
+    job_outbox: JobOutbox
+    schedules: ScheduleRepository
 
     def __enter__(self) -> Self: ...
 

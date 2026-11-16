@@ -1,10 +1,12 @@
 from dataclasses import replace
-from datetime import UTC, datetime, time
+from datetime import UTC, datetime, time, timedelta
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import Connection, func, select
+from sqlalchemy import Connection, Engine, delete, func, select
+from sqlalchemy.orm import sessionmaker
 
+from app.application.academic.changes import project_data_changed
 from app.domain.academic.capability import Capability
 from app.domain.academic.errors import (
     GroupInUse,
@@ -25,6 +27,7 @@ from app.domain.academic.teacher import Teacher
 from app.domain.academic.workload import LessonFormat, TargetType, Workload, WorkloadTarget
 from app.domain.auth.user import Email, User
 from app.domain.projects.project import Project
+from app.domain.projects.settings import DurationMode, ProjectSettings, StudyCycle, TimeMode
 from app.domain.shared.errors import InvalidValue, NotFound
 from app.domain.shared.ids import (
     GroupId,
@@ -49,6 +52,7 @@ from app.infrastructure.persistence.models import (
     TeacherAvailabilityRow,
     TeacherCapabilityRow,
     TeacherRow,
+    UserRow,
     WorkloadRow,
 )
 from app.infrastructure.persistence.uow import SqlUnitOfWork
@@ -121,6 +125,60 @@ def count(db_connection: Connection, table: type) -> int:
     return db_connection.scalar(select(func.count()).select_from(table)) or 0
 
 
+def test_academic_change_preserves_concurrent_project_settings(
+    migrated_engine: Engine,
+) -> None:
+    sessions = sessionmaker(bind=migrated_engine, expire_on_commit=False)
+    project = stored_project(SqlUnitOfWork(sessions))
+    settings = ProjectSettings(
+        cycle=StudyCycle((Weekday.MONDAY,), (Weekday.TUESDAY,)),
+        time_mode=TimeMode.step(30),
+        duration_mode=DurationMode.individual(),
+    )
+    changed_at = NOW + timedelta(minutes=2)
+    subject = Subject(
+        id=SubjectId(uuid4()),
+        project_id=project.id,
+        name="Математика",
+    )
+
+    try:
+        with SqlUnitOfWork(sessions) as request_a:
+            stale_project = request_a.projects.get_owned(project.id, project.owner_id)
+            assert stale_project is not None
+            assert stale_project.name == "Осень"
+
+            with SqlUnitOfWork(sessions) as request_b:
+                updated_project = request_b.projects.get_owned(project.id, project.owner_id)
+                assert updated_project is not None
+                updated_project.rename("Весна", NOW + timedelta(minutes=1))
+                updated_project.change_settings(settings, NOW + timedelta(minutes=1))
+                request_b.projects.save(updated_project)
+                request_b.commit()
+
+            request_a.subjects.add(subject)
+            project_data_changed(request_a, stale_project, changed_at)
+            request_a.commit()
+
+        with SqlUnitOfWork(sessions) as check:
+            saved = check.projects.get_owned(project.id, project.owner_id)
+            assert saved is not None
+            assert saved.name == "Весна"
+            assert saved.settings == settings
+            assert saved.updated_at.replace(tzinfo=None) == changed_at.replace(tzinfo=None)
+            assert check.subjects.get(project.id, subject.id) == subject
+    finally:
+        with migrated_engine.begin() as connection:
+            connection.execute(delete(UserRow).where(UserRow.id == project.owner_id))
+
+
+def test_touch_project_rejects_another_owner(uow: SqlUnitOfWork) -> None:
+    project = stored_project(uow)
+
+    with uow, pytest.raises(NotFound):
+        uow.projects.touch(project.id, UserId(uuid4()), NOW)
+
+
 # --- Дисциплины
 
 
@@ -145,6 +203,14 @@ def test_subject_name_is_unique_in_project_regardless_of_case(uow: SqlUnitOfWork
         uow.subjects.add(Subject(id=SubjectId(uuid4()), project_id=project, name="математика"))
 
     assert error.value.details == {"field": "name"}
+
+
+def test_subject_names_are_unique_after_unicode_casefold(uow: SqlUnitOfWork) -> None:
+    project = stored_project(uow).id
+    stored_subject(uow, project, "Straße")
+
+    with uow, pytest.raises(SubjectNameTaken):
+        uow.subjects.add(Subject(id=SubjectId(uuid4()), project_id=project, name="STRASSE"))
 
 
 def test_subject_cannot_be_renamed_to_a_taken_name(uow: SqlUnitOfWork) -> None:
@@ -307,6 +373,14 @@ def test_group_name_is_unique_in_project_regardless_of_case(uow: SqlUnitOfWork) 
         uow.groups.add(a_group(project, "301А"))
 
 
+def test_group_names_are_unique_after_unicode_casefold(uow: SqlUnitOfWork) -> None:
+    project = stored_project(uow).id
+    stored_group(uow, a_group(project, "Straße"))
+
+    with uow, pytest.raises(GroupNameTaken):
+        uow.groups.add(a_group(project, "STRASSE"))
+
+
 def test_saving_group_keeps_subgroup_ids(uow: SqlUnitOfWork) -> None:
     project = stored_project(uow).id
     first, second = a_subgroup("301-1"), a_subgroup("301-2")
@@ -328,6 +402,30 @@ def test_saving_group_keeps_subgroup_ids(uow: SqlUnitOfWork) -> None:
     assert reloaded == stored
     assert reloaded is not None
     assert {subgroup.id for subgroup in reloaded.subgroups} == {first.id, third.id}
+
+
+def test_swapping_subgroup_names_preserves_their_ids(uow: SqlUnitOfWork) -> None:
+    project = stored_project(uow).id
+    first, second = a_subgroup("301-А"), a_subgroup("301-Б")
+    group = stored_group(uow, a_group(project, "301", first, second))
+    swapped = StudentGroup(
+        id=group.id,
+        project_id=project,
+        name=group.name,
+        student_count=group.student_count,
+        subgroups=(
+            Subgroup(id=first.id, name=second.name, student_count=first.student_count),
+            Subgroup(id=second.id, name=first.name, student_count=second.student_count),
+        ),
+    )
+
+    with uow:
+        assert uow.groups.get_for_update(project, group.id) is not None
+        uow.groups.save(swapped)
+        uow.commit()
+
+    with uow:
+        assert uow.groups.get(project, group.id) == swapped
 
 
 def test_group_of_another_project_is_neither_saved_nor_deleted(uow: SqlUnitOfWork) -> None:

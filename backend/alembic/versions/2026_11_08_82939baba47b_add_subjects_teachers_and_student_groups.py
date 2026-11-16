@@ -1,7 +1,7 @@
 """add subjects, teachers and student groups
 
 Revision ID: 82939baba47b
-Revises: fa66cf515842
+Revises: e5820ab67f31
 Create Date: 2026-11-08 19:48:57.527241
 
 """
@@ -12,7 +12,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '82939baba47b'
-down_revision: str | Sequence[str] | None = 'fa66cf515842'
+down_revision: str | Sequence[str] | None = 'e5820ab67f31'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
@@ -29,17 +29,15 @@ def upgrade() -> None:
         sa.Column('id', sa.Uuid(), nullable=False),
         sa.Column('project_id', sa.Uuid(), nullable=False),
         sa.Column('name', sa.String(length=200), nullable=False),
+        sa.Column('name_key', sa.Text(), nullable=False),
         sa.PrimaryKeyConstraint('id', name=op.f('pk_subjects')),
         sa.ForeignKeyConstraint(
             ['project_id'], ['projects.id'],
             name=op.f('fk_subjects_project_id_projects'), ondelete='CASCADE',
         ),
         sa.UniqueConstraint('project_id', 'id', name='uq_subjects_project_id_id'),
+        sa.UniqueConstraint('project_id', 'name_key', name='uq_subjects_project_id_name'),
         sa.CheckConstraint("btrim(name) <> ''", name=op.f('ck_subjects_name_not_blank')),
-    )
-    op.create_index(
-        'uq_subjects_project_id_name', 'subjects',
-        ['project_id', sa.literal_column('lower(name)')], unique=True,
     )
 
     op.create_table(
@@ -111,6 +109,7 @@ def upgrade() -> None:
         sa.Column('id', sa.Uuid(), nullable=False),
         sa.Column('project_id', sa.Uuid(), nullable=False),
         sa.Column('name', sa.String(length=200), nullable=False),
+        sa.Column('name_key', sa.Text(), nullable=False),
         sa.Column('student_count', sa.Integer(), nullable=False),
         sa.PrimaryKeyConstraint('id', name=op.f('pk_student_groups')),
         sa.ForeignKeyConstraint(
@@ -118,14 +117,11 @@ def upgrade() -> None:
             name=op.f('fk_student_groups_project_id_projects'), ondelete='CASCADE',
         ),
         sa.UniqueConstraint('project_id', 'id', name='uq_student_groups_project_id_id'),
+        sa.UniqueConstraint('project_id', 'name_key', name='uq_student_groups_project_id_name'),
         sa.CheckConstraint("btrim(name) <> ''", name=op.f('ck_student_groups_name_not_blank')),
         sa.CheckConstraint(
             'student_count > 0', name=op.f('ck_student_groups_student_count_positive')
         ),
-    )
-    op.create_index(
-        'uq_student_groups_project_id_name', 'student_groups',
-        ['project_id', sa.literal_column('lower(name)')], unique=True,
     )
 
     op.create_table(
@@ -134,6 +130,7 @@ def upgrade() -> None:
         sa.Column('project_id', sa.Uuid(), nullable=False),
         sa.Column('group_id', sa.Uuid(), nullable=False),
         sa.Column('name', sa.String(length=200), nullable=False),
+        sa.Column('name_key', sa.Text(), nullable=False),
         sa.Column('student_count', sa.Integer(), nullable=False),
         sa.PrimaryKeyConstraint('id', name=op.f('pk_subgroups')),
         sa.ForeignKeyConstraint(
@@ -141,25 +138,22 @@ def upgrade() -> None:
             name='fk_subgroups_group', ondelete='CASCADE',
         ),
         sa.UniqueConstraint('project_id', 'id', name='uq_subgroups_project_id_id'),
+        sa.UniqueConstraint(
+            'group_id', 'name_key', name='uq_subgroups_group_id_name',
+            deferrable=True, initially='IMMEDIATE',
+        ),
         sa.CheckConstraint("btrim(name) <> ''", name=op.f('ck_subgroups_name_not_blank')),
         sa.CheckConstraint('student_count > 0', name=op.f('ck_subgroups_student_count_positive')),
-    )
-    op.create_index(
-        'uq_subgroups_group_id_name', 'subgroups',
-        ['group_id', sa.literal_column('lower(name)')], unique=True,
     )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_index('uq_subgroups_group_id_name', table_name='subgroups')
     op.drop_table('subgroups')
-    op.drop_index('uq_student_groups_project_id_name', table_name='student_groups')
     op.drop_table('student_groups')
     op.drop_table('teacher_preferences')
     op.drop_table('teacher_availability')
     op.drop_index('ix_teacher_capabilities_project_id_subject_id', table_name='teacher_capabilities')
     op.drop_table('teacher_capabilities')
     op.drop_table('teachers')
-    op.drop_index('uq_subjects_project_id_name', table_name='subjects')
     op.drop_table('subjects')

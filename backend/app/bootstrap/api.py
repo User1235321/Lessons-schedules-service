@@ -1,3 +1,6 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
 from app.api.cookies import RefreshCookie
@@ -6,6 +9,7 @@ from app.api.routers import (
     auth,
     groups,
     health,
+    jobs,
     projects,
     rooms,
     streams,
@@ -19,8 +23,17 @@ from app.bootstrap.settings import Settings
 
 
 def create_app(container: Container | None = None) -> FastAPI:
-    app = FastAPI(title="Lessons Schedules Service")
-    app.state.container = container = container or build_container(Settings())
+    container = container or build_container(Settings())
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            container.close()
+
+    app = FastAPI(title="Lessons Schedules Service", lifespan=lifespan)
+    app.state.container = container
     app.state.refresh_cookie = RefreshCookie(secure=container.settings.refresh_cookie_secure)
     install_error_handlers(app)
     app.include_router(health.router)
@@ -33,4 +46,5 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(rooms.router)
     app.include_router(streams.router)
     app.include_router(workloads.router)
+    app.include_router(jobs.router)
     return app

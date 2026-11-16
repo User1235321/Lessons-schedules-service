@@ -40,6 +40,7 @@ def upgrade() -> None:
         sa.Column('id', sa.Uuid(), nullable=False),
         sa.Column('project_id', sa.Uuid(), nullable=False),
         sa.Column('name', sa.String(length=200), nullable=False),
+        sa.Column('name_key', sa.Text(), nullable=False),
         sa.Column('capacity', sa.Integer(), nullable=False),
         sa.Column('type', sa.String(length=32), nullable=False),
         sa.PrimaryKeyConstraint('id', name=op.f('pk_rooms')),
@@ -48,13 +49,10 @@ def upgrade() -> None:
             name=op.f('fk_rooms_project_id_projects'), ondelete='CASCADE',
         ),
         sa.UniqueConstraint('project_id', 'id', name='uq_rooms_project_id_id'),
+        sa.UniqueConstraint('project_id', 'name_key', name='uq_rooms_project_id_name'),
         sa.CheckConstraint("btrim(name) <> ''", name=op.f('ck_rooms_name_not_blank')),
         sa.CheckConstraint('capacity > 0', name=op.f('ck_rooms_capacity_positive')),
         sa.CheckConstraint(f"type IN {ROOM_TYPES}", name=op.f('ck_rooms_type_known')),
-    )
-    op.create_index(
-        'uq_rooms_project_id_name', 'rooms',
-        ['project_id', sa.literal_column('lower(name)')], unique=True,
     )
 
     op.create_table(
@@ -106,17 +104,15 @@ def upgrade() -> None:
         sa.Column('id', sa.Uuid(), nullable=False),
         sa.Column('project_id', sa.Uuid(), nullable=False),
         sa.Column('name', sa.String(length=200), nullable=False),
+        sa.Column('name_key', sa.Text(), nullable=False),
         sa.PrimaryKeyConstraint('id', name=op.f('pk_student_streams')),
         sa.ForeignKeyConstraint(
             ['project_id'], ['projects.id'],
             name=op.f('fk_student_streams_project_id_projects'), ondelete='CASCADE',
         ),
         sa.UniqueConstraint('project_id', 'id', name='uq_student_streams_project_id_id'),
+        sa.UniqueConstraint('project_id', 'name_key', name='uq_student_streams_project_id_name'),
         sa.CheckConstraint("btrim(name) <> ''", name=op.f('ck_student_streams_name_not_blank')),
-    )
-    op.create_index(
-        'uq_student_streams_project_id_name', 'student_streams',
-        ['project_id', sa.literal_column('lower(name)')], unique=True,
     )
 
     op.create_table(
@@ -191,10 +187,8 @@ def downgrade() -> None:
     op.drop_table('workloads')
     op.drop_index('ix_stream_groups_project_id_group_id', table_name='stream_groups')
     op.drop_table('stream_groups')
-    op.drop_index('uq_student_streams_project_id_name', table_name='student_streams')
     op.drop_table('student_streams')
     op.drop_index('ix_room_capabilities_project_id_subject_id', table_name='room_capabilities')
     op.drop_table('room_capabilities')
     op.drop_table('room_availability')
-    op.drop_index('uq_rooms_project_id_name', table_name='rooms')
     op.drop_table('rooms')

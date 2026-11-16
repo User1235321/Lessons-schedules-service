@@ -80,15 +80,19 @@ def test_subgroup_cannot_belong_to_group_of_another_project(
             session.flush()
 
 
+@pytest.mark.parametrize(
+    ("first_name", "second_name"),
+    [("301-a", "301-A"), ("Straße", "STRASSE")],
+)
 def test_subgroup_names_are_unique_in_group_regardless_of_case(
-    session_factory: sessionmaker[Session],
+    session_factory: sessionmaker[Session], first_name: str, second_name: str
 ) -> None:
     with session_factory() as session:
         project = a_project(session)
         group = StudentGroupRow(id=uuid4(), project_id=project, name="301", student_count=24)
         session.add(group)
         session.flush()
-        for name in ("301-a", "301-A"):
+        for name in (first_name, second_name):
             session.add(
                 SubgroupRow(
                     id=uuid4(), project_id=project, group_id=group.id, name=name, student_count=6

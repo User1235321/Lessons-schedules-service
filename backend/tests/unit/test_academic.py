@@ -143,6 +143,13 @@ def test_subgroup_names_are_unique_in_group_regardless_of_case() -> None:
         group.add_subgroup(a_subgroup("301-A", 6))
 
 
+def test_unicode_equivalent_subgroup_names_are_rejected() -> None:
+    group = a_group(24, a_subgroup("Straße", 12))
+
+    with pytest.raises(SubgroupNameTaken):
+        group.add_subgroup(a_subgroup("STRASSE", 6))
+
+
 def test_subgroup_is_changed_and_removed_by_id() -> None:
     first, second = a_subgroup("301-1", 12), a_subgroup("301-2", 12)
     group = a_group(24, first, second)

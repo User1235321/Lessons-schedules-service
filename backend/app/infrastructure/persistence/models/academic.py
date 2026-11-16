@@ -7,13 +7,13 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     String,
+    Text,
     UniqueConstraint,
-    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.academic.lesson_type import LessonType
-from app.domain.academic.names import MAX_NAME_LENGTH
+from app.domain.academic.names import MAX_NAME_LENGTH, name_key
 from app.domain.academic.room import RoomType
 from app.domain.academic.workload import LessonFormat
 from app.domain.shared.week import Week, Weekday
@@ -26,6 +26,11 @@ FORMAT_LENGTH = 16
 WEEK_LENGTH = 4
 WEEKDAY_LENGTH = 9  # WEDNESDAY
 
+
+def _name_key_default(context) -> str:
+    return name_key(context.get_current_parameters()["name"])
+
+
 # Ссылки на данные проекта составные: (project_id, id). Так база не даст связать
 # преподавателя с дисциплиной или подгруппу с группой из другого проекта.
 
@@ -34,12 +39,14 @@ class SubjectRow(Base):
     __tablename__ = "subjects"
     __table_args__ = (
         UniqueConstraint("project_id", "id", name="uq_subjects_project_id_id"),
+        UniqueConstraint("project_id", "name_key", name="uq_subjects_project_id_name"),
         CheckConstraint("btrim(name) <> ''", name="name_not_blank"),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
     project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(MAX_NAME_LENGTH))
+    name_key: Mapped[str] = mapped_column(Text, default=_name_key_default)
 
 
 class TeacherRow(Base):
@@ -88,8 +95,11 @@ class TeacherCapabilityRow(Base):
 
 
 class _WeeklyIntervalColumns:
-    """Колонки WeeklyInterval. Вместе с владельцем — первичный ключ: точный повтор не пройдёт."""
+    """Колонки WeeklyInterval. Точный повтор промежутка не пройдёт первичный ключ."""
 
+    teacher_id: Mapped[UUID] = mapped_column(
+        ForeignKey("teachers.id", ondelete="CASCADE"), primary_key=True
+    )
     week: Mapped[str] = mapped_column(String(WEEK_LENGTH), primary_key=True)
     day: Mapped[str] = mapped_column(String(WEEKDAY_LENGTH), primary_key=True)
     start_time: Mapped[time] = mapped_column(primary_key=True)
@@ -104,20 +114,14 @@ def _interval_checks() -> tuple[CheckConstraint, ...]:
     )
 
 
-class _TeacherIntervalColumns(_WeeklyIntervalColumns):
-    teacher_id: Mapped[UUID] = mapped_column(
-        ForeignKey("teachers.id", ondelete="CASCADE"), primary_key=True, sort_order=-1
-    )
-
-
-class TeacherAvailabilityRow(_TeacherIntervalColumns, Base):
+class TeacherAvailabilityRow(_WeeklyIntervalColumns, Base):
     """Когда преподаватель может вести занятия (HLD 9.4)."""
 
     __tablename__ = "teacher_availability"
     __table_args__ = _interval_checks()
 
 
-class TeacherPreferenceRow(_TeacherIntervalColumns, Base):
+class TeacherPreferenceRow(_WeeklyIntervalColumns, Base):
     """Когда преподавателю удобнее. Влияет только на оптимизацию (HLD 9.4)."""
 
     __tablename__ = "teacher_preferences"
@@ -128,6 +132,7 @@ class StudentGroupRow(Base):
     __tablename__ = "student_groups"
     __table_args__ = (
         UniqueConstraint("project_id", "id", name="uq_student_groups_project_id_id"),
+        UniqueConstraint("project_id", "name_key", name="uq_student_groups_project_id_name"),
         CheckConstraint("btrim(name) <> ''", name="name_not_blank"),
         CheckConstraint("student_count > 0", name="student_count_positive"),
     )
@@ -135,6 +140,7 @@ class StudentGroupRow(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True)
     project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(MAX_NAME_LENGTH))
+    name_key: Mapped[str] = mapped_column(Text, default=_name_key_default)
     student_count: Mapped[int]
 
     subgroups: Mapped[list["SubgroupRow"]] = relationship(viewonly=True, lazy="raise")
@@ -146,6 +152,13 @@ class SubgroupRow(Base):
     __tablename__ = "subgroups"
     __table_args__ = (
         UniqueConstraint("project_id", "id", name="uq_subgroups_project_id_id"),
+        UniqueConstraint(
+            "group_id",
+            "name_key",
+            name="uq_subgroups_group_id_name",
+            deferrable=True,
+            initially="IMMEDIATE",
+        ),
         ForeignKeyConstraint(
             ["project_id", "group_id"],
             ["student_groups.project_id", "student_groups.id"],
@@ -160,6 +173,7 @@ class SubgroupRow(Base):
     project_id: Mapped[UUID]
     group_id: Mapped[UUID]
     name: Mapped[str] = mapped_column(String(MAX_NAME_LENGTH))
+    name_key: Mapped[str] = mapped_column(Text, default=_name_key_default)
     student_count: Mapped[int]
 
 
@@ -180,6 +194,7 @@ class RoomRow(Base):
     __tablename__ = "rooms"
     __table_args__ = (
         UniqueConstraint("project_id", "id", name="uq_rooms_project_id_id"),
+        UniqueConstraint("project_id", "name_key", name="uq_rooms_project_id_name"),
         CheckConstraint("btrim(name) <> ''", name="name_not_blank"),
         CheckConstraint("capacity > 0", name="capacity_positive"),
         CheckConstraint(one_of("type", RoomType), name="type_known"),
@@ -188,6 +203,7 @@ class RoomRow(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True)
     project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(MAX_NAME_LENGTH))
+    name_key: Mapped[str] = mapped_column(Text, default=_name_key_default)
     capacity: Mapped[int]
     type: Mapped[str] = mapped_column(String(ROOM_TYPE_LENGTH))
 
@@ -195,16 +211,17 @@ class RoomRow(Base):
     capabilities: Mapped[list["RoomCapabilityRow"]] = relationship(viewonly=True, lazy="raise")
 
 
-class RoomAvailabilityRow(_WeeklyIntervalColumns, Base):
-    """Когда аудитория свободна для занятий (HLD 9.5)."""
-
+class RoomAvailabilityRow(Base):
     __tablename__ = "room_availability"
     __table_args__ = _interval_checks()
 
     room_id: Mapped[UUID] = mapped_column(
-        ForeignKey("rooms.id", ondelete="CASCADE"), primary_key=True, sort_order=-1
+        ForeignKey("rooms.id", ondelete="CASCADE"), primary_key=True
     )
-
+    week: Mapped[str] = mapped_column(String(WEEK_LENGTH), primary_key=True)
+    day: Mapped[str] = mapped_column(String(WEEKDAY_LENGTH), primary_key=True)
+    start_time: Mapped[time] = mapped_column(primary_key=True)
+    end_time: Mapped[time] = mapped_column(primary_key=True)
 
 class RoomCapabilityRow(Base):
     """Для чего годится специализированная или лабораторная аудитория (F_Data_9)."""
@@ -232,12 +249,14 @@ class StreamRow(Base):
     __tablename__ = "student_streams"
     __table_args__ = (
         UniqueConstraint("project_id", "id", name="uq_student_streams_project_id_id"),
+        UniqueConstraint("project_id", "name_key", name="uq_student_streams_project_id_name"),
         CheckConstraint("btrim(name) <> ''", name="name_not_blank"),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
     project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(MAX_NAME_LENGTH))
+    name_key: Mapped[str] = mapped_column(Text, default=_name_key_default)
 
     groups: Mapped[list["StreamGroupRow"]] = relationship(viewonly=True, lazy="raise")
 
@@ -299,23 +318,3 @@ class WorkloadRow(Base):
     group_id: Mapped[UUID | None]
     subgroup_id: Mapped[UUID | None]
     stream_id: Mapped[UUID | None]
-
-
-# Названия уникальны без учёта регистра (их сравнивает и домен, см. name_key)
-Index(
-    "uq_subjects_project_id_name", SubjectRow.project_id, func.lower(SubjectRow.name), unique=True
-)
-Index(
-    "uq_student_groups_project_id_name",
-    StudentGroupRow.project_id,
-    func.lower(StudentGroupRow.name),
-    unique=True,
-)
-Index("uq_subgroups_group_id_name", SubgroupRow.group_id, func.lower(SubgroupRow.name), unique=True)
-Index("uq_rooms_project_id_name", RoomRow.project_id, func.lower(RoomRow.name), unique=True)
-Index(
-    "uq_student_streams_project_id_name",
-    StreamRow.project_id,
-    func.lower(StreamRow.name),
-    unique=True,
-)

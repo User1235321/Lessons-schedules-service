@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import delete, select, text, update
 from sqlalchemy.orm import Session
 
@@ -46,6 +48,16 @@ class SqlProjectRepository:
         )
         if updated is None:
             raise NotFound("Проект не найден", project_id=str(project.id))
+
+    def touch(self, project_id: ProjectId, owner_id: UserId, now: datetime) -> None:
+        updated = self._session.scalar(
+            update(ProjectRow)
+            .where(ProjectRow.id == project_id, ProjectRow.owner_id == owner_id)
+            .values(updated_at=now)
+            .returning(ProjectRow.id)
+        )
+        if updated is None:
+            raise NotFound("Проект не найден", project_id=str(project_id))
 
     def delete(self, project_id: ProjectId, owner_id: UserId) -> None:
         # Данные проекта удалит база: внешние ключи на projects объявлены с ON DELETE CASCADE.

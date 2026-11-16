@@ -1,7 +1,7 @@
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 
-from sqlalchemy import ColumnElement, Select, and_, delete, func, insert, or_, select, update
+from sqlalchemy import ColumnElement, Select, and_, delete, insert, or_, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -17,6 +17,7 @@ from app.domain.academic.errors import (
     SubjectNameTaken,
 )
 from app.domain.academic.group import StudentGroup
+from app.domain.academic.names import name_key
 from app.domain.academic.room import Room
 from app.domain.academic.stream import Stream
 from app.domain.academic.subject import Subject
@@ -159,7 +160,7 @@ class SqlSubjectRepository:
         rows = self._session.scalars(
             select(SubjectRow)
             .where(SubjectRow.project_id == project_id)
-            .order_by(func.lower(SubjectRow.name), SubjectRow.id)
+            .order_by(SubjectRow.name_key, SubjectRow.id)
         )
         return [subject_to_domain(row) for row in rows]
 
@@ -168,7 +169,7 @@ class SqlSubjectRepository:
             updated = self._session.scalar(
                 update(SubjectRow)
                 .where(SubjectRow.project_id == subject.project_id, SubjectRow.id == subject.id)
-                .values(name=subject.name)
+                .values(name=subject.name, name_key=name_key(subject.name))
                 .returning(SubjectRow.id)
             )
         if updated is None:
@@ -189,8 +190,8 @@ class SqlSubjectRepository:
                 TeacherCapabilityRow.subject_id == subject_id,
             )
             .distinct()
-            .order_by(TeacherRow.full_name, TeacherRow.id)
         ).all()
+        teachers.sort(key=lambda teacher: (name_key(teacher.full_name), teacher.id))
         rooms = self._session.execute(
             select(RoomRow.id, RoomRow.name)
             .join(
@@ -205,8 +206,8 @@ class SqlSubjectRepository:
                 RoomCapabilityRow.subject_id == subject_id,
             )
             .distinct()
-            .order_by(RoomRow.name, RoomRow.id)
         ).all()
+        rooms.sort(key=lambda room: (name_key(room.name), room.id))
         workloads = _workloads_where(
             self._session,
             WorkloadRow.project_id == project_id,
@@ -257,9 +258,8 @@ class SqlTeacherRepository:
         return teacher_to_domain(row) if row else None
 
     def list_in_project(self, project_id: ProjectId) -> list[Teacher]:
-        rows = self._session.scalars(
-            self._query(project_id).order_by(func.lower(TeacherRow.full_name), TeacherRow.id)
-        )
+        rows = self._session.scalars(self._query(project_id)).all()
+        rows.sort(key=lambda teacher: (name_key(teacher.full_name), teacher.id))
         return [teacher_to_domain(row) for row in rows]
 
     def save(self, teacher: Teacher) -> None:
@@ -332,6 +332,7 @@ class SqlGroupRepository:
                     id=group.id,
                     project_id=group.project_id,
                     name=group.name,
+                    name_key=name_key(group.name),
                     student_count=group.student_count,
                 )
             )
@@ -364,7 +365,7 @@ class SqlGroupRepository:
 
     def list_in_project(self, project_id: ProjectId) -> list[StudentGroup]:
         rows = self._session.scalars(
-            self._query(project_id).order_by(func.lower(StudentGroupRow.name), StudentGroupRow.id)
+            self._query(project_id).order_by(StudentGroupRow.name_key, StudentGroupRow.id)
         )
         return [group_to_domain(row) for row in rows]
 
@@ -375,7 +376,11 @@ class SqlGroupRepository:
                 .where(
                     StudentGroupRow.project_id == group.project_id, StudentGroupRow.id == group.id
                 )
-                .values(name=group.name, student_count=group.student_count)
+                .values(
+                    name=group.name,
+                    name_key=name_key(group.name),
+                    student_count=group.student_count,
+                )
                 .returning(StudentGroupRow.id)
             )
             if updated is None:
@@ -417,6 +422,7 @@ class SqlGroupRepository:
         if deleted is None:
             raise NotFound("Группа не найдена", group_id=str(group_id))
 
+
     def _query(self, project_id: ProjectId) -> Select[tuple[StudentGroupRow]]:
         return (
             select(StudentGroupRow)
@@ -434,6 +440,7 @@ class SqlGroupRepository:
         return self._query(project_id).where(StudentGroupRow.id == group_id.scalar_subquery())
 
     def _save_subgroups(self, group: StudentGroup) -> None:
+        self._session.execute(text("SET CONSTRAINTS uq_subgroups_group_id_name DEFERRED"))
         # Подгруппы сохраняются по id, а не заменяются целиком: на них будет ссылаться нагрузка
         stored = set(
             self._session.scalars(select(SubgroupRow.id).where(SubgroupRow.group_id == group.id))
@@ -461,10 +468,15 @@ class SqlGroupRepository:
                 self._session.execute(
                     update(SubgroupRow)
                     .where(SubgroupRow.group_id == group.id, SubgroupRow.id == subgroup.id)
-                    .values(name=subgroup.name, student_count=subgroup.student_count)
+                    .values(
+                        name=subgroup.name,
+                        name_key=name_key(subgroup.name),
+                        student_count=subgroup.student_count,
+                    )
                 )
             else:
                 self._session.execute(insert(SubgroupRow).values(subgroup_row(group, subgroup)))
+        self._session.execute(text("SET CONSTRAINTS uq_subgroups_group_id_name IMMEDIATE"))
 
 
 class SqlRoomRepository:
@@ -498,7 +510,7 @@ class SqlRoomRepository:
 
     def list_in_project(self, project_id: ProjectId) -> list[Room]:
         rows = self._session.scalars(
-            self._query(project_id).order_by(func.lower(RoomRow.name), RoomRow.id)
+            self._query(project_id).order_by(RoomRow.name_key, RoomRow.id)
         )
         return [room_to_domain(row) for row in rows]
 
@@ -507,7 +519,7 @@ class SqlRoomRepository:
             updated = self._session.scalar(
                 update(RoomRow)
                 .where(RoomRow.project_id == room.project_id, RoomRow.id == room.id)
-                .values(name=room.name, capacity=room.capacity, type=str(room.type))
+                .values(name=room.name, name_key=name_key(room.name), capacity=room.capacity, type=str(room.type))
                 .returning(RoomRow.id)
             )
         if updated is None:
@@ -571,7 +583,7 @@ class SqlStreamRepository:
 
     def list_in_project(self, project_id: ProjectId) -> list[Stream]:
         rows = self._session.scalars(
-            self._query(project_id).order_by(func.lower(StreamRow.name), StreamRow.id)
+            self._query(project_id).order_by(StreamRow.name_key, StreamRow.id)
         )
         return [stream_to_domain(row) for row in rows]
 
@@ -580,7 +592,7 @@ class SqlStreamRepository:
             updated = self._session.scalar(
                 update(StreamRow)
                 .where(StreamRow.project_id == stream.project_id, StreamRow.id == stream.id)
-                .values(name=stream.name)
+                .values(name=stream.name, name_key=name_key(stream.name))
                 .returning(StreamRow.id)
             )
             if updated is None:
@@ -662,7 +674,7 @@ class SqlWorkloadRepository:
                     SubjectRow.id == WorkloadRow.subject_id,
                 ),
             )
-            .order_by(func.lower(SubjectRow.name), WorkloadRow.lesson_type, WorkloadRow.id)
+            .order_by(SubjectRow.name_key, WorkloadRow.lesson_type, WorkloadRow.id)
         )
         return [workload_to_domain(row) for row in rows]
 

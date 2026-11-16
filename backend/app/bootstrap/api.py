@@ -2,7 +2,7 @@ from fastapi import FastAPI
 
 from app.api.cookies import RefreshCookie
 from app.api.errors import install_error_handlers
-from app.api.routers import auth, groups, health, projects, subgroups, subjects, teachers
+from app.api.routers import auth, groups, health, projects, rooms, streams, subgroups, subjects, teachers, workloads
 from app.bootstrap.container import Container, build_container
 from app.bootstrap.settings import Settings
 
@@ -19,4 +19,7 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(teachers.router)
     app.include_router(groups.router)
     app.include_router(subgroups.router)
+    app.include_router(rooms.router)
+    app.include_router(streams.router)
+    app.include_router(workloads.router)
     return app

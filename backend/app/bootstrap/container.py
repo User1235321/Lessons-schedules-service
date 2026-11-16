@@ -16,6 +16,20 @@ from app.application.academic.groups import (
     UpdateGroup,
     UpdateSubgroup,
 )
+from app.application.academic.rooms import (
+    CreateRoom,
+    DeleteRoom,
+    GetRoom,
+    ListRooms,
+    UpdateRoom,
+)
+from app.application.academic.streams import (
+    CreateStream,
+    DeleteStream,
+    GetStream,
+    ListStreams,
+    UpdateStream,
+)
 from app.application.academic.subjects import (
     CreateSubject,
     DeleteSubject,
@@ -29,6 +43,13 @@ from app.application.academic.teachers import (
     GetTeacher,
     ListTeachers,
     UpdateTeacher,
+)
+from app.application.academic.workloads import (
+    CreateWorkload,
+    DeleteWorkload,
+    GetWorkload,
+    ListWorkloads,
+    UpdateWorkload,
 )
 from app.application.auth.ports import PasswordHasher, TokenService
 from app.application.auth.use_cases import (
@@ -179,6 +200,51 @@ class Container:
 
     def delete_subgroup(self) -> DeleteSubgroup:
         return DeleteSubgroup(uow=self.uow(), clock=self.clock)
+
+    def create_room(self) -> CreateRoom:
+        return CreateRoom(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_rooms(self) -> ListRooms:
+        return ListRooms(uow=self.uow())
+
+    def get_room(self) -> GetRoom:
+        return GetRoom(uow=self.uow())
+
+    def update_room(self) -> UpdateRoom:
+        return UpdateRoom(uow=self.uow(), clock=self.clock)
+
+    def delete_room(self) -> DeleteRoom:
+        return DeleteRoom(uow=self.uow(), clock=self.clock)
+
+    def create_stream(self) -> CreateStream:
+        return CreateStream(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_streams(self) -> ListStreams:
+        return ListStreams(uow=self.uow())
+
+    def get_stream(self) -> GetStream:
+        return GetStream(uow=self.uow())
+
+    def update_stream(self) -> UpdateStream:
+        return UpdateStream(uow=self.uow(), clock=self.clock)
+
+    def delete_stream(self) -> DeleteStream:
+        return DeleteStream(uow=self.uow(), clock=self.clock)
+
+    def create_workload(self) -> CreateWorkload:
+        return CreateWorkload(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_workloads(self) -> ListWorkloads:
+        return ListWorkloads(uow=self.uow())
+
+    def get_workload(self) -> GetWorkload:
+        return GetWorkload(uow=self.uow())
+
+    def update_workload(self) -> UpdateWorkload:
+        return UpdateWorkload(uow=self.uow(), clock=self.clock)
+
+    def delete_workload(self) -> DeleteWorkload:
+        return DeleteWorkload(uow=self.uow(), clock=self.clock)
 
     def _session_issuer(self) -> SessionIssuer:
         return SessionIssuer(

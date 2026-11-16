@@ -11,4 +11,4 @@ def project_data_changed(uow: UnitOfWork, project: Project, now: datetime) -> No
     блокировались всегда в одном порядке.
     """
     project.touch(now)
-    uow.projects.save(project)
+    uow.projects.touch(project.id, project.owner_id, now)

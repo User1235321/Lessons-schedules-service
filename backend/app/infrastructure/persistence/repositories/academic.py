@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from sqlalchemy import Select, and_, delete, func, insert, select, update
+from sqlalchemy import Select, and_, delete, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -12,6 +12,7 @@ from app.domain.academic.errors import (
     SubjectNameTaken,
 )
 from app.domain.academic.group import StudentGroup
+from app.domain.academic.names import name_key
 from app.domain.academic.subject import Subject
 from app.domain.academic.teacher import Teacher
 from app.domain.shared.errors import DomainError, InvalidValue, NotFound
@@ -90,7 +91,7 @@ class SqlSubjectRepository:
         rows = self._session.scalars(
             select(SubjectRow)
             .where(SubjectRow.project_id == project_id)
-            .order_by(func.lower(SubjectRow.name), SubjectRow.id)
+            .order_by(SubjectRow.name_key, SubjectRow.id)
         )
         return [subject_to_domain(row) for row in rows]
 
@@ -99,7 +100,7 @@ class SqlSubjectRepository:
             updated = self._session.scalar(
                 update(SubjectRow)
                 .where(SubjectRow.project_id == subject.project_id, SubjectRow.id == subject.id)
-                .values(name=subject.name)
+                .values(name=subject.name, name_key=name_key(subject.name))
                 .returning(SubjectRow.id)
             )
         if updated is None:
@@ -169,7 +170,7 @@ class SqlTeacherRepository:
 
     def list_in_project(self, project_id: ProjectId) -> list[Teacher]:
         rows = self._session.scalars(
-            self._query(project_id).order_by(func.lower(TeacherRow.full_name), TeacherRow.id)
+            self._query(project_id).order_by(TeacherRow.full_name, TeacherRow.id)
         )
         return [teacher_to_domain(row) for row in rows]
 
@@ -236,6 +237,7 @@ class SqlGroupRepository:
                     id=group.id,
                     project_id=group.project_id,
                     name=group.name,
+                    name_key=name_key(group.name),
                     student_count=group.student_count,
                 )
             )
@@ -268,7 +270,7 @@ class SqlGroupRepository:
 
     def list_in_project(self, project_id: ProjectId) -> list[StudentGroup]:
         rows = self._session.scalars(
-            self._query(project_id).order_by(func.lower(StudentGroupRow.name), StudentGroupRow.id)
+            self._query(project_id).order_by(StudentGroupRow.name_key, StudentGroupRow.id)
         )
         return [group_to_domain(row) for row in rows]
 
@@ -279,7 +281,7 @@ class SqlGroupRepository:
                 .where(
                     StudentGroupRow.project_id == group.project_id, StudentGroupRow.id == group.id
                 )
-                .values(name=group.name, student_count=group.student_count)
+                .values(name=group.name, name_key=name_key(group.name), student_count=group.student_count)
                 .returning(StudentGroupRow.id)
             )
             if updated is None:
@@ -312,6 +314,7 @@ class SqlGroupRepository:
         return self._query(project_id).where(StudentGroupRow.id == group_id.scalar_subquery())
 
     def _save_subgroups(self, group: StudentGroup) -> None:
+        self._session.execute(text("SET CONSTRAINTS uq_subgroups_group_id_name DEFERRED"))
         # Подгруппы сохраняются по id, а не заменяются целиком: на них будет ссылаться нагрузка
         stored = set(
             self._session.scalars(select(SubgroupRow.id).where(SubgroupRow.group_id == group.id))
@@ -329,7 +332,8 @@ class SqlGroupRepository:
                 self._session.execute(
                     update(SubgroupRow)
                     .where(SubgroupRow.group_id == group.id, SubgroupRow.id == subgroup.id)
-                    .values(name=subgroup.name, student_count=subgroup.student_count)
+                    .values(name=subgroup.name, name_key=name_key(subgroup.name), student_count=subgroup.student_count)
                 )
             else:
                 self._session.execute(insert(SubgroupRow).values(subgroup_row(group, subgroup)))
+        self._session.execute(text("SET CONSTRAINTS uq_subgroups_group_id_name IMMEDIATE"))

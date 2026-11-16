@@ -1,6 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
-from unittest.mock import Mock
 from uuid import UUID, uuid4
 
 from confluent_kafka import Consumer, Producer, TopicPartition
@@ -10,8 +9,6 @@ from fastapi.testclient import TestClient
 from app.application.scheduling.delivery import DeliverPendingJob
 from app.bootstrap.api import create_app
 from app.domain.scheduling.job import JobProgress, JobStatus
-from app.domain.scheduling.problem import ScheduleProblem
-from app.domain.scheduling.solver import ScheduleVariant, SolverResult, SolverStatus
 from app.infrastructure.messaging.job_messages import JOBS_TOPIC, decode_job_message
 from app.infrastructure.messaging.kafka import KafkaJobPublisher
 from app.worker.consumer import KafkaJobConsumer
@@ -35,16 +32,7 @@ def test_fastapi_outbox_kafka_worker_redis_chain(
     )
     assert created.status_code == 202
     job_id = UUID(created.json()["job_id"])
-    source = Mock(load=Mock(return_value=ScheduleProblem(project.settings)))
-    solver = Mock()
-
-    def solve(problem, options, control):
-        control.report_progress(JobProgress(75))
-        assert container.job_state().get_progress(job_id) == JobProgress(75)
-        return SolverResult(SolverStatus.SOLVED, (ScheduleVariant((), ()),))
-
-    solver.solve.side_effect = solve
-    process = container.process_job(problems=source, solver=solver)
+    process = container.process_job()
     stopping, finished = Event(), Event()
     handled = []
 
@@ -91,11 +79,18 @@ def test_fastapi_outbox_kafka_worker_redis_chain(
         finally:
             stopping.set()
         future.result(timeout=10)
-    solver.solve.assert_called_once()
     assert [message.job_id for message in handled] == [job_id, job_id]
     with container.uow() as uow:
         assert uow.jobs.get(project.id, job_id).status is JobStatus.COMPLETED
         assert len(uow.schedules.list_for_job(project.id, job_id)) == 1
+    assert container.job_state().get_progress(job_id) == JobProgress(100)
+    schedules = client.get(
+        f"/generation-jobs/{job_id}/schedules",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert schedules.status_code == 200
+    assert len(schedules.json()) == 1
+    assert schedules.json()[0]["entries"] == []
     verifier = Consumer({"bootstrap.servers": kafka_servers, "group.id": group_id})
     try:
         assert verifier.committed([TopicPartition(JOBS_TOPIC, 0)], timeout=10)[0].offset == 2

@@ -281,7 +281,11 @@ class SqlGroupRepository:
                 .where(
                     StudentGroupRow.project_id == group.project_id, StudentGroupRow.id == group.id
                 )
-                .values(name=group.name, name_key=name_key(group.name), student_count=group.student_count)
+                .values(
+                    name=group.name,
+                    name_key=name_key(group.name),
+                    student_count=group.student_count,
+                )
                 .returning(StudentGroupRow.id)
             )
             if updated is None:
@@ -332,7 +336,11 @@ class SqlGroupRepository:
                 self._session.execute(
                     update(SubgroupRow)
                     .where(SubgroupRow.group_id == group.id, SubgroupRow.id == subgroup.id)
-                    .values(name=subgroup.name, name_key=name_key(subgroup.name), student_count=subgroup.student_count)
+                    .values(
+                        name=subgroup.name,
+                        name_key=name_key(subgroup.name),
+                        student_count=subgroup.student_count,
+                    )
                 )
             else:
                 self._session.execute(insert(SubgroupRow).values(subgroup_row(group, subgroup)))

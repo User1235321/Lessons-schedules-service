@@ -1,7 +1,7 @@
 from collections.abc import Iterator
 from contextlib import contextmanager
 
-from sqlalchemy import Select, and_, delete, func, insert, select, text, update
+from sqlalchemy import Select, and_, delete, insert, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -121,8 +121,8 @@ class SqlSubjectRepository:
                 TeacherCapabilityRow.subject_id == subject_id,
             )
             .distinct()
-            .order_by(func.lower(TeacherRow.full_name), TeacherRow.id)
         ).all()
+        teachers.sort(key=lambda teacher: (name_key(teacher.full_name), teacher.id))
         if teachers:
             raise _subject_in_use([{"id": str(id_), "full_name": name} for id_, name in teachers])
         try:
@@ -169,9 +169,8 @@ class SqlTeacherRepository:
         return teacher_to_domain(row) if row else None
 
     def list_in_project(self, project_id: ProjectId) -> list[Teacher]:
-        rows = self._session.scalars(
-            self._query(project_id).order_by(TeacherRow.full_name, TeacherRow.id)
-        )
+        rows = self._session.scalars(self._query(project_id)).all()
+        rows.sort(key=lambda teacher: (name_key(teacher.full_name), teacher.id))
         return [teacher_to_domain(row) for row in rows]
 
     def save(self, teacher: Teacher) -> None:

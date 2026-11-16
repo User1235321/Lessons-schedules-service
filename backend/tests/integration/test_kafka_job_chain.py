@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.application.scheduling.delivery import DeliverPendingJob
 from app.bootstrap.api import create_app
-from app.domain.scheduling.job import JobProgress, JobStatus
+from app.domain.scheduling.job import JobMessage, JobProgress, JobStatus
 from app.infrastructure.messaging.job_messages import JOBS_TOPIC, decode_job_message
 from app.infrastructure.messaging.kafka import KafkaJobPublisher
 from app.worker.consumer import KafkaJobConsumer
@@ -72,8 +72,6 @@ def test_fastapi_outbox_kafka_worker_redis_chain(
             assert delivery.execute()
             with container.uow() as uow:
                 job = uow.jobs.get(project.id, job_id)
-            from app.domain.scheduling.job import JobMessage
-
             publisher.publish(JobMessage(job.id, job.project_id, job.job_type))
             assert finished.wait(30)
         finally:

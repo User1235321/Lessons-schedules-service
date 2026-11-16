@@ -7,13 +7,13 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     String,
+    Text,
     UniqueConstraint,
-    func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.domain.academic.lesson_type import LessonType
-from app.domain.academic.names import MAX_NAME_LENGTH
+from app.domain.academic.names import MAX_NAME_LENGTH, name_key
 from app.domain.shared.week import Week, Weekday
 from app.infrastructure.persistence.base import Base
 from app.infrastructure.persistence.checks import one_of
@@ -21,6 +21,10 @@ from app.infrastructure.persistence.checks import one_of
 LESSON_TYPE_LENGTH = 16
 WEEK_LENGTH = 4
 WEEKDAY_LENGTH = 9  # WEDNESDAY
+
+
+def _name_key_default(context) -> str:
+    return name_key(context.get_current_parameters()["name"])
 
 # Ссылки на данные проекта составные: (project_id, id). Так база не даст связать
 # преподавателя с дисциплиной или подгруппу с группой из другого проекта.
@@ -30,12 +34,14 @@ class SubjectRow(Base):
     __tablename__ = "subjects"
     __table_args__ = (
         UniqueConstraint("project_id", "id", name="uq_subjects_project_id_id"),
+        UniqueConstraint("project_id", "name_key", name="uq_subjects_project_id_name"),
         CheckConstraint("btrim(name) <> ''", name="name_not_blank"),
     )
 
     id: Mapped[UUID] = mapped_column(primary_key=True)
     project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(MAX_NAME_LENGTH))
+    name_key: Mapped[str] = mapped_column(Text, default=_name_key_default)
 
 
 class TeacherRow(Base):
@@ -121,6 +127,7 @@ class StudentGroupRow(Base):
     __tablename__ = "student_groups"
     __table_args__ = (
         UniqueConstraint("project_id", "id", name="uq_student_groups_project_id_id"),
+        UniqueConstraint("project_id", "name_key", name="uq_student_groups_project_id_name"),
         CheckConstraint("btrim(name) <> ''", name="name_not_blank"),
         CheckConstraint("student_count > 0", name="student_count_positive"),
     )
@@ -128,6 +135,7 @@ class StudentGroupRow(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True)
     project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
     name: Mapped[str] = mapped_column(String(MAX_NAME_LENGTH))
+    name_key: Mapped[str] = mapped_column(Text, default=_name_key_default)
     student_count: Mapped[int]
 
     subgroups: Mapped[list["SubgroupRow"]] = relationship(viewonly=True, lazy="raise")
@@ -139,6 +147,13 @@ class SubgroupRow(Base):
     __tablename__ = "subgroups"
     __table_args__ = (
         UniqueConstraint("project_id", "id", name="uq_subgroups_project_id_id"),
+        UniqueConstraint(
+            "group_id",
+            "name_key",
+            name="uq_subgroups_group_id_name",
+            deferrable=True,
+            initially="IMMEDIATE",
+        ),
         ForeignKeyConstraint(
             ["project_id", "group_id"],
             ["student_groups.project_id", "student_groups.id"],
@@ -153,17 +168,6 @@ class SubgroupRow(Base):
     project_id: Mapped[UUID]
     group_id: Mapped[UUID]
     name: Mapped[str] = mapped_column(String(MAX_NAME_LENGTH))
+    name_key: Mapped[str] = mapped_column(Text, default=_name_key_default)
     student_count: Mapped[int]
 
-
-# Названия уникальны без учёта регистра (их сравнивает и домен, см. name_key)
-Index(
-    "uq_subjects_project_id_name", SubjectRow.project_id, func.lower(SubjectRow.name), unique=True
-)
-Index(
-    "uq_student_groups_project_id_name",
-    StudentGroupRow.project_id,
-    func.lower(StudentGroupRow.name),
-    unique=True,
-)
-Index("uq_subgroups_group_id_name", SubgroupRow.group_id, func.lower(SubgroupRow.name), unique=True)

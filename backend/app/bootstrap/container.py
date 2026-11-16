@@ -31,8 +31,8 @@ from app.bootstrap.settings import Settings
 from app.infrastructure.job_state import RedisJobStateStore
 from app.infrastructure.messaging.kafka import KafkaJobPublisher
 from app.infrastructure.persistence.database import create_database_engine, create_session_factory
-from app.infrastructure.persistence.job_problem import SqlJobProblemSource
 from app.infrastructure.persistence.job_lock import PostgresJobExecutionLock
+from app.infrastructure.persistence.job_problem import SqlJobProblemSource
 from app.infrastructure.persistence.uow import SqlUnitOfWork
 from app.infrastructure.security import Argon2PasswordHasher, JwtTokenService
 from app.infrastructure.system import SystemClock, UuidGenerator

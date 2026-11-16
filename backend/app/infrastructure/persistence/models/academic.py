@@ -26,6 +26,7 @@ WEEKDAY_LENGTH = 9  # WEDNESDAY
 def _name_key_default(context) -> str:
     return name_key(context.get_current_parameters()["name"])
 
+
 # Ссылки на данные проекта составные: (project_id, id). Так база не даст связать
 # преподавателя с дисциплиной или подгруппу с группой из другого проекта.
 

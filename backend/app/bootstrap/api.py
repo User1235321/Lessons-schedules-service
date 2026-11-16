@@ -2,7 +2,18 @@ from fastapi import FastAPI
 
 from app.api.cookies import RefreshCookie
 from app.api.errors import install_error_handlers
-from app.api.routers import auth, groups, health, projects, rooms, streams, subgroups, subjects, teachers, workloads
+from app.api.routers import (
+    auth,
+    groups,
+    health,
+    projects,
+    rooms,
+    streams,
+    subgroups,
+    subjects,
+    teachers,
+    workloads,
+)
 from app.bootstrap.container import Container, build_container
 from app.bootstrap.settings import Settings
 

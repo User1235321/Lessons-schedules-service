@@ -805,6 +805,35 @@ lesson_format принимает ONSITE или REMOTE. Для REMOTE аудит�
 
 extra_constraints содержит тип, область применения и параметры в структурированном виде. Поддерживаемые типы: MIN_START_TIME, MAX_END_TIME, ALLOWED_DAYS, EVERY_WEEK, CONSECUTIVE, NOT_CONSECUTIVE, MIN_GAP, BEFORE, FIXED_DAY, TIME_RANGE.
 
+Область применения `scope` передаётся как объект `{type, id?}`. Значения `scope.type`: `PROJECT`, `GROUP`, `SUBGROUP`, `STREAM`, `WORKLOAD`. Для `PROJECT` поле `id` отсутствует или равно `null`; для остальных типов требуется `id` в формате UUID существующего ресурса этого проекта.
+
+Контракт `parameters` зависит от `constraint_type`. В таблице приведены обязательные поля; неуказанные дополнительные поля запрещены.
+
+| constraint_type | Обязательные поля parameters | Необязательные поля parameters | Допустимые scope.type |
+|---|---|---|---|
+| MIN_START_TIME | `time: HH:MM` | нет | PROJECT, GROUP, SUBGROUP, STREAM, WORKLOAD |
+| MAX_END_TIME | `time: HH:MM` | нет | PROJECT, GROUP, SUBGROUP, STREAM, WORKLOAD |
+| ALLOWED_DAYS | `days: Weekday[]` | нет | PROJECT, GROUP, SUBGROUP, STREAM, WORKLOAD |
+| EVERY_WEEK | нет (`{}`) | нет | WORKLOAD |
+| CONSECUTIVE | `workload_id: UUID` | нет | WORKLOAD |
+| NOT_CONSECUTIVE | `workload_id: UUID` | нет | WORKLOAD |
+| MIN_GAP | `workload_id: UUID`, `minutes: integer` | нет | WORKLOAD |
+| BEFORE | `workload_id: UUID` | нет | WORKLOAD |
+| FIXED_DAY | `day: Weekday` | `week: CycleWeek` | WORKLOAD |
+| TIME_RANGE | `windows: WeeklyWindow[]` | нет | PROJECT, GROUP, SUBGROUP, STREAM, WORKLOAD |
+
+Правила форматов и проверки значений:
+
+- `Weekday` принимает `MONDAY`, `TUESDAY`, `WEDNESDAY`, `THURSDAY`, `FRIDAY`, `SATURDAY`, `SUNDAY`.
+- `CycleWeek` принимает `ODD`, `EVEN`, `ANY`; `ANY` означает обе недели цикла. Для `FIXED_DAY` значение `week` по умолчанию — `ANY`; в ответе API поле присутствует.
+- Время `time`, `start` и `end` передаётся строкой в 24-часовом формате `HH:MM`.
+- `days` — непустой массив без повторяющихся дней.
+- `minutes` — целое число от 1 до 2147483647; логические значения не допускаются.
+- `WeeklyWindow` — объект `{week: CycleWeek, day: Weekday, start: HH:MM, end: HH:MM}` со всеми обязательными полями и условием `start < end`. `windows` — непустой массив без полностью одинаковых объектов; пересечение разных интервалов само по себе не запрещено.
+- `workload_id` у ограничений `CONSECUTIVE`, `NOT_CONSECUTIVE`, `MIN_GAP` и `BEFORE` — UUID существующей учебной нагрузки того же проекта.
+- Для каждого типа `parameters` является JSON-объектом с точным набором предусмотренных полей; неизвестные поля и отсутствие обязательных полей отклоняются.
+
+
 ### 9.10. Критерии оптимизации
 
 optimization_criteria имеет уникальную пару (project_id, criterion_type). Приоритеты активных критериев одного проекта уникальны, применяются по возрастанию priority.
@@ -953,7 +982,7 @@ Response содержит id, соответствующие сохранённ�
 | GET | /projects/{project_id}/optimization-criteria | нет | 200; Criterion[] | 401, 404, 500 |
 | PUT | /projects/{project_id}/optimization-criteria | {criteria: Criterion[]} | 200; Criterion[] | 401, 404, 422, 500 |
 
-Constraint: {id, project_id, constraint_type, scope, parameters}. Criterion: {criterion_type: string, priority: integer, is_active: boolean}. У активных критериев одного проекта приоритет уникален. Для каждого типа ограничения поля parameters необходимо детализировать до реализации, поскольку сейчас они остаются расширяемой структурой.
+Constraint: {id, project_id, constraint_type, scope, parameters}. Criterion: {criterion_type: string, priority: integer, is_active: boolean}. У активных критериев одного проекта приоритет уникален. Допустимые сочетания constraint_type, scope.type, состав parameters, форматы полей и правила проверки определены в §9.9. При PATCH проверяется итоговое состояние ограничения с учётом сохранённых полей; обновление только constraint_type допустимо, если текущие parameters соответствуют новому типу.
 
 ### 10.7. Построение расписания (целевые контракты)
 

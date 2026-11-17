@@ -3,7 +3,7 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 revision = "72ac1f6f9c11"
-down_revision = "e5820ab67f31"
+down_revision = "723cc89301de"
 branch_labels = None
 depends_on = None
 

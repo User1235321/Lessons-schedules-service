@@ -138,6 +138,22 @@ describe("ProjectSettingsPage", () => {
     expect(screen.queryByRole("spinbutton")).toBeNull();
   });
 
+  it("loads the selected project's settings when moving between projects", async () => {
+    const second = {
+      ...TEST_PROJECTS[1],
+      time_mode: { type: "STEP", step_minutes: 45 },
+      duration_mode: { type: "UNIFORM", duration_minutes: 75 }
+    };
+    const { router } = await openSettings({ projects: [TEST_PROJECTS[0], second] });
+
+    await router.navigate("/projects/43/settings");
+    await findHeading("Настройки проекта");
+
+    expect(screen.getByRole("radio", { name: "С минимальным временным шагом" }).checked).toBe(true);
+    expect(screen.getByRole("spinbutton", { name: "Минимальный шаг, минут" }).value).toBe("45");
+    expect(screen.getByRole("spinbutton", { name: "Длительность занятия, минут" }).value).toBe("75");
+  });
+
   it("shows API validation errors without claiming success", async () => {
     const { user, fetchMock } = await openSettings();
     const respond = fetchMock.getMockImplementation();

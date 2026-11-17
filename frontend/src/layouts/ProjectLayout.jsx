@@ -93,7 +93,7 @@ export default function ProjectLayout() {
         </Tabs>
       </Box>
 
-      <Outlet context={{ project, updateProject: setProject }} />
+      <Outlet key={project.id} context={{ project, updateProject: setProject }} />
     </Box>
   );
 }

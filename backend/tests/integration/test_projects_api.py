@@ -258,3 +258,20 @@ def test_invalid_step_patch_keeps_previous_settings(api: TestClient) -> None:
     assert response.status_code == 422
     assert response.json()["details"]["field"] == "time_mode.step_minutes"
     assert api.get(f"/projects/{created['id']}", headers=user).json() == created
+
+
+def test_duration_mode_patch_replaces_only_its_block(api: TestClient) -> None:
+    user = sign_in(api)
+    created = create(api, user, **CUSTOM)
+
+    response = api.patch(
+        f"/projects/{created['id']}",
+        json={"duration_mode": {"type": "UNIFORM", "duration_minutes": 95}},
+        headers=user,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["duration_mode"] == {"type": "UNIFORM", "duration_minutes": 95}
+    assert response.json()["time_mode"] == CUSTOM["time_mode"]
+    assert response.json()["cycle"] == CUSTOM["cycle"]
+    assert api.get(f"/projects/{created['id']}", headers=user).json() == response.json()

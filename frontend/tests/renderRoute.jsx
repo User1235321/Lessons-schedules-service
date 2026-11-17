@@ -15,6 +15,15 @@ function json(status, body) {
 }
 
 
+export const DEFAULT_SETTINGS = {
+  cycle: {
+    odd_week_days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"],
+    even_week_days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"]
+  },
+  time_mode: { type: "HOUR_START" },
+  duration_mode: { type: "UNIFORM", duration_minutes: 100 }
+};
+
 export const TEST_PROJECTS = [
   { id: "42", name: "Осенний семестр", created_at: "2026-09-01T10:00:00Z", updated_at: "2026-09-01T10:00:00Z" },
   { id: "43", name: "Весенний семестр", created_at: "2026-10-01T10:00:00Z", updated_at: "2026-10-01T10:00:00Z" }
@@ -23,7 +32,7 @@ export const TEST_PROJECTS = [
 const notFound = () => json(404, { code: "NOT_FOUND", message: "Проект не найден", details: {} });
 
 export function stubBackend({ authenticated = true, projects = TEST_PROJECTS } = {}) {
-  const store = projects.map((project) => ({ ...project }));
+  const store = projects.map((project) => ({ ...structuredClone(DEFAULT_SETTINGS), ...project }));
   let nextId = 100;
 
   const fetchMock = vi.fn(async (url, init = {}) => {
@@ -71,19 +80,22 @@ export function stubBackend({ authenticated = true, projects = TEST_PROJECTS } =
         });
       }
       const now = new Date().toISOString();
-      const project = { id: String(nextId++), name, created_at: now, updated_at: now };
+      const project = { ...structuredClone(DEFAULT_SETTINGS), id: String(nextId++), name, ...body, created_at: now, updated_at: now };
       store.push(project);
       return json(201, project);
     }
     const match = url.match(/^\/api\/projects\/([^/]+)$/);
     if (match) {
-      const index = store.findIndex((project) => project.id === decodeURIComponent(match[1]));
+      const index = store.findIndex((project) => project.id.toLowerCase() === decodeURIComponent(match[1]).toLowerCase());
       if (index === -1) {
         return notFound();
       }
       if (method === "DELETE") {
         store.splice(index, 1);
         return json(204);
+      }
+      if (method === "PATCH") {
+        store[index] = { ...store[index], ...body, updated_at: new Date().toISOString() };
       }
       return json(200, store[index]);
     }

@@ -227,3 +227,51 @@ def test_deleted_project_is_gone(api: TestClient) -> None:  # F_Project_2
     assert api.get(f"/projects/{doomed['id']}", headers=user).status_code == 404
     assert api.delete(f"/projects/{doomed['id']}", headers=user).status_code == 404
     assert api.get("/projects", headers=user).json() == [kept]
+
+
+def test_patch_restores_both_empty_weeks_without_changing_other_settings(
+    api: TestClient,
+) -> None:
+    user = sign_in(api)
+    created = create(api, user, **CUSTOM)
+    cycle = {"odd_week_days": [], "even_week_days": []}
+
+    response = api.patch(f"/projects/{created['id']}", json={"cycle": cycle}, headers=user)
+
+    assert response.status_code == 200
+    assert response.json()["cycle"] == cycle
+    assert response.json()["time_mode"] == CUSTOM["time_mode"]
+    assert response.json()["duration_mode"] == CUSTOM["duration_mode"]
+    assert api.get(f"/projects/{created['id']}", headers=user).json() == response.json()
+
+
+def test_invalid_step_patch_keeps_previous_settings(api: TestClient) -> None:
+    user = sign_in(api)
+    created = create(api, user, **CUSTOM)
+
+    response = api.patch(
+        f"/projects/{created['id']}",
+        json={"time_mode": {"type": "STEP", "step_minutes": 0}},
+        headers=user,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["details"]["field"] == "time_mode.step_minutes"
+    assert api.get(f"/projects/{created['id']}", headers=user).json() == created
+
+
+def test_duration_mode_patch_replaces_only_its_block(api: TestClient) -> None:
+    user = sign_in(api)
+    created = create(api, user, **CUSTOM)
+
+    response = api.patch(
+        f"/projects/{created['id']}",
+        json={"duration_mode": {"type": "UNIFORM", "duration_minutes": 95}},
+        headers=user,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["duration_mode"] == {"type": "UNIFORM", "duration_minutes": 95}
+    assert response.json()["time_mode"] == CUSTOM["time_mode"]
+    assert response.json()["cycle"] == CUSTOM["cycle"]
+    assert api.get(f"/projects/{created['id']}", headers=user).json() == response.json()

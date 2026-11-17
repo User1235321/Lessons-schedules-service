@@ -2,7 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { validateProjectName } from "../src/features/projects/validation.js";
-import { findHeading, renderRoute } from "./renderRoute.jsx";
+import { findHeading, renderRoute, TEST_PROJECTS } from "./renderRoute.jsx";
 
 function projectList() {
   return screen.findByRole("list", { name: "Проекты" });
@@ -132,6 +132,23 @@ describe("ProjectLayout", () => {
 
     expect(await findHeading("Осенний семестр")).toBeTruthy();
     expect(await findHeading("Преподаватели")).toBeTruthy();
+  });
+
+  it("opens a project when the URL UUID is uppercase and the API returns canonical lowercase", async () => {
+    const id = "d278e8cf-98aa-4cbe-8b81-8a8176c4bde5";
+    const upperId = id.toUpperCase();
+    const project = { ...TEST_PROJECTS[0], id };
+    const { fetchMock } = renderRoute(`/projects/${upperId}/settings`, undefined, {
+      projects: [project]
+    });
+
+    expect(await findHeading("Настройки проекта")).toBeTruthy();
+    expect(await findHeading("Осенний семестр")).toBeTruthy();
+    expect(screen.queryByText("Открываем проект")).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith(
+      `/api/projects/${upperId}`,
+      expect.objectContaining({ method: "GET" })
+    );
   });
 
   it("shows not found for a missing project", async () => {

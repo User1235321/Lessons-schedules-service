@@ -59,6 +59,14 @@ class WorkloadSnapshot:
             raise InvalidValue("Длительность должна быть положительной", field="duration_minutes")
 
 
+class CriterionType(StrEnum):
+    STUDENT_GAPS = "STUDENT_GAPS"
+    TEACHER_GAPS = "TEACHER_GAPS"
+    TEACHER_PREFERENCES = "TEACHER_PREFERENCES"
+    BALANCED_STUDENT_LOAD = "BALANCED_STUDENT_LOAD"
+    EARLY_LATE_CLASSES = "EARLY_LATE_CLASSES"
+
+
 @dataclass(frozen=True)
 class OptimizationCriterionSnapshot:
     criterion_type: str
@@ -66,8 +74,8 @@ class OptimizationCriterionSnapshot:
     is_active: bool = True
 
     def __post_init__(self) -> None:
-        if not self.criterion_type.strip():
-            raise InvalidValue("Укажите критерий оптимизации", field="criterion_type")
+        if self.criterion_type not in CriterionType:
+            raise InvalidValue("Неизвестный критерий оптимизации", field="criterion_type")
         if self.priority <= 0:
             raise InvalidValue("Приоритет должен быть положительным", field="priority")
 

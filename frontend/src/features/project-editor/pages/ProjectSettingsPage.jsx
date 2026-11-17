@@ -93,7 +93,7 @@ export default function ProjectSettingsPage() {
     <Box component="form" onSubmit={save} sx={{ mt: 3 }}>
       <Stack spacing={3} sx={{ maxWidth: 800 }}>
         <Typography component="h2" variant="h5">
-          Настройки расписания
+          Настройки проекта
         </Typography>
 
         <Paper variant="outlined" sx={{ p: 3 }}>

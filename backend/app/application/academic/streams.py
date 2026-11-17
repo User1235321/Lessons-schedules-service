@@ -112,7 +112,6 @@ class DeleteStream:
     def execute(self, user_id: UserId, project_id: ProjectId, stream_id: StreamId) -> None:
         with self.uow:
             project = owned_project(self.uow, project_id, user_id)
-            self.uow.constraints.lock_project(project_id)
             if self.uow.streams.get_for_update(project_id, stream_id) is None:
                 raise _not_found(stream_id)
             ensure_not_referenced(self.uow, project_id, "STREAM", {stream_id})

@@ -114,7 +114,6 @@ class DeleteGroup:
     def execute(self, user_id: UserId, project_id: ProjectId, group_id: GroupId) -> None:
         with self.uow:
             project = owned_project(self.uow, project_id, user_id)
-            self.uow.constraints.lock_project(project_id)
             group = self.uow.groups.get_for_update(project_id, group_id)
             if group is None:
                 raise _group_not_found(group_id)
@@ -238,7 +237,6 @@ class DeleteSubgroup:
     def execute(self, user_id: UserId, project_id: ProjectId, subgroup_id: SubgroupId) -> None:
         with self.uow:
             project = owned_project(self.uow, project_id, user_id)
-            self.uow.constraints.lock_project(project_id)
             group = self.uow.groups.get_by_subgroup_for_update(project_id, subgroup_id)
             if group is None:
                 raise _subgroup_not_found(subgroup_id)

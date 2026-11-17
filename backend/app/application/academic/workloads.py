@@ -142,7 +142,6 @@ class DeleteWorkload:
     ) -> None:
         with self.uow:
             project = owned_project(self.uow, project_id, user_id)
-            self.uow.constraints.lock_project(project_id)
             if self.uow.workloads.get_for_update(project_id, workload_id) is None:
                 raise _not_found(workload_id)
             ensure_not_referenced(self.uow, project_id, "WORKLOAD", {workload_id})

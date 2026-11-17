@@ -101,17 +101,16 @@ def test_database_rejects_duplicate_active_priority(
         endpoint(project), json={"criteria": criteria(("STUDENT_GAPS",))}, headers=user
     ).status_code == 200
 
-    with session_factory() as session:
-        with pytest.raises(IntegrityError), session.begin_nested():
-            session.add(
-                OptimizationCriterionRow(
-                    project_id=UUID(project),
-                    criterion_type="TEACHER_GAPS",
-                    priority=1,
-                    is_active=True,
-                )
+    with session_factory() as session, session.begin_nested(), pytest.raises(IntegrityError):
+        session.add(
+            OptimizationCriterionRow(
+                project_id=UUID(project),
+                criterion_type="TEACHER_GAPS",
+                priority=1,
+                is_active=True,
             )
-            session.flush()
+        )
+        session.flush()
 
 
 def test_project_deletion_removes_persisted_settings(

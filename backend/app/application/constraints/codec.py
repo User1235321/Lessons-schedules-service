@@ -54,7 +54,7 @@ def _weekday(value: object) -> Weekday:
 def _uuid(value: object) -> UUID:
     try:
         if not isinstance(value, str):
-            raise ValueError
+            raise TypeError
         return UUID(value)
     except (ValueError, TypeError, AttributeError):
         raise InvalidValue("Неверный идентификатор нагрузки", field="parameters") from None

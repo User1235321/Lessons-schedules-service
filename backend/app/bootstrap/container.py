@@ -53,14 +53,6 @@ from app.application.academic.workloads import (
     ListWorkloads,
     UpdateWorkload,
 )
-from app.application.constraints.use_cases import (
-    CreateConstraint,
-    DeleteConstraint,
-    ListConstraints,
-    ListCriteria,
-    ReplaceCriteria,
-    UpdateConstraint,
-)
 from app.application.auth.ports import PasswordHasher, TokenService
 from app.application.auth.use_cases import (
     Authenticate,
@@ -70,6 +62,14 @@ from app.application.auth.use_cases import (
     Refresh,
     Register,
     SessionIssuer,
+)
+from app.application.constraints.use_cases import (
+    CreateConstraint,
+    DeleteConstraint,
+    ListConstraints,
+    ListCriteria,
+    ReplaceCriteria,
+    UpdateConstraint,
 )
 from app.application.projects.use_cases import (
     CreateProject,

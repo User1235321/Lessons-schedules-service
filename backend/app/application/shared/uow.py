@@ -8,8 +8,8 @@ from app.application.academic.ports import (
     TeacherRepository,
     WorkloadRepository,
 )
-from app.application.constraints.ports import ConstraintRepository, CriterionRepository
 from app.application.auth.ports import UserRepository, UserSessionRepository
+from app.application.constraints.ports import ConstraintRepository, CriterionRepository
 from app.application.projects.ports import ProjectRepository
 from app.application.scheduling.ports import JobOutbox, JobRepository, ScheduleRepository
 

@@ -62,11 +62,13 @@ def _validate_references(
     if scope.kind is not ConstraintScopeKind.PROJECT and resource is None:
         raise InvalidValue("Ресурс не найден в проекте", field="scope.id")
 
-    if isinstance(constraint.parameters, (RelatedWorkloadParameters, MinimumGapParameters)):
-        if uow.workloads.get(project_id, WorkloadId(constraint.parameters.workload_id)) is None:
-            raise InvalidValue(
-                "Связанная учебная нагрузка не найдена", field="parameters.workload_id"
-            )
+    if (
+        isinstance(constraint.parameters, (RelatedWorkloadParameters, MinimumGapParameters))
+        and uow.workloads.get(project_id, WorkloadId(constraint.parameters.workload_id)) is None
+    ):
+        raise InvalidValue(
+            "Связанная учебная нагрузка не найдена", field="parameters.workload_id"
+        )
 
 
 def _not_found(constraint_id: UUID) -> NotFound:

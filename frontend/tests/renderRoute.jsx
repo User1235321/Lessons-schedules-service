@@ -86,7 +86,7 @@ export function stubBackend({ authenticated = true, projects = TEST_PROJECTS } =
     }
     const match = url.match(/^\/api\/projects\/([^/]+)$/);
     if (match) {
-      const index = store.findIndex((project) => project.id === decodeURIComponent(match[1]));
+      const index = store.findIndex((project) => project.id.toLowerCase() === decodeURIComponent(match[1]).toLowerCase());
       if (index === -1) {
         return notFound();
       }

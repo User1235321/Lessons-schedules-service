@@ -147,6 +147,7 @@ describe("ProjectSettingsPage", () => {
     const { router } = await openSettings({ projects: [TEST_PROJECTS[0], second] });
 
     await router.navigate("/projects/43/settings");
+    await findHeading("Весенний семестр");
     await findHeading("Настройки проекта");
 
     expect(screen.getByRole("radio", { name: "С минимальным временным шагом" }).checked).toBe(true);

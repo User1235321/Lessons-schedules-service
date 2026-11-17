@@ -90,7 +90,7 @@ export default function ProjectSettingsPage() {
   };
 
   return (
-    <Box component="form" onSubmit={save} sx={{ mt: 3 }}>
+    <Box component="form" noValidate onSubmit={save} sx={{ mt: 3 }}>
       <Stack spacing={3} sx={{ maxWidth: 800 }}>
         <Typography component="h2" variant="h5">
           Настройки проекта

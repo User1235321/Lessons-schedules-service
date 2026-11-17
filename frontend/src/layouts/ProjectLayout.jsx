@@ -47,7 +47,7 @@ export default function ProjectLayout() {
       <ErrorState title="Не удалось открыть проект" message={loadError.message} onRetry={load} />
     );
   }
-  if (!project) {
+  if (!project || project.id !== projectId) {
     return <LoadingState label="Открываем проект" />;
   }
 

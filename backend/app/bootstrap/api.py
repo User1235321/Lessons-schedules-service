@@ -7,9 +7,11 @@ from app.api.cookies import RefreshCookie
 from app.api.errors import install_error_handlers
 from app.api.routers import (
     auth,
+    constraints,
     groups,
     health,
     jobs,
+    optimization,
     projects,
     rooms,
     streams,
@@ -46,5 +48,7 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(rooms.router)
     app.include_router(streams.router)
     app.include_router(workloads.router)
+    app.include_router(constraints.router)
+    app.include_router(optimization.router)
     app.include_router(jobs.router)
     return app

@@ -53,6 +53,14 @@ from app.application.academic.workloads import (
     ListWorkloads,
     UpdateWorkload,
 )
+from app.application.constraints.use_cases import (
+    CreateConstraint,
+    DeleteConstraint,
+    ListConstraints,
+    ListCriteria,
+    ReplaceCriteria,
+    UpdateConstraint,
+)
 from app.application.auth.ports import PasswordHasher, TokenService
 from app.application.auth.use_cases import (
     Authenticate,
@@ -262,6 +270,24 @@ class Container:
 
     def delete_workload(self) -> DeleteWorkload:
         return DeleteWorkload(uow=self.uow(), clock=self.clock)
+
+    def create_constraint(self) -> CreateConstraint:
+        return CreateConstraint(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_constraints(self) -> ListConstraints:
+        return ListConstraints(uow=self.uow())
+
+    def update_constraint(self) -> UpdateConstraint:
+        return UpdateConstraint(uow=self.uow(), clock=self.clock)
+
+    def delete_constraint(self) -> DeleteConstraint:
+        return DeleteConstraint(uow=self.uow(), clock=self.clock)
+
+    def list_criteria(self) -> ListCriteria:
+        return ListCriteria(uow=self.uow())
+
+    def replace_criteria(self) -> ReplaceCriteria:
+        return ReplaceCriteria(uow=self.uow(), clock=self.clock)
 
     def job_state(self) -> JobStateStore:
         return RedisJobStateStore(self.redis)

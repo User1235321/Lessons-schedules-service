@@ -74,7 +74,10 @@ class OptimizationCriterionSnapshot:
     is_active: bool = True
 
     def __post_init__(self) -> None:
-        if not isinstance(self.criterion_type, str) or self.criterion_type not in tuple(CriterionType):
+        if (
+            not isinstance(self.criterion_type, str)
+            or self.criterion_type not in tuple(CriterionType)
+        ):
             raise InvalidValue("Неизвестный критерий оптимизации", field="criterion_type")
         if self.priority <= 0:
             raise InvalidValue("Приоритет должен быть положительным", field="priority")

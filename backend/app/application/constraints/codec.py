@@ -27,8 +27,13 @@ _RELATED = {
 }
 
 
-def _fields(values: object, required: set[str], optional: set[str] = set()) -> dict:
-    if not isinstance(values, dict) or required - values.keys() or values.keys() - required - optional:
+def _fields(values: object, required: set[str], optional: set[str] | None = None) -> dict:
+    optional = optional or set()
+    if (
+        not isinstance(values, dict)
+        or required - values.keys()
+        or values.keys() - required - optional
+    ):
         raise InvalidValue("Неверный набор параметров", field="parameters")
     return values
 

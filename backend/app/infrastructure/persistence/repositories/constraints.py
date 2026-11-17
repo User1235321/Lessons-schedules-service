@@ -43,9 +43,11 @@ class SqlConstraintRepository:
         self._session = session
 
     def lock_project(self, project_id: ProjectId) -> None:
-        self._session.execute(
+        locked = self._session.execute(
             select(ProjectRow.id).where(ProjectRow.id == project_id).with_for_update()
-        ).scalar_one()
+        ).scalar_one_or_none()
+        if locked is None:
+            raise NotFound("Проект не найден", project_id=str(project_id))
 
     def add(self, project_id: ProjectId, constraint: ExtraConstraintSnapshot) -> None:
         self._session.execute(
@@ -144,9 +146,11 @@ class SqlCriterionRepository:
     def replace(
         self, project_id: ProjectId, criteria: tuple[OptimizationCriterionSnapshot, ...]
     ) -> None:
-        self._session.execute(
+        locked = self._session.execute(
             select(ProjectRow.id).where(ProjectRow.id == project_id).with_for_update()
-        ).scalar_one()
+        ).scalar_one_or_none()
+        if locked is None:
+            raise NotFound("Проект не найден", project_id=str(project_id))
         self._session.execute(
             delete(OptimizationCriterionRow).where(OptimizationCriterionRow.project_id == project_id)
         )

@@ -42,6 +42,11 @@ class SqlConstraintRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    def lock_project(self, project_id: ProjectId) -> None:
+        self._session.execute(
+            select(ProjectRow.id).where(ProjectRow.id == project_id).with_for_update()
+        ).scalar_one()
+
     def add(self, project_id: ProjectId, constraint: ExtraConstraintSnapshot) -> None:
         self._session.execute(
             insert(ExtraConstraintRow).values(

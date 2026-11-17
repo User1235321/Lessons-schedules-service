@@ -87,6 +87,7 @@ class CreateConstraint:
             constraint = ExtraConstraintSnapshot(
                 self.ids.new_id(), draft.kind, draft.scope, draft.parameters
             )
+            self.uow.constraints.lock_project(project_id)
             _validate_references(self.uow, project_id, constraint)
             self.uow.constraints.add(project_id, constraint)
             project_data_changed(self.uow, project, self.clock.now())
@@ -120,6 +121,7 @@ class UpdateConstraint:
     ) -> ExtraConstraintSnapshot:
         with self.uow:
             project = owned_project(self.uow, project_id, user_id)
+            self.uow.constraints.lock_project(project_id)
             current = self.uow.constraints.get_for_update(project_id, constraint_id)
             if current is None:
                 raise _not_found(constraint_id)
@@ -146,6 +148,7 @@ class DeleteConstraint:
     def execute(self, user_id: UserId, project_id: ProjectId, constraint_id: UUID) -> None:
         with self.uow:
             project = owned_project(self.uow, project_id, user_id)
+            self.uow.constraints.lock_project(project_id)
             self.uow.constraints.delete(project_id, constraint_id)
             project_data_changed(self.uow, project, self.clock.now())
             self.uow.commit()

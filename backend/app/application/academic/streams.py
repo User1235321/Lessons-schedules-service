@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from app.application.academic.changes import project_data_changed
 from app.application.auth.access import owned_project
+from app.application.constraints.references import ensure_not_referenced
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
 from app.domain.academic.stream import Stream
@@ -111,6 +112,9 @@ class DeleteStream:
     def execute(self, user_id: UserId, project_id: ProjectId, stream_id: StreamId) -> None:
         with self.uow:
             project = owned_project(self.uow, project_id, user_id)
+            if self.uow.streams.get_for_update(project_id, stream_id) is None:
+                raise _not_found(stream_id)
+            ensure_not_referenced(self.uow, project_id, "STREAM", {stream_id})
             self.uow.streams.delete(project_id, stream_id)
             project_data_changed(self.uow, project, self.clock.now())
             self.uow.commit()

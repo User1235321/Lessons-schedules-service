@@ -3,6 +3,7 @@ from typing import Any
 
 from app.application.academic.changes import project_data_changed
 from app.application.auth.access import owned_project
+from app.application.constraints.references import ensure_not_referenced
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
 from app.domain.academic.lesson_type import LessonType
@@ -141,6 +142,9 @@ class DeleteWorkload:
     ) -> None:
         with self.uow:
             project = owned_project(self.uow, project_id, user_id)
+            if self.uow.workloads.get_for_update(project_id, workload_id) is None:
+                raise _not_found(workload_id)
+            ensure_not_referenced(self.uow, project_id, "WORKLOAD", {workload_id})
             self.uow.workloads.delete(project_id, workload_id)
             project_data_changed(self.uow, project, self.clock.now())
             self.uow.commit()

@@ -10,6 +10,10 @@ const isStart = ([url, init]) =>
 const isJobGet = ([url, init]) =>
   /^\/api\/generation-jobs\/[^/]+$/.test(url) && (init?.method ?? "GET") === "GET";
 
+const isScheduleGet = ([url, init]) =>
+  /^\/api\/generation-jobs\/[^/]+\/schedules$/.test(url) &&
+  (init?.method ?? "GET") === "GET";
+
 beforeEach(() => {
   sessionStorage.clear();
   vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -71,6 +75,19 @@ describe("Generation: start", () => {
     expect(fetchMock.mock.calls.some(isStart)).toBe(false);
   });
 
+  it("rejects TOP-N values outside the safe integer range", async () => {
+    const { user, fetchMock } = await openGeneration();
+
+    await user.click(screen.getByRole("radio", { name: "TOP-N лучших вариантов" }));
+    const count = screen.getByLabelText("Число вариантов (N)");
+    await user.clear(count);
+    await user.type(count, "9007199254740992");
+    await user.click(screen.getByRole("button", { name: "Запустить расчёт" }));
+
+    expect(screen.getByText("Укажите целое число вариантов больше нуля")).toBeTruthy();
+    expect(fetchMock.mock.calls.some(isStart)).toBe(false);
+  });
+
   it("shows a start error from the server", async () => {
     const { user, fetchMock } = await openGeneration();
     const respond = fetchMock.getMockImplementation();
@@ -110,6 +127,50 @@ describe("Generation: progress and result", () => {
     expect(await screen.findByText("70%")).toBeTruthy();
   });
 
+  it("starts consecutive polls two seconds apart when responses take 500 ms", async () => {
+    const { fetchMock } = await startCalculation();
+    const respond = fetchMock.getMockImplementation();
+    const startedAt = [];
+
+    fetchMock.mockImplementation(async (url, init) => {
+      if (!isJobGet([url, init])) {
+        return respond(url, init);
+      }
+      startedAt.push(Date.now());
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      return respond(url, init);
+    });
+
+    await vi.advanceTimersByTimeAsync(POLL_INTERVAL_MS * 3 + 750);
+
+    expect(startedAt).toHaveLength(3);
+    expect(startedAt[1] - startedAt[0]).toBe(POLL_INTERVAL_MS);
+    expect(startedAt[2] - startedAt[1]).toBe(POLL_INTERVAL_MS);
+  });
+
+  it("never starts concurrent polls even when the server takes over two seconds", async () => {
+    const { fetchMock } = await startCalculation();
+    const respond = fetchMock.getMockImplementation();
+    let requestsInFlight = 0;
+    let maxConcurrent = 0;
+
+    fetchMock.mockImplementation(async (url, init) => {
+      if (!isJobGet([url, init])) {
+        return respond(url, init);
+      }
+      requestsInFlight += 1;
+      maxConcurrent = Math.max(maxConcurrent, requestsInFlight);
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+      requestsInFlight -= 1;
+      return respond(url, init);
+    });
+
+    await vi.advanceTimersByTimeAsync(7600);
+
+    expect(maxConcurrent).toBe(1);
+    expect(fetchMock.mock.calls.filter(isJobGet).length).toBeGreaterThanOrEqual(2);
+  });
+
   it("shows an unknown progress when the server has none", async () => {
     const job = { status: "QUEUED", progress: null, error_message: null };
     await startCalculation({ job });
@@ -140,7 +201,59 @@ describe("Generation: progress and result", () => {
     await nextPoll();
     expect(fetchMock.mock.calls.filter(isJobGet).length).toBe(polls);
 
-    expect(screen.queryByRole("link", { name: /тестовому результату/ })).toBeNull();
+    const link = await screen.findByRole("link", { name: "Открыть расписание" });
+    expect(link.getAttribute("href")).toBe("/projects/42/schedules/schedule-1");
+    expect(fetchMock.mock.calls.some(isScheduleGet)).toBe(true);
+  });
+
+  it("navigates to the actual schedule after the job completes", async () => {
+    const job = { status: "QUEUED", progress: null, error_message: null };
+    const { user } = await startCalculation({ job, schedules: [{ id: "schedule-real", result_index: 1 }] });
+
+    job.status = "COMPLETED";
+    await nextPoll();
+
+    const link = await screen.findByRole("link", { name: "Открыть расписание" });
+    expect(link.getAttribute("href")).toBe("/projects/42/schedules/schedule-real");
+    await user.click(link);
+    expect(await screen.findByText("Расписание schedule-real")).toBeTruthy();
+  });
+
+  it("reports when the calculation completed without an admissible schedule", async () => {
+    const job = { status: "QUEUED", progress: null, error_message: null };
+    await startCalculation({ job, schedules: [] });
+
+    job.status = "COMPLETED";
+    await nextPoll();
+
+    expect(await screen.findByText("Допустимое расписание не найдено.")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Открыть расписание" })).toBeNull();
+  });
+
+  it("retries loading schedules after an API failure", async () => {
+    const job = { status: "QUEUED", progress: null, error_message: null };
+    const { user, fetchMock } = await startCalculation({ job });
+    const respond = fetchMock.getMockImplementation();
+    let attempts = 0;
+
+    fetchMock.mockImplementation(async (url, init) => {
+      if (isScheduleGet([url, init]) && ++attempts === 1) {
+        return new Response(
+          JSON.stringify({ code: "LOAD_FAILED", message: "Временный сбой", details: {} }),
+          { status: 500 }
+        );
+      }
+      return respond(url, init);
+    });
+
+    job.status = "COMPLETED";
+    await nextPoll();
+
+    expect(await screen.findByText(/Не удалось загрузить результаты: Временный сбой/)).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Повторить загрузку" }));
+
+    expect(await screen.findByRole("link", { name: "Открыть расписание" })).toBeTruthy();
+    expect(attempts).toBe(2);
   });
 
   it("shows why the calculation failed and allows a new start", async () => {
@@ -254,6 +367,58 @@ describe("Generation: cancel", () => {
 
     expect(await screen.findByText("Расчёт уже завершён и не может быть отменён")).toBeTruthy();
     expect(await screen.findByText("Расчёт завершён.")).toBeTruthy();
+  });
+
+  it("ignores an older poll response after cancellation has been accepted", async () => {
+    const { user, fetchMock } = await startCalculation();
+    const respond = fetchMock.getMockImplementation();
+    let releasePoll;
+
+    fetchMock.mockImplementation((url, init) => {
+      if (isJobGet([url, init]) && !releasePoll) {
+        return new Promise((resolve) => {
+          releasePoll = () => resolve(new Response(
+            JSON.stringify({
+              id: "job-1",
+              project_id: "42",
+              job_type: "GENERATE",
+              status: "QUEUED",
+              progress: null,
+              error_message: null
+            }),
+            { status: 200 }
+          ));
+        });
+      }
+      if (/^\/api\/generation-jobs\/[^/]+\/cancel$/.test(url) && init?.method === "POST") {
+        return Promise.resolve(new Response(
+          JSON.stringify({
+            id: "job-1",
+            project_id: "42",
+            job_type: "GENERATE",
+            status: "RUNNING",
+            progress: 20,
+            error_message: null
+          }),
+          { status: 202 }
+        ));
+      }
+      return respond(url, init);
+    });
+
+    await nextPoll();
+    expect(releasePoll).toBeTypeOf("function");
+
+    await user.click(screen.getByRole("button", { name: "Отменить расчёт" }));
+    expect(await screen.findByText("Выполняется")).toBeTruthy();
+    expect(await screen.findByText(/Отмена запрошена/)).toBeTruthy();
+
+    releasePoll();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(screen.queryByText("В очереди")).toBeNull();
+    expect(screen.getByText("Выполняется")).toBeTruthy();
   });
 
   it("shows a cancel error and lets the user try again", async () => {

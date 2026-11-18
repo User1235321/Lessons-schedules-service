@@ -54,7 +54,8 @@ export function stubBackend({
   resources = {},
   blockedDeletes = [],
   failedResourceLoads = [],
-  job = { status: "QUEUED", progress: null, error_message: null }
+  job = { status: "QUEUED", progress: null, error_message: null },
+  schedules = [{ id: "schedule-1", result_index: 1 }]
 } = {}) {
   const store = projects.map((project) => ({ ...structuredClone(DEFAULT_SETTINGS), ...project }));
   let nextId = 100;
@@ -120,6 +121,15 @@ export function stubBackend({
       }
       job.status = "QUEUED";
       return json(202, { job_id: "job-1", status: "QUEUED" });
+    }
+    const schedulesUrl = url.match(/^\/api\/generation-jobs\/([^/]+)\/schedules$/);
+    if (schedulesUrl && method === "GET") {
+      if (schedulesUrl[1] !== "job-1") {
+        return json(404, { code: "NOT_FOUND", message: "Задание не найдено", details: {} });
+      }
+      return job.status === "COMPLETED"
+        ? json(200, schedules)
+        : json(409, { code: "JOB_RESULTS_UNAVAILABLE", message: "Результаты недоступны", details: {} });
     }
     const jobUrl = url.match(/^\/api\/generation-jobs\/([^/]+)(\/cancel)?$/);
     if (jobUrl) {

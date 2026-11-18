@@ -142,7 +142,9 @@ def test_generated_schedule_cannot_reference_job_from_another_project(
         criterion_scores=(),
     )
 
-    with pytest.raises(IntegrityError, match="fk_schedules_project_id_schedule_jobs"):
-        with container.uow() as uow:
-            uow.schedules.add(schedule)
-            uow.commit()
+    with (
+        pytest.raises(IntegrityError, match="fk_schedules_project_id_schedule_jobs"),
+        container.uow() as uow,
+    ):
+        uow.schedules.add(schedule)
+        uow.commit()

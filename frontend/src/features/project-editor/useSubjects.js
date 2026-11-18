@@ -2,22 +2,27 @@ import { useCallback, useEffect, useState } from "react";
 
 import { resourceApi } from "./api.js";
 
-export function useSubjects(projectId) {
-  const [subjects, setSubjects] = useState(null);
+export function useResourceList(projectId, resource) {
+  const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      setSubjects(await resourceApi(projectId, "subjects").list());
+      setItems(await resourceApi(projectId, resource).list());
     } catch (loadError) {
       setError(loadError);
     }
-  }, [projectId]);
+  }, [projectId, resource]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  return { subjects, error, reload: load };
+  return { items, error, reload: load };
+}
+
+export function useSubjects(projectId) {
+  const { items, error, reload } = useResourceList(projectId, "subjects");
+  return { subjects: items, error, reload };
 }

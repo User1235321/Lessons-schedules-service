@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { toFormErrors } from "./formErrors.js";
 
-export function useResourceForm({ open, initialValues, validate, onSubmit }) {
+export function useResourceForm({ open, initialValues, validate, onSubmit, errorAliases = {} }) {
   const [values, setValues] = useState(initialValues);
   const [errors, setErrors] = useState({});
   const [formError, setFormError] = useState(null);
@@ -37,7 +37,7 @@ export function useResourceForm({ open, initialValues, validate, onSubmit }) {
       await onSubmit(values);
     } catch (error) {
       const { fields, form } = toFormErrors(error);
-      setErrors(fields);
+      setErrors(Object.fromEntries(Object.entries(fields).map(([field, message]) => [errorAliases[field] ?? field, message])));
       setFormError(form);
       setSubmitting(false);
     }

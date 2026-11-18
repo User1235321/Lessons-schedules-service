@@ -13,13 +13,16 @@ export function validateName(name, missing) {
 
 export const MAX_STUDENT_COUNT = 2 ** 31 - 1;
 
-export function validateStudentCount(value) {
+export function validatePositiveInteger(value, invalidMessage) {
   const text = String(value).trim();
   if (!/^\d+$/.test(text) || Number(text) <= 0) {
-    return "Нужно положительное целое число студентов";
+    return invalidMessage;
   }
   if (Number(text) > MAX_STUDENT_COUNT) {
     return "Слишком большое число";
   }
   return null;
 }
+
+export const validateStudentCount = (value) =>
+  validatePositiveInteger(value, "Нужно положительное целое число студентов");

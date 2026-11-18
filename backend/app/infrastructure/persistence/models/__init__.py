@@ -20,6 +20,10 @@ from app.infrastructure.persistence.models.academic import (
     TeacherRow,
     WorkloadRow,
 )
+from app.infrastructure.persistence.models.constraints import (
+    ExtraConstraintRow,
+    OptimizationCriterionRow,
+)
 from app.infrastructure.persistence.models.jobs import JobOutboxRow, JobRow
 from app.infrastructure.persistence.models.projects import ProjectRow
 from app.infrastructure.persistence.models.schedules import (
@@ -31,8 +35,10 @@ from app.infrastructure.persistence.models.users import UserRow, UserSessionRow
 
 __all__ = [
     "Base",
+    "ExtraConstraintRow",
     "JobOutboxRow",
     "JobRow",
+    "OptimizationCriterionRow",
     "ProjectRow",
     "RoomAvailabilityRow",
     "RoomCapabilityRow",

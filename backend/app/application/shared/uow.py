@@ -9,6 +9,7 @@ from app.application.academic.ports import (
     WorkloadRepository,
 )
 from app.application.auth.ports import UserRepository, UserSessionRepository
+from app.application.constraints.ports import ConstraintRepository, CriterionRepository
 from app.application.projects.ports import ProjectRepository
 from app.application.scheduling.ports import JobOutbox, JobRepository, ScheduleRepository
 
@@ -28,6 +29,8 @@ class UnitOfWork(Protocol):
     jobs: JobRepository
     job_outbox: JobOutbox
     schedules: ScheduleRepository
+    constraints: ConstraintRepository
+    criteria: CriterionRepository
 
     def __enter__(self) -> Self: ...
 

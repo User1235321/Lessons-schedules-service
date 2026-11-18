@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from app.application.academic.changes import project_data_changed
 from app.application.auth.access import owned_project
+from app.application.constraints.references import ensure_not_referenced
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
 from app.domain.academic.group import StudentGroup, Subgroup
@@ -113,6 +114,13 @@ class DeleteGroup:
     def execute(self, user_id: UserId, project_id: ProjectId, group_id: GroupId) -> None:
         with self.uow:
             project = owned_project(self.uow, project_id, user_id)
+            group = self.uow.groups.get_for_update(project_id, group_id)
+            if group is None:
+                raise _group_not_found(group_id)
+            ensure_not_referenced(self.uow, project_id, "GROUP", {group_id})
+            ensure_not_referenced(
+                self.uow, project_id, "SUBGROUP", {subgroup.id for subgroup in group.subgroups}
+            )
             self.uow.groups.delete(project_id, group_id)
             project_data_changed(self.uow, project, self.clock.now())
             self.uow.commit()
@@ -232,6 +240,7 @@ class DeleteSubgroup:
             group = self.uow.groups.get_by_subgroup_for_update(project_id, subgroup_id)
             if group is None:
                 raise _subgroup_not_found(subgroup_id)
+            ensure_not_referenced(self.uow, project_id, "SUBGROUP", {subgroup_id})
             group.remove_subgroup(subgroup_id)
             self.uow.groups.save(group)
             project_data_changed(self.uow, project, self.clock.now())

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { generationApi } from "./api.js";
 import { isFinal } from "./jobStatus.js";
 
-export const POLL_INTERVAL_MS = 2000;
+export const POLL_INTERVAL_MS = 1900;
 
 const storageKey = (projectId) => `generation-job:${projectId}`;
 
@@ -54,6 +54,7 @@ export function useGenerationJob(projectId) {
   const [resultsError, setResultsError] = useState(null);
   const [resultsAttempt, setResultsAttempt] = useState(0);
   const requestVersion = useRef(0);
+  const restorationRequest = useRef(null);
 
   const start = async (options) => {
     requestVersion.current += 1;
@@ -82,8 +83,11 @@ export function useGenerationJob(projectId) {
     }
 
     let stopped = false;
-    generationApi
-      .get(id)
+    if (restorationRequest.current?.id !== id) {
+      restorationRequest.current = { id, promise: generationApi.get(id) };
+    }
+    const request = restorationRequest.current;
+    request.promise
       .then((restored) => {
         if (!stopped) {
           setJob(restored);
@@ -101,6 +105,9 @@ export function useGenerationJob(projectId) {
         }
       })
       .finally(() => {
+        if (restorationRequest.current === request) {
+          restorationRequest.current = null;
+        }
         if (!stopped) {
           setRestoring(false);
         }

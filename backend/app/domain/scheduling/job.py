@@ -22,6 +22,9 @@ class JobStatus(StrEnum):
     CANCELLED = "CANCELLED"
 
 
+MAX_TOP_N = 2_147_483_647
+
+
 class ResultMode(StrEnum):
     SINGLE = "SINGLE"
     TOP_N = "TOP_N"
@@ -36,6 +39,8 @@ class ResultOptions:
         if self.mode is ResultMode.TOP_N:
             if self.top_n is None or self.top_n <= 0:
                 raise InvalidValue("Для TOP_N нужно положительное число вариантов", field="top_n")
+            if self.top_n > MAX_TOP_N:
+                raise InvalidValue(f"Число вариантов не должно превышать {MAX_TOP_N}", field="top_n")
         elif self.top_n is not None:
             raise InvalidValue("Число вариантов задаётся только для TOP_N", field="top_n")
 

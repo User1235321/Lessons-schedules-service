@@ -19,11 +19,17 @@ import { isFinal } from "../jobStatus.js";
 import { useGenerationJob } from "../useGenerationJob.js";
 
 const DEFAULT_TOP_N = "5";
+const MAX_TOP_N = 2_147_483_647;
 
 function validateTopN(value) {
-  return /^\d+$/.test(value.trim()) && Number.isSafeInteger(Number(value)) && Number(value) > 0
-    ? null
-    : "Укажите целое число вариантов больше нуля";
+  const count = Number(value);
+  if (!/^\d+$/.test(value.trim()) || count <= 0) {
+    return "Укажите целое число вариантов больше нуля";
+  }
+  if (count > MAX_TOP_N) {
+    return `Число вариантов не должно превышать ${MAX_TOP_N}`;
+  }
+  return null;
 }
 
 export default function GenerationPage() {

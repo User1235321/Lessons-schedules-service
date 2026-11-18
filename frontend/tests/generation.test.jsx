@@ -1,8 +1,8 @@
-import { screen } from "@testing-library/react";
+import { renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { POLL_INTERVAL_MS } from "../src/features/generation/useGenerationJob.js";
-import { findHeading, renderRoute } from "./renderRoute.jsx";
+import { POLL_INTERVAL_MS, useGenerationJob } from "../src/features/generation/useGenerationJob.js";
+import { findHeading, renderRoute, stubBackend } from "./renderRoute.jsx";
 
 const isStart = ([url, init]) =>
   /^\/api\/projects\/[^/]+\/generation-jobs$/.test(url) && init?.method === "POST";
@@ -75,16 +75,16 @@ describe("Generation: start", () => {
     expect(fetchMock.mock.calls.some(isStart)).toBe(false);
   });
 
-  it("rejects TOP-N values outside the safe integer range", async () => {
+  it("rejects TOP-N values above the API limit", async () => {
     const { user, fetchMock } = await openGeneration();
 
     await user.click(screen.getByRole("radio", { name: "TOP-N лучших вариантов" }));
     const count = screen.getByLabelText("Число вариантов (N)");
     await user.clear(count);
-    await user.type(count, "9007199254740992");
+    await user.type(count, "2147483648");
     await user.click(screen.getByRole("button", { name: "Запустить расчёт" }));
 
-    expect(screen.getByText("Укажите целое число вариантов больше нуля")).toBeTruthy();
+    expect(screen.getByText("Число вариантов не должно превышать 2147483647")).toBeTruthy();
     expect(fetchMock.mock.calls.some(isStart)).toBe(false);
   });
 
@@ -500,6 +500,15 @@ describe("Generation: returning to the page", () => {
 
     expect(await screen.findByText("Выполняется")).toBeTruthy();
     expect(screen.getByText("60%")).toBeTruthy();
+  });
+
+  it("restores with one request when Strict Mode replays effects", async () => {
+    sessionStorage.setItem("generation-job:42", "job-1");
+    const fetchMock = stubBackend({ job: RUNNING() });
+    const { result } = renderHook(() => useGenerationJob("42"), { reactStrictMode: true });
+
+    await waitFor(() => expect(result.current.job?.status).toBe("RUNNING"));
+    expect(fetchMock.mock.calls.filter(isJobGet)).toHaveLength(1);
   });
 
   it("forgets a job that no longer exists", async () => {

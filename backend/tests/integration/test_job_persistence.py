@@ -93,6 +93,7 @@ def test_other_job_integrity_errors_remain_database_errors(scheduling_context: t
     with pytest.raises(IntegrityError), container.uow() as uow:
         uow.jobs.add(invalid)
 
+
 def test_database_rejects_completion_without_start_time(scheduling_context: tuple) -> None:
     container, owner, project = scheduling_context
     job = container.create_generation_job().execute(owner.id, project.id, ResultOptions())
@@ -100,7 +101,9 @@ def test_database_rejects_completion_without_start_time(scheduling_context: tupl
     with pytest.raises(IntegrityError, match="ck_schedule_jobs_started_at_required"):
         with container.session_factory() as session:
             session.execute(
-                update(JobRow).where(JobRow.id == job.id).values(status=JobStatus.COMPLETED.value)
+                update(JobRow)
+                .where(JobRow.id == job.id)
+                .values(status=JobStatus.COMPLETED.value, finished_at=job.created_at)
             )
 
     with container.uow() as uow:

@@ -98,13 +98,15 @@ def test_database_rejects_completion_without_start_time(scheduling_context: tupl
     container, owner, project = scheduling_context
     job = container.create_generation_job().execute(owner.id, project.id, ResultOptions())
 
-    with pytest.raises(IntegrityError, match="ck_schedule_jobs_started_at_required"):
-        with container.session_factory() as session:
-            session.execute(
-                update(JobRow)
-                .where(JobRow.id == job.id)
-                .values(status=JobStatus.COMPLETED.value, finished_at=job.created_at)
-            )
+    with (
+        pytest.raises(IntegrityError, match="ck_schedule_jobs_started_at_required"),
+        container.session_factory() as session,
+    ):
+        session.execute(
+            update(JobRow)
+            .where(JobRow.id == job.id)
+            .values(status=JobStatus.COMPLETED.value, finished_at=job.created_at)
+        )
 
     with container.uow() as uow:
         assert uow.jobs.get(project.id, job.id) == job

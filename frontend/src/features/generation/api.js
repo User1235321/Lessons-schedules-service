@@ -7,5 +7,6 @@ export const generationApi = {
       top_n: resultMode === "TOP_N" ? topN : null
     }),
   get: (jobId) => api.get(`/generation-jobs/${encodeURIComponent(jobId)}`),
+  schedules: (jobId) => api.get(`/generation-jobs/${encodeURIComponent(jobId)}/schedules`),
   cancel: (jobId) => api.post(`/generation-jobs/${encodeURIComponent(jobId)}/cancel`)
 };

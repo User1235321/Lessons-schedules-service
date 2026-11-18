@@ -1,6 +1,8 @@
 import { Alert, Box, Button, Chip, LinearProgress, Stack, Typography } from "@mui/material";
-import { isCancellable, isFinal, JOB_STATUS } from "../jobStatus.js";
+import { Link as RouterLink } from "react-router";
 
+import { paths } from "../../../app/paths.js";
+import { isCancellable, isFinal, JOB_STATUS } from "../jobStatus.js";
 
 function Progress({ job }) {
   const hasProgress = typeof job.progress === "number";
@@ -41,12 +43,44 @@ function Outcome({ job }) {
   );
 }
 
+function CompletedResults({ projectId, schedules, resultsLoading, resultsError, onRetryResults }) {
+  if (resultsLoading || (schedules === null && !resultsError)) {
+    return <Typography sx={{ mt: 2 }}>Загружаем результаты расчёта…</Typography>;
+  }
+  if (resultsError) {
+    return (
+      <Stack spacing={1} sx={{ mt: 2, alignItems: "flex-start" }}>
+        <Alert severity="error">Не удалось загрузить результаты: {resultsError.message}</Alert>
+        <Button variant="outlined" onClick={onRetryResults}>Повторить загрузку</Button>
+      </Stack>
+    );
+  }
+  if (schedules.length === 0) {
+    return <Alert severity="warning" sx={{ mt: 2 }}>Допустимое расписание не найдено.</Alert>;
+  }
+  return (
+    <Button
+      sx={{ mt: 2 }}
+      variant="contained"
+      component={RouterLink}
+      to={paths.schedule(projectId, schedules[0].id)}
+    >
+      Открыть расписание
+    </Button>
+  );
+}
+
 export default function JobPanel({
+  projectId,
   job,
   pollError,
   cancelling,
   cancelRequested,
   cancelError,
+  schedules,
+  resultsLoading,
+  resultsError,
+  onRetryResults,
   onCancel
 }) {
   const status = JOB_STATUS[job.status] ?? { label: job.status, color: "default" };
@@ -59,6 +93,15 @@ export default function JobPanel({
       </Stack>
 
       {isFinal(job.status) ? <Outcome job={job} /> : <Progress job={job} />}
+      {job.status === "COMPLETED" && (
+        <CompletedResults
+          projectId={projectId}
+          schedules={schedules}
+          resultsLoading={resultsLoading}
+          resultsError={resultsError}
+          onRetryResults={onRetryResults}
+        />
+      )}
 
       {isCancellable(job.status) && (
         <Stack direction="row" spacing={2} sx={{ mt: 2, alignItems: "center" }}>

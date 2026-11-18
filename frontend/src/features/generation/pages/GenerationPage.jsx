@@ -21,7 +21,7 @@ import { useGenerationJob } from "../useGenerationJob.js";
 const DEFAULT_TOP_N = "5";
 
 function validateTopN(value) {
-  return /^\d+$/.test(value.trim()) && Number(value) > 0
+  return /^\d+$/.test(value.trim()) && Number.isSafeInteger(Number(value)) && Number(value) > 0
     ? null
     : "Укажите целое число вариантов больше нуля";
 }
@@ -41,6 +41,10 @@ function GenerationView({ projectId }) {
     cancelling,
     cancelRequested,
     cancelError,
+    schedules,
+    resultsLoading,
+    resultsError,
+    retryResults,
     start,
     cancel
   } = useGenerationJob(projectId);
@@ -115,11 +119,16 @@ function GenerationView({ projectId }) {
 
       {job && (
         <JobPanel
+          projectId={projectId}
           job={job}
           pollError={pollError}
           cancelling={cancelling}
           cancelRequested={cancelRequested}
           cancelError={cancelError}
+          schedules={schedules}
+          resultsLoading={resultsLoading}
+          resultsError={resultsError}
+          onRetryResults={retryResults}
           onCancel={cancel}
         />
       )}

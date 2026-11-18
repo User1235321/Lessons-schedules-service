@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { generationApi } from "./api.js";
 import { isFinal } from "./jobStatus.js";
@@ -36,13 +36,20 @@ export function useGenerationJob(projectId) {
   const [cancelling, setCancelling] = useState(false);
   const [cancelRequested, setCancelRequested] = useState(false);
   const [cancelError, setCancelError] = useState(null);
-  const [attempt, setAttempt] = useState(0);
+  const [schedules, setSchedules] = useState(null);
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [resultsError, setResultsError] = useState(null);
+  const [resultsAttempt, setResultsAttempt] = useState(0);
+  const requestVersion = useRef(0);
 
   const start = async (options) => {
+    requestVersion.current += 1;
     setStartError(null);
     setPollError(null);
     setCancelError(null);
     setCancelRequested(false);
+    setSchedules(null);
+    setResultsError(null);
     setStarting(true);
     try {
       const { job_id: id, status } = await generationApi.start(projectId, options);
@@ -92,6 +99,7 @@ export function useGenerationJob(projectId) {
   }, [projectId]);
 
   const cancel = async () => {
+    requestVersion.current += 1;
     setCancelError(null);
     setCancelling(true);
     try {
@@ -102,9 +110,11 @@ export function useGenerationJob(projectId) {
       setCancelError(error);
       if (error.code === "JOB_NOT_CANCELLABLE") {
         try {
-          setJob(await generationApi.get(job.id));
-        } catch {
-          return;
+          const next = await generationApi.get(job.id);
+          setJob(next);
+          setCancelRequested(false);
+        } catch (refreshError) {
+          setCancelError(refreshError);
         }
       }
     } finally {
@@ -112,39 +122,88 @@ export function useGenerationJob(projectId) {
     }
   };
 
+  const shouldPoll = job !== null && !isFinal(job.status);
+
   useEffect(() => {
-    if (!job || isFinal(job.status)) {
+    if (!shouldPoll) {
       return undefined;
     }
 
-    let stopped = false;
-    const timer = setTimeout(async () => {
+    const jobId = job.id;
+    let active = true;
+    let timer;
+
+    async function poll() {
+      const startedAt = Date.now();
+      const version = requestVersion.current;
+      let keepPolling = true;
+
       try {
-        const next = await generationApi.get(job.id);
-        if (!stopped) {
+        const next = await generationApi.get(jobId);
+        if (active && requestVersion.current === version) {
           setPollError(null);
           setJob(next);
+          keepPolling = !isFinal(next.status);
         }
       } catch (error) {
-        if (stopped) {
-          return;
+        if (active && requestVersion.current === version) {
+          if (error.code === "NOT_FOUND") {
+            storeJobId(projectId, null);
+            setJob(null);
+            setPollError(error);
+            keepPolling = false;
+          } else {
+            setPollError(error);
+          }
         }
-        if (error.code === "NOT_FOUND") {
-          storeJobId(projectId, null);
-          setJob(null);
-          setPollError(error);
-        } else {
-          setPollError(error);
-          setAttempt((count) => count + 1);
+      } finally {
+        if (active && keepPolling) {
+          const elapsed = Date.now() - startedAt;
+          timer = setTimeout(poll, Math.max(0, POLL_INTERVAL_MS - elapsed));
         }
       }
-    }, POLL_INTERVAL_MS);
+    }
+
+    timer = setTimeout(poll, POLL_INTERVAL_MS);
 
     return () => {
-      stopped = true;
+      active = false;
       clearTimeout(timer);
     };
-  }, [job, attempt]);
+  }, [projectId, job?.id, shouldPoll]);
+
+  useEffect(() => {
+    if (job?.status !== "COMPLETED") {
+      return undefined;
+    }
+
+    let active = true;
+    setSchedules(null);
+    setResultsError(null);
+    setResultsLoading(true);
+
+    generationApi
+      .schedules(job.id)
+      .then((next) => {
+        if (active) {
+          setSchedules(next);
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setResultsError(error);
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setResultsLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [job?.id, job?.status, resultsAttempt]);
 
   return {
     job,
@@ -155,7 +214,11 @@ export function useGenerationJob(projectId) {
     cancelling,
     cancelRequested,
     cancelError,
+    schedules,
+    resultsLoading,
+    resultsError,
     start,
-    cancel
+    cancel,
+    retryResults: () => setResultsAttempt((attempt) => attempt + 1)
   };
 }

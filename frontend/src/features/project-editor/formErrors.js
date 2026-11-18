@@ -7,7 +7,7 @@ export function toFormErrors(error) {
 
   const field = error.details?.field;
   if (typeof field === "string") {
-    return { fields: { [field]: error.message }, form: null };
+    return { fields: { [field.split(".")[0]]: error.message }, form: null };
   }
 
   if (error.code === "VALIDATION_ERROR") {

@@ -35,7 +35,10 @@ function validateResource(name, values, items, ownId) {
     if (!value) {
       return json(422, { code: "INVALID_VALUE", message: "Укажите название", details: { field: "name" } });
     }
-    const taken = items.some((item) => item.id !== ownId && item.name?.toLowerCase() === value.toLowerCase());
+    const candidates = name === "subgroups"
+      ? items.filter((item) => item.group_id === values.group_id)
+      : items;
+    const taken = candidates.some((item) => item.id !== ownId && item.name?.toLowerCase() === value.toLowerCase());
     if (taken) {
       return json(409, { code: "NAME_TAKEN", message: "Такое название уже есть", details: { field: "name" } });
     }

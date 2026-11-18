@@ -16,6 +16,19 @@ describe("toFormErrors (project editor)", () => {
     });
   });
 
+  it.each([
+    ["capabilities.0.subject_id", "capabilities"],
+    ["availability.0.end", "availability"],
+    ["preferences.0.end", "preferences"]
+  ])("maps domain error %s to field %s", (field, root) => {
+    const error = apiError(422, "INVALID_VALUE", "Некорректные данные", { field });
+
+    expect(toFormErrors(error)).toEqual({
+      fields: { [root]: "Некорректные данные" },
+      form: null
+    });
+  });
+
   it("marks top-level fields of a request validation error", () => {
     const error = apiError(422, "VALIDATION_ERROR", "Проверьте введённые данные", {
       fields: [{ field: "availability.0.start", reason: "bad time" }]

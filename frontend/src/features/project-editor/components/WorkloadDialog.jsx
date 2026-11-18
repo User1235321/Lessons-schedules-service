@@ -10,6 +10,7 @@ import ResourceFormDialog from "./ResourceFormDialog.jsx";
 import { targetFromWorkload, workloadTargetFields } from "../workloadTargets.js";
 
 const nativeSelect = { select: { native: true } };
+const workloadErrorAliases = { group_id: "target_id", subgroup_id: "target_id", stream_id: "target_id" };
 
 function SelectField({ label, value, onChange, options, error, disabled }) {
   return (
@@ -49,6 +50,7 @@ export default function WorkloadDialog({
 
   const form = useResourceForm({
     open,
+    errorAliases: workloadErrorAliases,
     initialValues: {
       target_type: currentTarget?.type ?? "GROUP",
       target_id: currentTarget?.id ?? firstTarget("GROUP"),

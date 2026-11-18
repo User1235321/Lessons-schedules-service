@@ -27,6 +27,19 @@ function storeJobId(projectId, jobId) {
   }
 }
 
+function preferLatestStatus(current, next) {
+  if (current?.id !== next.id) {
+    return next;
+  }
+  if (isFinal(current.status) && !isFinal(next.status)) {
+    return current;
+  }
+  if (current.status === "RUNNING" && next.status === "QUEUED") {
+    return current;
+  }
+  return next;
+}
+
 export function useGenerationJob(projectId) {
   const [job, setJob] = useState(null);
   const [restoring, setRestoring] = useState(() => readStoredJobId(projectId) !== null);
@@ -48,12 +61,12 @@ export function useGenerationJob(projectId) {
     setPollError(null);
     setCancelError(null);
     setCancelRequested(false);
-    setSchedules(null);
-    setResultsError(null);
     setStarting(true);
     try {
       const { job_id: id, status } = await generationApi.start(projectId, options);
       storeJobId(projectId, id);
+      setSchedules(null);
+      setResultsError(null);
       setJob({ id, status, progress: null, error_message: null });
     } catch (error) {
       setStartError(error);
@@ -104,14 +117,14 @@ export function useGenerationJob(projectId) {
     setCancelling(true);
     try {
       const next = await generationApi.cancel(job.id);
-      setJob(next);
+      setJob((current) => preferLatestStatus(current, next));
       setCancelRequested(!isFinal(next.status));
     } catch (error) {
       setCancelError(error);
       if (error.code === "JOB_NOT_CANCELLABLE") {
         try {
           const next = await generationApi.get(job.id);
-          setJob(next);
+          setJob((current) => preferLatestStatus(current, next));
           setCancelRequested(false);
         } catch (refreshError) {
           setCancelError(refreshError);
@@ -142,7 +155,7 @@ export function useGenerationJob(projectId) {
         const next = await generationApi.get(jobId);
         if (active && requestVersion.current === version) {
           setPollError(null);
-          setJob(next);
+          setJob((current) => preferLatestStatus(current, next));
           keepPolling = !isFinal(next.status);
         }
       } catch (error) {

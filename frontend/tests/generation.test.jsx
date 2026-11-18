@@ -421,6 +421,46 @@ describe("Generation: cancel", () => {
     expect(screen.getByText("Выполняется")).toBeTruthy();
   });
 
+  it("does not replace a final status with an older cancellation response", async () => {
+    const job = { status: "QUEUED", progress: null, error_message: null };
+    const { user, fetchMock } = await startCalculation({ job });
+    const respond = fetchMock.getMockImplementation();
+    let releaseCancel;
+
+    fetchMock.mockImplementation((url, init) => {
+      if (/^\/api\/generation-jobs\/[^/]+\/cancel$/.test(url) && init?.method === "POST") {
+        return new Promise((resolve) => {
+          releaseCancel = () => resolve(new Response(
+            JSON.stringify({
+              id: "job-1",
+              project_id: "42",
+              job_type: "GENERATE",
+              status: "RUNNING",
+              progress: 30,
+              error_message: null
+            }),
+            { status: 202 }
+          ));
+        });
+      }
+      return respond(url, init);
+    });
+
+    await user.click(screen.getByRole("button", { name: "Отменить расчёт" }));
+    expect(releaseCancel).toBeTypeOf("function");
+
+    job.status = "COMPLETED";
+    await nextPoll();
+    expect(await screen.findByText("Расчёт завершён.")).toBeTruthy();
+
+    releaseCancel();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(screen.getByText("Завершён")).toBeTruthy();
+    expect(screen.queryByText("Выполняется")).toBeNull();
+  });
+
   it("shows a cancel error and lets the user try again", async () => {
     const { user, fetchMock } = await startCalculation();
     const respond = fetchMock.getMockImplementation();

@@ -67,6 +67,7 @@ def test_api_hides_foreign_jobs_and_projects(scheduling_context: tuple) -> None:
         {"result_mode": "SINGLE", "top_n": 2},
         {"result_mode": "TOP_N", "top_n": True},
         {"result_mode": "TOP_N", "top_n": 0},
+        {"result_mode": "TOP_N", "top_n": 2_147_483_648},
         {"result_mode": "SINGLE", "unexpected": True},
     ],
 )

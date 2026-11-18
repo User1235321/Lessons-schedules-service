@@ -53,7 +53,9 @@ export function stubBackend({
   projects = TEST_PROJECTS,
   resources = {},
   blockedDeletes = [],
-  failedResourceLoads = []
+  failedResourceLoads = [],
+  job = { status: "QUEUED", progress: null, error_message: null },
+  schedules = [{ id: "schedule-1", result_index: 1 }]
 } = {}) {
   const store = projects.map((project) => ({ ...structuredClone(DEFAULT_SETTINGS), ...project }));
   let nextId = 100;
@@ -107,6 +109,49 @@ export function stubBackend({
     }
     if (url === "/api/auth/logout") {
       return json(204);
+    }
+
+    if (/^\/api\/projects\/[^/]+\/generation-jobs$/.test(url) && method === "POST") {
+      if (body.result_mode === "TOP_N" && !(body.top_n > 0)) {
+        return json(422, {
+          code: "INVALID_VALUE",
+          message: "Для TOP_N нужно положительное число вариантов",
+          details: { field: "top_n" }
+        });
+      }
+      job.status = "QUEUED";
+      return json(202, { job_id: "job-1", status: "QUEUED" });
+    }
+    const schedulesUrl = url.match(/^\/api\/generation-jobs\/([^/]+)\/schedules$/);
+    if (schedulesUrl && method === "GET") {
+      if (schedulesUrl[1] !== "job-1") {
+        return json(404, { code: "NOT_FOUND", message: "Задание не найдено", details: {} });
+      }
+      return job.status === "COMPLETED"
+        ? json(200, schedules)
+        : json(409, { code: "JOB_RESULTS_UNAVAILABLE", message: "Результаты недоступны", details: {} });
+    }
+    const jobUrl = url.match(/^\/api\/generation-jobs\/([^/]+)(\/cancel)?$/);
+    if (jobUrl) {
+      if (jobUrl[1] !== "job-1") {
+        return json(404, { code: "NOT_FOUND", message: "Задание не найдено", details: {} });
+      }
+      if (jobUrl[2]) {
+        if (!["QUEUED", "RUNNING"].includes(job.status)) {
+          return json(409, {
+            code: "JOB_NOT_CANCELLABLE",
+            message: "Расчёт уже завершён и не может быть отменён",
+            details: {}
+          });
+        }
+        job.status = "CANCELLED";
+      }
+      return json(jobUrl[2] ? 202 : 200, {
+        id: "job-1",
+        project_id: "42",
+        job_type: "GENERATE",
+        ...job
+      });
     }
 
     if (url === "/api/projects" && method === "GET") {

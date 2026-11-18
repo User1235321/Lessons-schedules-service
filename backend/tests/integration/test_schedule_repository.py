@@ -5,8 +5,8 @@ from uuid import UUID, uuid4
 import pytest
 from sqlalchemy.exc import IntegrityError
 
-from app.domain.scheduling.job import ResultOptions
 from app.domain.projects.project import Project
+from app.domain.scheduling.job import ResultOptions
 from app.domain.scheduling.schedule import (
     LessonFormat,
     Schedule,
@@ -81,6 +81,7 @@ def test_other_schedule_integrity_errors_remain_database_errors(scheduling_conte
     )
     with pytest.raises(IntegrityError), container.uow() as uow:
         uow.schedules.add(schedule)
+
 
 def test_imported_schedule_persists_entries_without_academic_references(
     scheduling_context: tuple,

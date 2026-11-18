@@ -23,6 +23,7 @@ function storeJobId(projectId, jobId) {
       sessionStorage.setItem(storageKey(projectId), jobId);
     }
   } catch {
+    return;
   }
 }
 
@@ -103,6 +104,7 @@ export function useGenerationJob(projectId) {
         try {
           setJob(await generationApi.get(job.id));
         } catch {
+          return;
         }
       }
     } finally {

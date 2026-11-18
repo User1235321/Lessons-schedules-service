@@ -86,6 +86,30 @@ describe("Streams section", () => {
     expect(JSON.parse(init.body)).toEqual({ name: "301 + 302", group_ids: ["g1", "g3"] });
   });
 
+  it("restores a saved stream when reopening the project", async () => {
+    const { user, router } = openStreams({ groups: GROUPS, streams: [] });
+    const dialog = await openAddDialog(user);
+    await user.type(within(dialog).getByLabelText("Название потока"), "Первый курс");
+    await user.click(within(dialog).getByLabelText("301 (25)"));
+    await user.click(within(dialog).getByRole("button", { name: "Добавить" }));
+
+    expect(await within(await table()).findByText("Первый курс")).toBeTruthy();
+    await router.navigate("/projects");
+    await screen.findByRole("heading", { name: "Мои проекты" });
+    await router.navigate("/projects/42/streams");
+    expect(await within(await table()).findByText("Первый курс")).toBeTruthy();
+  });
+
+  it("deletes a stream after confirmation", async () => {
+    const { user } = openStreams();
+    const list = await table();
+    await user.click(within(list).getByRole("button", { name: "Удалить: 301 + 302" }));
+    const dialog = await screen.findByRole("dialog", { name: "Удалить?" });
+    await user.click(within(dialog).getByRole("button", { name: "Удалить" }));
+
+    expect(await screen.findByText(/Потоков пока нет/)).toBeTruthy();
+  });
+
   it("keeps a stream that the server refuses to delete", async () => {
     const { user } = openStreams(undefined, { blockedDeletes: ["st1"] });
     const list = await table();

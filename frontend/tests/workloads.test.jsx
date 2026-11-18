@@ -136,6 +136,63 @@ describe("Workloads section", () => {
     expect(JSON.parse(init.body)).toMatchObject({ duration_minutes: 90, required_teacher_count: 1 });
   });
 
+  it("moves an existing workload from a stream to a subgroup", async () => {
+    const { user, fetchMock } = openWorkloads();
+    const list = await table();
+
+    await user.click(within(list).getByRole("button", { name: "Изменить: Математика, Поток 301 + 302" }));
+    const dialog = await screen.findByRole("dialog", { name: "Изменить нагрузку" });
+    await user.selectOptions(within(dialog).getByLabelText("Для кого"), "SUBGROUP");
+    await user.click(within(dialog).getByRole("button", { name: "Сохранить" }));
+
+    expect(await within(list).findByText("301 / 1")).toBeTruthy();
+    const [url, init] = fetchMock.mock.calls.find(isWorkloadWrite);
+    expect(url).toBe("/api/projects/42/workloads/w1");
+    expect(JSON.parse(init.body)).toMatchObject({
+      group_id: null,
+      subgroup_id: "sg1",
+      stream_id: null,
+      lesson_format: "ONSITE"
+    });
+  });
+
+  it("shows server target errors in the target field and clears them when changed", async () => {
+    const { user, fetchMock } = openWorkloads({ workloads: [] });
+    const respond = fetchMock.getMockImplementation();
+    const message = "Такой группы, подгруппы или потока нет в проекте";
+    fetchMock.mockImplementation(async (url, options) => {
+      if (url === "/api/projects/42/workloads" && options?.method === "POST") {
+        return new Response(JSON.stringify({
+          code: "INVALID_VALUE",
+          message,
+          details: { field: "subgroup_id" }
+        }), { status: 422 });
+      }
+      return respond(url, options);
+    });
+
+    const dialog = await openAddDialog(user);
+    await user.selectOptions(within(dialog).getByLabelText("Для кого"), "SUBGROUP");
+    await user.click(within(dialog).getByRole("button", { name: "Добавить" }));
+
+    expect(await within(dialog).findByText(message)).toBeTruthy();
+    await user.selectOptions(within(dialog).getByLabelText("Для кого"), "GROUP");
+    expect(within(dialog).queryByText(message)).toBeNull();
+  });
+
+  it("restores saved workloads when reopening the project", async () => {
+    const { user, router } = openWorkloads({ workloads: [] });
+    const dialog = await openAddDialog(user);
+    await user.click(within(dialog).getByRole("button", { name: "Добавить" }));
+    expect(await within(await table()).findByText("Математика")).toBeTruthy();
+
+    await router.navigate("/projects");
+    await screen.findByRole("heading", { name: "Мои проекты" });
+    await router.navigate("/projects/42/workloads");
+
+    expect(await within(await table()).findByText("Математика")).toBeTruthy();
+  });
+
   it("deletes a workload after confirmation", async () => {
     const { user } = openWorkloads();
     const list = await table();

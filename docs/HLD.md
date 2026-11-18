@@ -888,12 +888,14 @@ API использует JSON для прикладных данных и multip
 | ProjectCreate | name: string (обязательно, 1–200 символов после trim); необязательные настройки проекта |
 | ProjectPatch | любое подмножество name, odd_week_days, even_week_days, time_mode, time_step_minutes, duration_mode, duration_minutes |
 | Error | code: string; message: string; details: object |
-| Interval | week: ODD или EVEN; weekday: MONDAY…SUNDAY; start_time: HH:MM; end_time: HH:MM |
+| Interval | week: ODD, EVEN или ANY; day: MONDAY…SUNDAY; start: HH:MM; end: HH:MM |
 | TeacherAssignment | teacher_id: uuid или null; display_name: string |
 | Job | id: uuid; project_id: uuid; job_type: string; status: QUEUED/RUNNING/COMPLETED/FAILED/CANCELLED; progress: number или null; error_message: string или null |
 | Schedule | id: uuid; project_id: uuid; source: GENERATED/IMPORTED; job_id: uuid или null; result_index: integer или null; criterion_scores: object или null; entries: ScheduleEntry[] |
 | ScheduleEntry | id: uuid; workload_id: uuid или null; subject_name: string или null; participant_label: string или null; lesson_type: string или null; lesson_format: ONSITE/REMOTE или null; week: ODD/EVEN; weekday: MONDAY…SUNDAY; start_time: HH:MM; end_time: HH:MM; room_id: uuid или null; room_name: string или null; teachers: TeacherAssignment[] |
 | StoredFile | id: uuid; project_id: uuid; category: UPLOAD/EXPORT; original_name: string; file_format: string; size_bytes: integer; created_at: datetime; schedule_id: uuid или null; job_id: uuid или null |
+
+Для Interval значение ANY означает одинаковый промежуток на нечётной и чётной неделях. Имена day, start, end относятся к API; поля хранения могут отличаться.
 
 Даты передаются в ISO 8601. Типы UUID и enum показаны в человекочитаемом формате, не как отдельные примитивы JSON. Для проектируемых таблиц и API конкретные имена свойств определяют целевой контракт, но ещё не реализованные маршруты требуют проверки соответствия FS перед разработкой.
 

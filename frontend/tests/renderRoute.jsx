@@ -29,11 +29,50 @@ export const TEST_PROJECTS = [
   { id: "43", name: "Весенний семестр", created_at: "2026-10-01T10:00:00Z", updated_at: "2026-10-01T10:00:00Z" }
 ];
 
+function validateResource(name, values, items, ownId) {
+  if ("name" in values) {
+    const value = String(values.name).trim();
+    if (!value) {
+      return json(422, { code: "INVALID_VALUE", message: "Укажите название", details: { field: "name" } });
+    }
+    const taken = items.some((item) => item.id !== ownId && item.name?.toLowerCase() === value.toLowerCase());
+    if (taken) {
+      return json(409, { code: "NAME_TAKEN", message: "Такое название уже есть", details: { field: "name" } });
+    }
+  }
+  return null;
+}
+
 const notFound = () => json(404, { code: "NOT_FOUND", message: "Проект не найден", details: {} });
 
-export function stubBackend({ authenticated = true, projects = TEST_PROJECTS } = {}) {
+export function stubBackend({
+  authenticated = true,
+  projects = TEST_PROJECTS,
+  resources = {},
+  blockedDeletes = [],
+  failedResourceLoads = []
+} = {}) {
   const store = projects.map((project) => ({ ...structuredClone(DEFAULT_SETTINGS), ...project }));
   let nextId = 100;
+  const collections = Object.fromEntries(
+    Object.entries(resources).map(([name, items]) => [name, structuredClone(items)])
+  );
+  const collection = (name) => (collections[name] ??= []);
+
+  const syncSubgroup = (subgroup) => {
+    const group = collection("groups").find((entry) => entry.id === subgroup.group_id);
+    if (!group) return;
+    const nested = { id: subgroup.id, name: subgroup.name, student_count: subgroup.student_count };
+    const previous = group.subgroups ?? [];
+    group.subgroups = previous.some((entry) => entry.id === subgroup.id)
+      ? previous.map((entry) => (entry.id === subgroup.id ? nested : entry))
+      : [...previous, nested];
+  };
+
+  const removeSubgroup = (subgroup) => {
+    const group = collection("groups").find((entry) => entry.id === subgroup.group_id);
+    if (group) group.subgroups = (group.subgroups ?? []).filter((entry) => entry.id !== subgroup.id);
+  };
 
   const fetchMock = vi.fn(async (url, init = {}) => {
     const method = init.method ?? "GET";
@@ -84,6 +123,55 @@ export function stubBackend({ authenticated = true, projects = TEST_PROJECTS } =
       store.push(project);
       return json(201, project);
     }
+    const resource = url.match(
+      /^\/api\/projects\/[^/]+\/(subjects|teachers|rooms|groups|subgroups|streams|workloads|constraints)(?:\/([^/]+))?$/
+    );
+    if (resource) {
+      const [, name, id] = resource;
+      const items = collection(name);
+      const index = id ? items.findIndex((item) => item.id === id) : -1;
+
+      if (!id && method === "GET") {
+        return failedResourceLoads.includes(name)
+          ? json(500, { code: "LOAD_FAILED", message: "Не удалось загрузить ресурсы", details: {} })
+          : json(200, items);
+      }
+      if (!id && method === "POST") {
+        const invalid = validateResource(name, body, items, null);
+        if (invalid) {
+          return invalid;
+        }
+        const created = { ...body, id: String(nextId++) };
+        if (name === "groups") {
+          created.subgroups = [];
+        }
+        items.push(created);
+        if (name === "subgroups") syncSubgroup(created);
+        return json(201, created);
+      }
+      if (index === -1) {
+        return notFound();
+      }
+      if (method === "DELETE") {
+        if (blockedDeletes.includes(id)) {
+          return json(409, { code: "IN_USE", message: "Используется в нагрузке", details: {} });
+        }
+        if (name === "subgroups") removeSubgroup(items[index]);
+        items.splice(index, 1);
+        return json(204);
+      }
+      if (method === "PATCH") {
+        const invalid = validateResource(name, { ...items[index], ...body }, items, id);
+        if (invalid) {
+          return invalid;
+        }
+        items[index] = { ...items[index], ...body };
+        if (name === "subgroups") syncSubgroup(items[index]);
+        return json(200, items[index]);
+      }
+      return json(200, items[index]);
+    }
+
     const match = url.match(/^\/api\/projects\/([^/]+)$/);
     if (match) {
       const index = store.findIndex((project) => project.id.toLowerCase() === decodeURIComponent(match[1]).toLowerCase());

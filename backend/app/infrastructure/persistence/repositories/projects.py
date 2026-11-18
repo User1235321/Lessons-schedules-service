@@ -1,4 +1,6 @@
-from sqlalchemy import delete, select, update
+from datetime import datetime
+
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.orm import Session
 
 from app.domain.projects.project import Project
@@ -47,8 +49,22 @@ class SqlProjectRepository:
         if updated is None:
             raise NotFound("Проект не найден", project_id=str(project.id))
 
+    def touch(self, project_id: ProjectId, owner_id: UserId, now: datetime) -> None:
+        updated = self._session.scalar(
+            update(ProjectRow)
+            .where(ProjectRow.id == project_id, ProjectRow.owner_id == owner_id)
+            .values(updated_at=now)
+            .returning(ProjectRow.id)
+        )
+        if updated is None:
+            raise NotFound("Проект не найден", project_id=str(project_id))
+
     def delete(self, project_id: ProjectId, owner_id: UserId) -> None:
-        # Данные проекта удалит база: внешние ключи на projects объявлены с ON DELETE CASCADE
+        # Данные проекта удалит база: внешние ключи на projects объявлены с ON DELETE CASCADE.
+        # Ссылки внутри проекта (например, на занятую дисциплину) проверяются после каждого
+        # каскадного удаления, и исход зависел бы от их порядка. Эти ссылки DEFERRABLE:
+        # их проверка ждёт commit, когда каскад уже удалил и ссылающиеся строки
+        self._session.execute(text("SET CONSTRAINTS ALL DEFERRED"))
         deleted = self._session.scalar(
             delete(ProjectRow)
             .where(ProjectRow.id == project_id, ProjectRow.owner_id == owner_id)

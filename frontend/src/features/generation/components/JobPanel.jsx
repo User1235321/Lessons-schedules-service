@@ -1,12 +1,6 @@
 import { Alert, Box, Button, Chip, LinearProgress, Stack, Typography } from "@mui/material";
-import { Link as RouterLink } from "react-router";
-
-import { paths } from "../../../app/paths.js";
 import { isCancellable, isFinal, JOB_STATUS } from "../jobStatus.js";
 
-// Идентификатор расписания для перехода к тестовому результату: список расписаний расчёта
-// появится вместе с API расписаний (HLD 10.7, GET /generation-jobs/{id}/schedules)
-const TEST_SCHEDULE_ID = "test";
 
 function Progress({ job }) {
   const hasProgress = typeof job.progress === "number";
@@ -28,26 +22,9 @@ function Progress({ job }) {
   );
 }
 
-function Outcome({ job, projectId }) {
+function Outcome({ job }) {
   if (job.status === "COMPLETED") {
-    return (
-      <Alert
-        severity="success"
-        sx={{ mt: 2 }}
-        action={
-          <Button
-            color="inherit"
-            size="small"
-            component={RouterLink}
-            to={paths.schedule(projectId, TEST_SCHEDULE_ID)}
-          >
-            Перейти к тестовому результату
-          </Button>
-        }
-      >
-        Расчёт завершён.
-      </Alert>
-    );
+    return <Alert severity="success" sx={{ mt: 2 }}>Расчёт завершён.</Alert>;
   }
   if (job.status === "FAILED") {
     return (
@@ -64,10 +41,8 @@ function Outcome({ job, projectId }) {
   );
 }
 
-// Состояние расчёта. aria-live сообщает об изменении статуса без перехода фокуса
 export default function JobPanel({
   job,
-  projectId,
   pollError,
   cancelling,
   cancelRequested,
@@ -83,7 +58,7 @@ export default function JobPanel({
         <Chip label={status.label} color={status.color} />
       </Stack>
 
-      {isFinal(job.status) ? <Outcome job={job} projectId={projectId} /> : <Progress job={job} />}
+      {isFinal(job.status) ? <Outcome job={job} /> : <Progress job={job} />}
 
       {isCancellable(job.status) && (
         <Stack direction="row" spacing={2} sx={{ mt: 2, alignItems: "center" }}>

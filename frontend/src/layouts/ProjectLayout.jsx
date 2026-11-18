@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Breadcrumbs, Button, Link, Stack, Tab, Tabs, Typography } from "@mui/material";
 import { Link as RouterLink, Outlet, useLocation, useParams } from "react-router";
 
@@ -21,22 +21,38 @@ function useCurrentSection(projectId) {
 export default function ProjectLayout() {
   const { projectId } = useParams();
   const currentSection = useCurrentSection(projectId);
-  const [project, setProject] = useState(null);
+  const [loadedProject, setLoadedProject] = useState(null);
+  const requestSequence = useRef(0);
   const [loadError, setLoadError] = useState(null);
 
   const load = useCallback(async () => {
-    setProject(null);
+    const requestId = ++requestSequence.current;
+    setLoadedProject(null);
     setLoadError(null);
     try {
-      setProject(await projectsApi.get(projectId));
+      const project = await projectsApi.get(projectId);
+      if (requestId === requestSequence.current) {
+        setLoadedProject({ requestedId: projectId, project });
+      }
     } catch (error) {
-      setLoadError(error);
+      if (requestId === requestSequence.current) {
+        setLoadError(error);
+      }
     }
   }, [projectId]);
 
   useEffect(() => {
     load();
+    return () => {
+      requestSequence.current += 1;
+    };
   }, [load]);
+
+  const updateProject = useCallback((updated) => {
+    setLoadedProject((current) =>
+      current?.project.id === updated.id ? { ...current, project: updated } : current
+    );
+  }, []);
 
   // Чужой проект бэкенд тоже отдаёт как NOT_FOUND (F_Auth_7)
   if (loadError?.code === "NOT_FOUND") {
@@ -47,10 +63,11 @@ export default function ProjectLayout() {
       <ErrorState title="Не удалось открыть проект" message={loadError.message} onRetry={load} />
     );
   }
-  if (!project) {
+  if (!loadedProject || loadedProject.requestedId !== projectId) {
     return <LoadingState label="Открываем проект" />;
   }
 
+  const project = loadedProject.project;
   const projectName = project.name;
 
   return (
@@ -93,7 +110,7 @@ export default function ProjectLayout() {
         </Tabs>
       </Box>
 
-      <Outlet />
+      <Outlet key={project.id} context={{ project, updateProject }} />
     </Box>
   );
 }

@@ -15,21 +15,68 @@ function json(status, body) {
 }
 
 
+export const DEFAULT_SETTINGS = {
+  cycle: {
+    odd_week_days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"],
+    even_week_days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"]
+  },
+  time_mode: { type: "HOUR_START" },
+  duration_mode: { type: "UNIFORM", duration_minutes: 100 }
+};
+
 export const TEST_PROJECTS = [
   { id: "42", name: "Осенний семестр", created_at: "2026-09-01T10:00:00Z", updated_at: "2026-09-01T10:00:00Z" },
   { id: "43", name: "Весенний семестр", created_at: "2026-10-01T10:00:00Z", updated_at: "2026-10-01T10:00:00Z" }
 ];
+
+function validateResource(name, values, items, ownId) {
+  if ("name" in values) {
+    const value = String(values.name).trim();
+    if (!value) {
+      return json(422, { code: "INVALID_VALUE", message: "Укажите название", details: { field: "name" } });
+    }
+    const candidates = name === "subgroups"
+      ? items.filter((item) => item.group_id === values.group_id)
+      : items;
+    const taken = candidates.some((item) => item.id !== ownId && item.name?.toLowerCase() === value.toLowerCase());
+    if (taken) {
+      return json(409, { code: "NAME_TAKEN", message: "Такое название уже есть", details: { field: "name" } });
+    }
+  }
+  return null;
+}
 
 const notFound = () => json(404, { code: "NOT_FOUND", message: "Проект не найден", details: {} });
 
 export function stubBackend({
   authenticated = true,
   projects = TEST_PROJECTS,
-  // Состояние задания расчёта: тест меняет поля, чтобы «продвинуть» расчёт
+  resources = {},
+  blockedDeletes = [],
+  failedResourceLoads = [],
   job = { status: "QUEUED", progress: null, error_message: null }
 } = {}) {
-  const store = projects.map((project) => ({ ...project }));
+  const store = projects.map((project) => ({ ...structuredClone(DEFAULT_SETTINGS), ...project }));
   let nextId = 100;
+  const collections = Object.fromEntries(
+    Object.entries(resources).map(([name, items]) => [name, structuredClone(items)])
+  );
+  const collection = (name) => (collections[name] ??= []);
+
+  const syncSubgroup = (subgroup) => {
+    const group = collection("groups").find((entry) => entry.id === subgroup.group_id);
+    if (!group) return;
+    const nested = { id: subgroup.id, name: subgroup.name, student_count: subgroup.student_count };
+    const previous = group.subgroups ?? [];
+    group.subgroups = previous.some((entry) => entry.id === subgroup.id)
+      ? previous.map((entry) => (entry.id === subgroup.id ? nested : entry))
+      : [...previous, nested];
+  };
+
+  const removeSubgroup = (subgroup) => {
+    const group = collection("groups").find((entry) => entry.id === subgroup.group_id);
+    if (group) group.subgroups = (group.subgroups ?? []).filter((entry) => entry.id !== subgroup.id);
+  };
 
   const fetchMock = vi.fn(async (url, init = {}) => {
     const method = init.method ?? "GET";
@@ -110,19 +157,71 @@ export function stubBackend({
         });
       }
       const now = new Date().toISOString();
-      const project = { id: String(nextId++), name, created_at: now, updated_at: now };
+      const project = { ...structuredClone(DEFAULT_SETTINGS), id: String(nextId++), name, ...body, created_at: now, updated_at: now };
       store.push(project);
       return json(201, project);
     }
+    const resource = url.match(
+      /^\/api\/projects\/[^/]+\/(subjects|teachers|rooms|groups|subgroups|streams|workloads|constraints)(?:\/([^/]+))?$/
+    );
+    if (resource) {
+      const [, name, id] = resource;
+      const items = collection(name);
+      const index = id ? items.findIndex((item) => item.id === id) : -1;
+
+      if (!id && method === "GET") {
+        return failedResourceLoads.includes(name)
+          ? json(500, { code: "LOAD_FAILED", message: "Не удалось загрузить ресурсы", details: {} })
+          : json(200, items);
+      }
+      if (!id && method === "POST") {
+        const invalid = validateResource(name, body, items, null);
+        if (invalid) {
+          return invalid;
+        }
+        const created = { ...body, id: String(nextId++) };
+        if (name === "groups") {
+          created.subgroups = [];
+        }
+        items.push(created);
+        if (name === "subgroups") syncSubgroup(created);
+        return json(201, created);
+      }
+      if (index === -1) {
+        return notFound();
+      }
+      if (method === "DELETE") {
+        if (blockedDeletes.includes(id)) {
+          return json(409, { code: "IN_USE", message: "Используется в нагрузке", details: {} });
+        }
+        if (name === "subgroups") removeSubgroup(items[index]);
+        items.splice(index, 1);
+        return json(204);
+      }
+      if (method === "PATCH") {
+        const invalid = validateResource(name, { ...items[index], ...body }, items, id);
+        if (invalid) {
+          return invalid;
+        }
+        items[index] = { ...items[index], ...body };
+        if (name === "subgroups") syncSubgroup(items[index]);
+        return json(200, items[index]);
+      }
+      return json(200, items[index]);
+    }
+
     const match = url.match(/^\/api\/projects\/([^/]+)$/);
     if (match) {
-      const index = store.findIndex((project) => project.id === decodeURIComponent(match[1]));
+      const index = store.findIndex((project) => project.id.toLowerCase() === decodeURIComponent(match[1]).toLowerCase());
       if (index === -1) {
         return notFound();
       }
       if (method === "DELETE") {
         store.splice(index, 1);
         return json(204);
+      }
+      if (method === "PATCH") {
+        store[index] = { ...store[index], ...body, updated_at: new Date().toISOString() };
       }
       return json(200, store[index]);
     }

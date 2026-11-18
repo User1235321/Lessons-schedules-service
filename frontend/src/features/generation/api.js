@@ -1,7 +1,5 @@
 import { api } from "../../api/client.js";
 
-// Контракт из HLD 10.7. Запуск отвечает 202 с { job_id, status: "QUEUED" },
-// состояние и отмена — Job: { id, project_id, job_type, status, progress, error_message }
 export const generationApi = {
   start: (projectId, { resultMode, topN }) =>
     api.post(`/projects/${encodeURIComponent(projectId)}/generation-jobs`, {

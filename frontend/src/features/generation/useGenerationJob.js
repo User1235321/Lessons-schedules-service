@@ -3,11 +3,8 @@ import { useEffect, useState } from "react";
 import { generationApi } from "./api.js";
 import { isFinal } from "./jobStatus.js";
 
-// Состояние обновляется не реже раза в 2 с (F_Gen_9, NF_Perf_3)
 export const POLL_INTERVAL_MS = 2000;
 
-// Расчёт идёт долго, а страница размонтируется при переключении вкладок проекта,
-// поэтому id задания хранится в sessionStorage: отдельно для каждого проекта и до закрытия вкладки
 const storageKey = (projectId) => `generation-job:${projectId}`;
 
 function readStoredJobId(projectId) {
@@ -26,11 +23,9 @@ function storeJobId(projectId, jobId) {
       sessionStorage.setItem(storageKey(projectId), jobId);
     }
   } catch {
-    // Без хранилища расчёт работает, но после смены вкладки его состояние придётся запустить заново
   }
 }
 
-// Задание расчёта текущего проекта: запуск, состояние, отмена и восстановление после возврата
 export function useGenerationJob(projectId) {
   const [job, setJob] = useState(null);
   const [restoring, setRestoring] = useState(() => readStoredJobId(projectId) !== null);
@@ -40,7 +35,6 @@ export function useGenerationJob(projectId) {
   const [cancelling, setCancelling] = useState(false);
   const [cancelRequested, setCancelRequested] = useState(false);
   const [cancelError, setCancelError] = useState(null);
-  // Растёт после неудачного опроса, чтобы эффект запланировал следующий
   const [attempt, setAttempt] = useState(0);
 
   const start = async (options) => {
@@ -81,7 +75,6 @@ export function useGenerationJob(projectId) {
         if (error.code === "NOT_FOUND") {
           storeJobId(projectId, null);
         } else {
-          // Сеть недоступна: задание, скорее всего, есть. Следим за ним, пока не ответит сервер
           setJob({ id, status: "UNKNOWN", progress: null, error_message: null });
           setPollError(error);
         }
@@ -103,16 +96,13 @@ export function useGenerationJob(projectId) {
     try {
       const next = await generationApi.cancel(job.id);
       setJob(next);
-      // Воркер может остановиться не сразу: пока статус не конечный, отмена только запрошена
       setCancelRequested(!isFinal(next.status));
     } catch (error) {
       setCancelError(error);
       if (error.code === "JOB_NOT_CANCELLABLE") {
-        // Расчёт успел закончиться: показываем его итог вместо устаревшего статуса
         try {
           setJob(await generationApi.get(job.id));
         } catch {
-          // Итог подтянет обычный опрос
         }
       }
     } finally {
@@ -138,12 +128,10 @@ export function useGenerationJob(projectId) {
           return;
         }
         if (error.code === "NOT_FOUND") {
-          // Задание исчезло на сервере: следить больше не за чем
           storeJobId(projectId, null);
           setJob(null);
           setPollError(error);
         } else {
-          // Сеть или сервер недоступны ненадолго: показываем и пробуем снова
           setPollError(error);
           setAttempt((count) => count + 1);
         }

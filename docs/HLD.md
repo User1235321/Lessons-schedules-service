@@ -805,6 +805,35 @@ lesson_format принимает ONSITE или REMOTE. Для REMOTE аудит�
 
 extra_constraints содержит тип, область применения и параметры в структурированном виде. Поддерживаемые типы: MIN_START_TIME, MAX_END_TIME, ALLOWED_DAYS, EVERY_WEEK, CONSECUTIVE, NOT_CONSECUTIVE, MIN_GAP, BEFORE, FIXED_DAY, TIME_RANGE.
 
+Область применения `scope` передаётся как объект `{type, id?}`. Значения `scope.type`: `PROJECT`, `GROUP`, `SUBGROUP`, `STREAM`, `WORKLOAD`. Для `PROJECT` поле `id` отсутствует или равно `null`; для остальных типов требуется `id` в формате UUID существующего ресурса этого проекта.
+
+Контракт `parameters` зависит от `constraint_type`. В таблице приведены обязательные поля; неуказанные дополнительные поля запрещены.
+
+| constraint_type | Обязательные поля parameters | Необязательные поля parameters | Допустимые scope.type |
+|---|---|---|---|
+| MIN_START_TIME | `time: HH:MM` | нет | PROJECT, GROUP, SUBGROUP, STREAM, WORKLOAD |
+| MAX_END_TIME | `time: HH:MM` | нет | PROJECT, GROUP, SUBGROUP, STREAM, WORKLOAD |
+| ALLOWED_DAYS | `days: Weekday[]` | нет | PROJECT, GROUP, SUBGROUP, STREAM, WORKLOAD |
+| EVERY_WEEK | нет (`{}`) | нет | WORKLOAD |
+| CONSECUTIVE | `workload_id: UUID` | нет | WORKLOAD |
+| NOT_CONSECUTIVE | `workload_id: UUID` | нет | WORKLOAD |
+| MIN_GAP | `workload_id: UUID`, `minutes: integer` | нет | WORKLOAD |
+| BEFORE | `workload_id: UUID` | нет | WORKLOAD |
+| FIXED_DAY | `day: Weekday` | `week: CycleWeek` | WORKLOAD |
+| TIME_RANGE | `windows: WeeklyWindow[]` | нет | PROJECT, GROUP, SUBGROUP, STREAM, WORKLOAD |
+
+Правила форматов и проверки значений:
+
+- `Weekday` принимает `MONDAY`, `TUESDAY`, `WEDNESDAY`, `THURSDAY`, `FRIDAY`, `SATURDAY`, `SUNDAY`.
+- `CycleWeek` принимает `ODD`, `EVEN`, `ANY`; `ANY` означает обе недели цикла. Для `FIXED_DAY` значение `week` по умолчанию — `ANY`; в ответе API поле присутствует.
+- Время `time`, `start` и `end` передаётся строкой в 24-часовом формате `HH:MM`.
+- `days` — непустой массив без повторяющихся дней.
+- `minutes` — целое число от 1 до 2147483647; логические значения не допускаются.
+- `WeeklyWindow` — объект `{week: CycleWeek, day: Weekday, start: HH:MM, end: HH:MM}` со всеми обязательными полями и условием `start < end`. `windows` — непустой массив без полностью одинаковых объектов; пересечение разных интервалов само по себе не запрещено.
+- `workload_id` у ограничений `CONSECUTIVE`, `NOT_CONSECUTIVE`, `MIN_GAP` и `BEFORE` — UUID существующей учебной нагрузки того же проекта.
+- Для каждого типа `parameters` является JSON-объектом с точным набором предусмотренных полей; неизвестные поля и отсутствие обязательных полей отклоняются.
+
+
 ### 9.10. Критерии оптимизации
 
 optimization_criteria имеет уникальную пару (project_id, criterion_type). Приоритеты активных критериев одного проекта уникальны, применяются по возрастанию priority.
@@ -859,12 +888,16 @@ API использует JSON для прикладных данных и multip
 | ProjectCreate | name: string (обязательно, 1–200 символов после trim); необязательные настройки проекта |
 | ProjectPatch | любое подмножество name, odd_week_days, even_week_days, time_mode, time_step_minutes, duration_mode, duration_minutes |
 | Error | code: string; message: string; details: object |
-| Interval | week: ODD или EVEN; weekday: MONDAY…SUNDAY; start_time: HH:MM; end_time: HH:MM |
+| Interval | week: ODD или EVEN; weekday: MONDAY…SUNDAY; start_time: HH:MM; end_time: HH:MM (целевой контракт доступности групп и подгрупп) |
+| TeacherInterval | week: ODD, EVEN или ANY; day: MONDAY…SUNDAY; start: HH:MM; end: HH:MM (действующий API преподавателей) |
+| RoomInterval | week: ODD, EVEN или ANY; weekday: MONDAY…SUNDAY; start_time: HH:MM; end_time: HH:MM (действующий API аудиторий) |
 | TeacherAssignment | teacher_id: uuid или null; display_name: string |
 | Job | id: uuid; project_id: uuid; job_type: string; status: QUEUED/RUNNING/COMPLETED/FAILED/CANCELLED; progress: number или null; error_message: string или null |
 | Schedule | id: uuid; project_id: uuid; source: GENERATED/IMPORTED; job_id: uuid или null; result_index: integer или null; criterion_scores: object или null; entries: ScheduleEntry[] |
 | ScheduleEntry | id: uuid; workload_id: uuid или null; subject_name: string или null; participant_label: string или null; lesson_type: string или null; lesson_format: ONSITE/REMOTE или null; week: ODD/EVEN; weekday: MONDAY…SUNDAY; start_time: HH:MM; end_time: HH:MM; room_id: uuid или null; room_name: string или null; teachers: TeacherAssignment[] |
 | StoredFile | id: uuid; project_id: uuid; category: UPLOAD/EXPORT; original_name: string; file_format: string; size_bytes: integer; created_at: datetime; schedule_id: uuid или null; job_id: uuid или null |
+
+В реализованных API преподавателей и аудиторий значение `ANY` означает одинаковый промежуток на нечётной и чётной неделях. Схема `Interval` для групп и подгрупп остаётся целевым контрактом; их доступность пока не представлена в действующем Backend API. Имена полей API не обязательно совпадают с именами столбцов базы данных.
 
 Даты передаются в ISO 8601. Типы UUID и enum показаны в человекочитаемом формате, не как отдельные примитивы JSON. Для проектируемых таблиц и API конкретные имена свойств определяют целевой контракт, но ещё не реализованные маршруты требуют проверки соответствия FS перед разработкой.
 
@@ -931,8 +964,8 @@ API использует JSON для прикладных данных и multip
 | resource | Поля ResourceCreate (кроме идентификатора) |
 |---|---|
 | subjects | name: string |
-| teachers | full_name: string; capabilities: {subject_id: uuid, lesson_type: string}[]; availability: Interval[]; preferences: Interval[] (необязательно) |
-| rooms | name: string; capacity: integer; room_type: string; availability: Interval[]; capabilities: {subject_id: uuid, lesson_type: string}[] (необязательно) |
+| teachers | full_name: string; capabilities: {subject_id: uuid, lesson_type: string}[]; availability: TeacherInterval[]; preferences: TeacherInterval[] (необязательно) |
+| rooms | name: string; capacity: integer; room_type: string; availability: RoomInterval[]; capabilities: {subject_id: uuid, lesson_type: string}[] (необязательно) |
 | groups | name: string; student_count: integer; availability: Interval[] (необязательно); subgroups: {name: string, student_count: integer, availability: Interval[]}[] (необязательно) |
 | subgroups | group_id: uuid; name: string; student_count: integer; availability: Interval[] (необязательно) |
 | streams | name: string; group_ids: uuid[] |
@@ -953,7 +986,7 @@ Response содержит id, соответствующие сохранённ�
 | GET | /projects/{project_id}/optimization-criteria | нет | 200; Criterion[] | 401, 404, 500 |
 | PUT | /projects/{project_id}/optimization-criteria | {criteria: Criterion[]} | 200; Criterion[] | 401, 404, 422, 500 |
 
-Constraint: {id, project_id, constraint_type, scope, parameters}. Criterion: {criterion_type: string, priority: integer, is_active: boolean}. У активных критериев одного проекта приоритет уникален. Для каждого типа ограничения поля parameters необходимо детализировать до реализации, поскольку сейчас они остаются расширяемой структурой.
+Constraint: {id, project_id, constraint_type, scope, parameters}. Criterion: {criterion_type: string, priority: integer, is_active: boolean}. У активных критериев одного проекта приоритет уникален. Допустимые сочетания constraint_type, scope.type, состав parameters, форматы полей и правила проверки определены в §9.9. При PATCH проверяется итоговое состояние ограничения с учётом сохранённых полей; обновление только constraint_type допустимо, если текущие parameters соответствуют новому типу.
 
 ### 10.7. Построение расписания (целевые контракты)
 
@@ -1174,7 +1207,9 @@ UserRepository
 UserSessionRepository
 ProjectRepository
 UnitOfWork
-AcademicDataRepository
+SubjectRepository
+TeacherRepository
+GroupRepository
 ScheduleRepository
 JobRepository
 JobPublisher
@@ -1201,7 +1236,22 @@ JwtTokenService
 
 В модульных и интеграционных тестах они могут заменяться fake/mock-реализациями.
 
-`UnitOfWork` задаёт границу транзакции прикладного сценария: репозитории пользователей, refresh-сессий и проектов используют одну SQLAlchemy-сессию. Для сохранения изменений требуется явный `commit()`; при выходе из контекста без фиксации незавершённые изменения откатываются, сессия закрывается. Фабрика `Container.uow()` создаёт новый `UnitOfWork` для каждой операции.
+`ProjectRepository.touch(project_id, owner_id, now)` обновляет только `updated_at`
+проекта. При изменении учебных данных он вызывается после записи этих данных в той же
+транзакции, не перезаписывая название и настройки проекта, которые могли измениться
+после его чтения. Проверка владельца выполняется в условии обновления; для чужого
+или отсутствующего проекта возвращается `NotFound`. Полное сохранение проекта
+через `ProjectRepository.save` используется при изменении его названия и настроек.
+
+`UnitOfWork` задаёт границу транзакции прикладного сценария: репозитории пользователей, refresh-сессий, проектов, дисциплин, преподавателей и учебных групп используют одну SQLAlchemy-сессию. Для сохранения изменений требуется явный `commit()`; при выходе из контекста без фиксации незавершённые изменения откатываются, сессия закрывается. Фабрика `Container.uow()` создаёт новый `UnitOfWork` для каждой операции.
+
+Порты `SubjectRepository`, `TeacherRepository` и `GroupRepository` разделяют операции над
+дисциплинами, преподавателями и группами с подгруппами. Для уникальности названий
+дисциплин и групп внутри проекта, а также подгрупп внутри группы, сохраняется
+`name_key` — результат `str.casefold()` для очищенного названия. Уникальные
+ограничения PostgreSQL применяются к этому ключу. У подгрупп ограничение
+`uq_subgroups_group_id_name` откладывается на время `GroupRepository.save` и
+проверяется после записи итогового набора, чтобы обмен названиями не менял ID.
 
 Новые репозиторные контракты находятся в `app/application/scheduling/ports.py`:
 

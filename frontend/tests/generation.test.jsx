@@ -10,7 +10,6 @@ const isStart = ([url, init]) =>
 const isJobGet = ([url, init]) =>
   /^\/api\/generation-jobs\/[^/]+$/.test(url) && (init?.method ?? "GET") === "GET";
 
-// Опрос идёт по таймеру: часы подменены, но идут сами, чтобы работали ожидания Testing Library
 beforeEach(() => {
   sessionStorage.clear();
   vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -128,9 +127,9 @@ describe("Generation: progress and result", () => {
     expect(screen.getByRole("button", { name: "Запустить расчёт" }).disabled).toBe(true);
   });
 
-  it("offers the test result when the calculation completes and stops polling", async () => {
+  it("shows completion and stops polling", async () => {
     const job = { status: "QUEUED", progress: null, error_message: null };
-    const { user, router, fetchMock } = await startCalculation({ job });
+    const { fetchMock } = await startCalculation({ job });
 
     job.status = "COMPLETED";
     await nextPoll();
@@ -141,9 +140,7 @@ describe("Generation: progress and result", () => {
     await nextPoll();
     expect(fetchMock.mock.calls.filter(isJobGet).length).toBe(polls);
 
-    await user.click(screen.getByRole("link", { name: "Перейти к тестовому результату" }));
-    expect(await findHeading("Просмотр расписания")).toBeTruthy();
-    expect(router.state.location.pathname).toBe("/projects/42/schedules/test");
+    expect(screen.queryByRole("link", { name: /тестовому результату/ })).toBeNull();
   });
 
   it("shows why the calculation failed and allows a new start", async () => {
@@ -306,7 +303,6 @@ describe("Generation: returning to the page", () => {
     renderRoute("/projects/42/generation");
     await findHeading("Построение расписания");
 
-    // Пока состояние уточняется, кнопка запуска выключена; ждём, когда она включится
     await vi.waitFor(() =>
       expect(screen.getByRole("button", { name: "Запустить расчёт" }).disabled).toBe(false)
     );

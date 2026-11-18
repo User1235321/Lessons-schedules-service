@@ -49,6 +49,10 @@ class Project:
         self.settings = settings
         self.updated_at = now
 
+    def touch(self, now: datetime) -> None:
+        """Изменились данные проекта: преподаватели, группы и прочее. Проект поднимается в списке."""
+        self.updated_at = now
+
 
 def _clean_name(name: str) -> str:
     cleaned = name.strip()

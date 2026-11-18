@@ -20,7 +20,6 @@ import { useGenerationJob } from "../useGenerationJob.js";
 
 const DEFAULT_TOP_N = "5";
 
-// Ошибка поля top_n или null. N — целое больше нуля (F_Gen_4)
 function validateTopN(value) {
   return /^\d+$/.test(value.trim()) && Number(value) > 0
     ? null
@@ -29,7 +28,6 @@ function validateTopN(value) {
 
 export default function GenerationPage() {
   const { projectId } = useParams();
-  // key: при смене проекта состояние расчёта прошлого проекта не должно остаться
   return <GenerationView key={projectId} projectId={projectId} />;
 }
 
@@ -46,7 +44,6 @@ function GenerationView({ projectId }) {
     start,
     cancel
   } = useGenerationJob(projectId);
-  // Пока расчёт идёт или его состояние уточняется, запустить второй нельзя
   const running = restoring || (job !== null && !isFinal(job.status));
   const [mode, setMode] = useState("SINGLE");
   const [topN, setTopN] = useState(DEFAULT_TOP_N);
@@ -61,7 +58,6 @@ function GenerationView({ projectId }) {
     }
   };
 
-  // Ошибка сервера по полю top_n показывается у поля, остальное — над формой
   const serverTopNError =
     startError?.code === "INVALID_VALUE" && startError.details?.field === "top_n";
 
@@ -120,7 +116,6 @@ function GenerationView({ projectId }) {
       {job && (
         <JobPanel
           job={job}
-          projectId={projectId}
           pollError={pollError}
           cancelling={cancelling}
           cancelRequested={cancelRequested}

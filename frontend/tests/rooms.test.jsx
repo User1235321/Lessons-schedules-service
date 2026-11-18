@@ -118,6 +118,21 @@ describe("Rooms section", () => {
     expect(JSON.parse(init.body)).toMatchObject({ room_type: "PRACTICE_UNIVERSAL", capabilities: [] });
   });
 
+  it("restores a saved room when reopening the project", async () => {
+    const { user, router } = openRooms({ subjects: SUBJECTS, rooms: [] });
+    const dialog = await openAddDialog(user);
+    await user.type(within(dialog).getByLabelText("Номер или название"), "101");
+    await user.type(within(dialog).getByLabelText("Вместимость"), "25");
+    await user.click(within(dialog).getByRole("button", { name: "Добавить промежуток" }));
+    await user.click(within(dialog).getByRole("button", { name: "Добавить" }));
+
+    expect(await within(await table()).findByText("101")).toBeTruthy();
+    await router.navigate("/projects");
+    await screen.findByRole("heading", { name: "Мои проекты" });
+    await router.navigate("/projects/42/rooms");
+    expect(await within(await table()).findByText("101")).toBeTruthy();
+  });
+
   it("deletes a room after confirmation", async () => {
     const { user } = openRooms();
     const list = await table();

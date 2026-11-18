@@ -364,3 +364,98 @@ def test_workload_rejects_foreign_project_targets(
     )
     assert response.status_code == 422
     assert response.json()["details"]["field"] == target_key
+
+def test_project_editor_resources_round_trip_with_real_database(api: TestClient) -> None:
+    user = sign_in(api)
+    project_id = new_project(api, user)
+    project_url = f"/projects/{project_id}"
+    settings = {
+        "cycle": {
+            "odd_week_days": ["MONDAY", "WEDNESDAY"],
+            "even_week_days": ["TUESDAY", "THURSDAY"],
+        },
+        "time_mode": {"type": "STEP", "step_minutes": 15},
+        "duration_mode": {"type": "INDIVIDUAL"},
+    }
+    saved_settings = api.patch(project_url, json=settings, headers=user)
+    assert saved_settings.status_code == 200
+
+    physics = subject(api, user, project_id)
+    students = group(api, user, project_id, "301")
+    subgroup = created(
+        api,
+        path(project_id, "subgroups"),
+        user,
+        {"group_id": students["id"], "name": "301-1", "student_count": 10},
+    )
+    second_group = group(api, user, project_id, "302")
+    rooms_url = path(project_id, "rooms")
+    streams_url = path(project_id, "streams")
+    workloads_url = path(project_id, "workloads")
+    room = created(api, rooms_url, user, room_payload(physics["id"]))
+    stream = created(
+        api,
+        streams_url,
+        user,
+        {"name": "Первый курс", "group_ids": [students["id"]]},
+    )
+    workload = created(
+        api,
+        workloads_url,
+        user,
+        {
+            **workload_payload(physics["id"], "stream_id", stream["id"]),
+            "lesson_type": "LAB",
+            "lesson_format": "REMOTE",
+            "duration_minutes": 90,
+            "required_teacher_count": 2,
+        },
+    )
+
+    edited_room = api.patch(
+        f"{rooms_url}/{room['id']}",
+        json={"room_type": "LABORATORY", "capacity": 30},
+        headers=user,
+    )
+    edited_stream = api.patch(
+        f"{streams_url}/{stream['id']}",
+        json={"group_ids": [students["id"], second_group["id"]]},
+        headers=user,
+    )
+    edited_workload = api.patch(
+        f"{workloads_url}/{workload['id']}",
+        json={
+            "group_id": None,
+            "subgroup_id": subgroup["id"],
+            "stream_id": None,
+            "lesson_format": "ONSITE",
+            "duration_minutes": 75,
+        },
+        headers=user,
+    )
+    assert edited_room.status_code == 200
+    assert edited_stream.status_code == 200
+    assert edited_workload.status_code == 200
+
+    reopened_project = api.get(project_url, headers=user).json()
+    reopened_room = api.get(f"{rooms_url}/{room['id']}", headers=user).json()
+    reopened_stream = api.get(f"{streams_url}/{stream['id']}", headers=user).json()
+    reopened_workload = api.get(f"{workloads_url}/{workload['id']}", headers=user).json()
+
+    assert all(reopened_project[key] == value for key, value in settings.items())
+    assert reopened_room["capacity"] == 30
+    assert reopened_room["room_type"] == "LABORATORY"
+    assert reopened_room["availability"] == room["availability"]
+    assert reopened_stream["group_ids"] == [students["id"], second_group["id"]]
+    assert reopened_workload["group_id"] is None
+    assert reopened_workload["subgroup_id"] == subgroup["id"]
+    assert reopened_workload["stream_id"] is None
+    assert reopened_workload["lesson_format"] == "ONSITE"
+    assert reopened_workload["duration_minutes"] == 75
+    assert reopened_workload["required_teacher_count"] == 2
+
+    assert api.delete(f"{workloads_url}/{workload['id']}", headers=user).status_code == 204
+    assert api.delete(f"{streams_url}/{stream['id']}", headers=user).status_code == 204
+    assert api.delete(f"{rooms_url}/{room['id']}", headers=user).status_code == 204
+    for endpoint in (rooms_url, streams_url, workloads_url):
+        assert api.get(endpoint, headers=user).json() == []

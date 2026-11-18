@@ -22,9 +22,6 @@ import { MAX_NAME_LENGTH, validateName, validateStudentCount } from "../validati
 const total = (subgroups) => subgroups.reduce((sum, subgroup) => sum + subgroup.student_count, 0);
 const EMPTY = { name: "", student_count: "" };
 
-// Подгруппы одной группы (F_Data_11, F_Data_13). Сумма студентов в подгруппах не может
-// превышать численность группы (F_Data_12). Каждое действие сразу уходит на сервер,
-// а список группы обновляется через onChanged
 export default function SubgroupsDialog({ open, item: group, projectId, onClose, onChanged }) {
   const api = useMemo(() => resourceApi(projectId, "subgroups"), [projectId]);
   const [editing, setEditing] = useState(null);

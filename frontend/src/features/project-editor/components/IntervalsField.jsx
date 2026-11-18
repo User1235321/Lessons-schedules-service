@@ -4,7 +4,6 @@ import { newInterval, WEEKDAYS, WEEKS } from "../intervals.js";
 
 const nativeSelect = { select: { native: true } };
 
-// Редактор набора промежутков времени: неделя, день, начало и окончание
 export default function IntervalsField({ label, value, onChange, error, hint }) {
   const update = (index, changes) =>
     onChange(value.map((interval, i) => (i === index ? { ...interval, ...changes } : interval)));

@@ -7,6 +7,7 @@ import { LESSON_FORMATS, LESSON_TYPES, TARGET_TYPES } from "../intervals.js";
 import { useResourceForm } from "../useResourceForm.js";
 import { validatePositiveInteger } from "../validation.js";
 import ResourceFormDialog from "./ResourceFormDialog.jsx";
+import { targetFromWorkload, workloadTargetFields } from "../workloadTargets.js";
 
 const nativeSelect = { select: { native: true } };
 
@@ -32,8 +33,6 @@ function SelectField({ label, value, onChange, options, error, disabled }) {
   );
 }
 
-// Элемент учебной нагрузки (F_Data_16, F_Data_17). Длительность задаётся только в режиме
-// INDIVIDUAL, иначе берётся из настроек проекта. Несколько преподавателей — только на лабораторной
 export default function WorkloadDialog({
   open,
   item,
@@ -46,15 +45,16 @@ export default function WorkloadDialog({
   onSaved
 }) {
   const firstTarget = (type) => targets[type][0]?.id ?? "";
+  const currentTarget = targetFromWorkload(item);
 
   const form = useResourceForm({
     open,
     initialValues: {
-      target_type: item?.target.type ?? "GROUP",
-      target_id: item?.target.id ?? firstTarget("GROUP"),
+      target_type: currentTarget?.type ?? "GROUP",
+      target_id: currentTarget?.id ?? firstTarget("GROUP"),
       subject_id: item?.subject_id ?? subjects[0]?.id ?? "",
       lesson_type: item?.lesson_type ?? LESSON_TYPES[0].value,
-      format: item?.format ?? LESSON_FORMATS[0].value,
+      format: item?.lesson_format ?? LESSON_FORMATS[0].value,
       occurrences_per_cycle: String(item?.occurrences_per_cycle ?? "1"),
       duration_minutes: String(item?.duration_minutes ?? ""),
       required_teacher_count: String(item?.required_teacher_count ?? "1")
@@ -80,12 +80,11 @@ export default function WorkloadDialog({
     onSubmit: async (values) => {
       const api = resourceApi(projectId, "workloads");
       const body = {
-        target: { type: values.target_type, id: values.target_id },
+        ...workloadTargetFields(values.target_type, values.target_id),
         subject_id: values.subject_id,
         lesson_type: values.lesson_type,
-        format: values.format,
+        lesson_format: values.format,
         occurrences_per_cycle: Number(values.occurrences_per_cycle),
-        // В режиме UNIFORM сохранённая длительность не трогается: она пригодится, если режим сменят обратно
         duration_minutes: individualDuration
           ? Number(values.duration_minutes)
           : (item?.duration_minutes ?? null),

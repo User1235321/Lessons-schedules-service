@@ -11,16 +11,16 @@ const LECTURE_ROOM = {
   id: "r1",
   name: "212",
   capacity: 60,
-  type: "LECTURE",
-  availability: [{ week: "ANY", day: "MONDAY", start: "09:00", end: "18:00" }],
+  room_type: "LECTURE",
+  availability: [{ week: "ANY", weekday: "MONDAY", start_time: "09:00", end_time: "18:00" }],
   capabilities: []
 };
 const LAB = {
   id: "r2",
   name: "Лаборатория 3",
   capacity: 15,
-  type: "LABORATORY",
-  availability: [{ week: "ODD", day: "TUESDAY", start: "10:00", end: "14:00" }],
+  room_type: "LABORATORY",
+  availability: [{ week: "ODD", weekday: "TUESDAY", start_time: "10:00", end_time: "14:00" }],
   capabilities: [{ subject_id: "s2", lesson_type: "LAB" }]
 };
 
@@ -96,8 +96,8 @@ describe("Rooms section", () => {
     expect(JSON.parse(init.body)).toEqual({
       name: "105",
       capacity: 20,
-      type: "LABORATORY",
-      availability: [{ week: "ANY", day: "MONDAY", start: "09:00", end: "18:00" }],
+      room_type: "LABORATORY",
+      availability: [{ week: "ANY", weekday: "MONDAY", start_time: "09:00", end_time: "18:00" }],
       capabilities: [{ subject_id: "s1", lesson_type: "LAB" }]
     });
   });
@@ -115,7 +115,7 @@ describe("Rooms section", () => {
     const [url, init] = fetchMock.mock.calls.find(isRoomWrite);
     expect(url).toBe("/api/projects/42/rooms/r2");
     expect(init.method).toBe("PATCH");
-    expect(JSON.parse(init.body)).toMatchObject({ type: "PRACTICE_UNIVERSAL", capabilities: [] });
+    expect(JSON.parse(init.body)).toMatchObject({ room_type: "PRACTICE_UNIVERSAL", capabilities: [] });
   });
 
   it("deletes a room after confirmation", async () => {

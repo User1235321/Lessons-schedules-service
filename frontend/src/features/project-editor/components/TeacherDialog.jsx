@@ -12,8 +12,6 @@ import ResourceFormDialog from "./ResourceFormDialog.jsx";
 
 const copy = (items) => items.map((item) => ({ ...item }));
 
-// Преподаватель: ФИО, пары «дисциплина + тип занятия» и доступность обязательны (F_Data_4),
-// предпочтительное время необязательно
 export default function TeacherDialog({ open, item, projectId, subjects, onClose, onSaved }) {
   const form = useResourceForm({
     open,

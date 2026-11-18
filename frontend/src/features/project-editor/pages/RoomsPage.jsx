@@ -4,7 +4,7 @@ import ErrorState from "../../../components/ErrorState.jsx";
 import LoadingState from "../../../components/LoadingState.jsx";
 import ResourceSection from "../components/ResourceSection.jsx";
 import RoomDialog from "../components/RoomDialog.jsx";
-import { formatInterval, lessonTypeLabel, roomTypeLabel } from "../intervals.js";
+import { formatRoomInterval, lessonTypeLabel, roomTypeLabel } from "../intervals.js";
 import { useSubjects } from "../useSubjects.js";
 
 export default function RoomsPage() {
@@ -31,7 +31,7 @@ export default function RoomsPage() {
       columns={[
         { label: "Аудитория", render: (room) => room.name },
         { label: "Мест", render: (room) => room.capacity },
-        { label: "Тип", render: (room) => roomTypeLabel(room.type) },
+        { label: "Тип", render: (room) => roomTypeLabel(room.room_type) },
         {
           label: "Допустимые занятия",
           render: (room) =>
@@ -41,7 +41,7 @@ export default function RoomsPage() {
         },
         {
           label: "Доступность",
-          render: (room) => room.availability.map(formatInterval).join("; ")
+          render: (room) => room.availability.map(formatRoomInterval).join("; ")
         }
       ]}
       itemLabel={(room) => room.name}

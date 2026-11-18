@@ -6,6 +6,53 @@ from redis import Redis
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.application.academic.groups import (
+    CreateGroup,
+    CreateSubgroup,
+    DeleteGroup,
+    DeleteSubgroup,
+    GetGroup,
+    GetSubgroup,
+    ListGroups,
+    ListSubgroups,
+    UpdateGroup,
+    UpdateSubgroup,
+)
+from app.application.academic.rooms import (
+    CreateRoom,
+    DeleteRoom,
+    GetRoom,
+    ListRooms,
+    UpdateRoom,
+)
+from app.application.academic.streams import (
+    CreateStream,
+    DeleteStream,
+    GetStream,
+    ListStreams,
+    UpdateStream,
+)
+from app.application.academic.subjects import (
+    CreateSubject,
+    DeleteSubject,
+    GetSubject,
+    ListSubjects,
+    UpdateSubject,
+)
+from app.application.academic.teachers import (
+    CreateTeacher,
+    DeleteTeacher,
+    GetTeacher,
+    ListTeachers,
+    UpdateTeacher,
+)
+from app.application.academic.workloads import (
+    CreateWorkload,
+    DeleteWorkload,
+    GetWorkload,
+    ListWorkloads,
+    UpdateWorkload,
+)
 from app.application.auth.ports import PasswordHasher, TokenService
 from app.application.auth.use_cases import (
     Authenticate,
@@ -16,6 +63,21 @@ from app.application.auth.use_cases import (
     Register,
     SessionIssuer,
 )
+from app.application.constraints.use_cases import (
+    CreateConstraint,
+    DeleteConstraint,
+    ListConstraints,
+    ListCriteria,
+    ReplaceCriteria,
+    UpdateConstraint,
+)
+from app.application.projects.use_cases import (
+    CreateProject,
+    DeleteProject,
+    GetProject,
+    ListProjects,
+    UpdateProject,
+)
 from app.application.scheduling.delivery import DeliverPendingJob
 from app.application.scheduling.ports import JobProblemSource, JobStateStore, ScheduleProblemSolver
 from app.application.scheduling.processing import ProcessJob
@@ -23,6 +85,7 @@ from app.application.scheduling.use_cases import (
     CancelGenerationJob,
     CreateGenerationJob,
     GetGenerationJob,
+    GetGenerationSchedules,
 )
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
@@ -31,13 +94,11 @@ from app.infrastructure.job_state import RedisJobStateStore
 from app.infrastructure.messaging.kafka import KafkaJobPublisher
 from app.infrastructure.persistence.database import create_database_engine, create_session_factory
 from app.infrastructure.persistence.job_lock import PostgresJobExecutionLock
+from app.infrastructure.persistence.job_problem import SqlJobProblemSource
 from app.infrastructure.persistence.uow import SqlUnitOfWork
 from app.infrastructure.security import Argon2PasswordHasher, JwtTokenService
 from app.infrastructure.system import SystemClock, UuidGenerator
-from app.infrastructure.unavailable_scheduling import (
-    UnavailableJobProblemSource,
-    UnavailableScheduleSolver,
-)
+from app.scheduling.preview import PreviewScheduleSolver
 
 
 @dataclass
@@ -90,6 +151,144 @@ class Container:
     def get_current_user(self) -> GetCurrentUser:
         return GetCurrentUser(uow=self.uow())
 
+    def create_project(self) -> CreateProject:
+        return CreateProject(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_projects(self) -> ListProjects:
+        return ListProjects(uow=self.uow())
+
+    def get_project(self) -> GetProject:
+        return GetProject(uow=self.uow())
+
+    def update_project(self) -> UpdateProject:
+        return UpdateProject(uow=self.uow(), clock=self.clock)
+
+    def delete_project(self) -> DeleteProject:
+        return DeleteProject(uow=self.uow())
+
+    def create_subject(self) -> CreateSubject:
+        return CreateSubject(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_subjects(self) -> ListSubjects:
+        return ListSubjects(uow=self.uow())
+
+    def get_subject(self) -> GetSubject:
+        return GetSubject(uow=self.uow())
+
+    def update_subject(self) -> UpdateSubject:
+        return UpdateSubject(uow=self.uow(), clock=self.clock)
+
+    def delete_subject(self) -> DeleteSubject:
+        return DeleteSubject(uow=self.uow(), clock=self.clock)
+
+    def create_teacher(self) -> CreateTeacher:
+        return CreateTeacher(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_teachers(self) -> ListTeachers:
+        return ListTeachers(uow=self.uow())
+
+    def get_teacher(self) -> GetTeacher:
+        return GetTeacher(uow=self.uow())
+
+    def update_teacher(self) -> UpdateTeacher:
+        return UpdateTeacher(uow=self.uow(), clock=self.clock)
+
+    def delete_teacher(self) -> DeleteTeacher:
+        return DeleteTeacher(uow=self.uow(), clock=self.clock)
+
+    def create_group(self) -> CreateGroup:
+        return CreateGroup(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_groups(self) -> ListGroups:
+        return ListGroups(uow=self.uow())
+
+    def get_group(self) -> GetGroup:
+        return GetGroup(uow=self.uow())
+
+    def update_group(self) -> UpdateGroup:
+        return UpdateGroup(uow=self.uow(), clock=self.clock)
+
+    def delete_group(self) -> DeleteGroup:
+        return DeleteGroup(uow=self.uow(), clock=self.clock)
+
+    def create_subgroup(self) -> CreateSubgroup:
+        return CreateSubgroup(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_subgroups(self) -> ListSubgroups:
+        return ListSubgroups(uow=self.uow())
+
+    def get_subgroup(self) -> GetSubgroup:
+        return GetSubgroup(uow=self.uow())
+
+    def update_subgroup(self) -> UpdateSubgroup:
+        return UpdateSubgroup(uow=self.uow(), clock=self.clock)
+
+    def delete_subgroup(self) -> DeleteSubgroup:
+        return DeleteSubgroup(uow=self.uow(), clock=self.clock)
+
+    def create_room(self) -> CreateRoom:
+        return CreateRoom(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_rooms(self) -> ListRooms:
+        return ListRooms(uow=self.uow())
+
+    def get_room(self) -> GetRoom:
+        return GetRoom(uow=self.uow())
+
+    def update_room(self) -> UpdateRoom:
+        return UpdateRoom(uow=self.uow(), clock=self.clock)
+
+    def delete_room(self) -> DeleteRoom:
+        return DeleteRoom(uow=self.uow(), clock=self.clock)
+
+    def create_stream(self) -> CreateStream:
+        return CreateStream(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_streams(self) -> ListStreams:
+        return ListStreams(uow=self.uow())
+
+    def get_stream(self) -> GetStream:
+        return GetStream(uow=self.uow())
+
+    def update_stream(self) -> UpdateStream:
+        return UpdateStream(uow=self.uow(), clock=self.clock)
+
+    def delete_stream(self) -> DeleteStream:
+        return DeleteStream(uow=self.uow(), clock=self.clock)
+
+    def create_workload(self) -> CreateWorkload:
+        return CreateWorkload(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_workloads(self) -> ListWorkloads:
+        return ListWorkloads(uow=self.uow())
+
+    def get_workload(self) -> GetWorkload:
+        return GetWorkload(uow=self.uow())
+
+    def update_workload(self) -> UpdateWorkload:
+        return UpdateWorkload(uow=self.uow(), clock=self.clock)
+
+    def delete_workload(self) -> DeleteWorkload:
+        return DeleteWorkload(uow=self.uow(), clock=self.clock)
+
+    def create_constraint(self) -> CreateConstraint:
+        return CreateConstraint(uow=self.uow(), clock=self.clock, ids=self.ids)
+
+    def list_constraints(self) -> ListConstraints:
+        return ListConstraints(uow=self.uow())
+
+    def update_constraint(self) -> UpdateConstraint:
+        return UpdateConstraint(uow=self.uow(), clock=self.clock)
+
+    def delete_constraint(self) -> DeleteConstraint:
+        return DeleteConstraint(uow=self.uow(), clock=self.clock)
+
+    def list_criteria(self) -> ListCriteria:
+        return ListCriteria(uow=self.uow())
+
+    def replace_criteria(self) -> ReplaceCriteria:
+        return ReplaceCriteria(uow=self.uow(), clock=self.clock)
+
     def job_state(self) -> JobStateStore:
         return RedisJobStateStore(self.redis)
 
@@ -102,6 +301,9 @@ class Container:
 
     def get_generation_job(self) -> GetGenerationJob:
         return GetGenerationJob(uow=self.uow(), state=self.job_state())
+
+    def get_generation_schedules(self) -> GetGenerationSchedules:
+        return GetGenerationSchedules(uow=self.uow())
 
     def cancel_generation_job(self) -> CancelGenerationJob:
         return CancelGenerationJob(uow=self.uow(), state=self.job_state())
@@ -129,8 +331,8 @@ class Container:
             uow=self.uow(),
             lock=PostgresJobExecutionLock(self.engine),
             state=self.job_state(),
-            problems=problems if problems is not None else UnavailableJobProblemSource(),
-            solver=solver if solver is not None else UnavailableScheduleSolver(),
+            problems=problems if problems is not None else SqlJobProblemSource(self.session_factory),
+            solver=solver if solver is not None else PreviewScheduleSolver(),
             clock=self.clock,
             ids=self.ids,
         )

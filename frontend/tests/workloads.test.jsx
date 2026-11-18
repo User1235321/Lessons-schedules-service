@@ -19,10 +19,12 @@ const GROUPS = [
 const STREAMS = [{ id: "st1", name: "301 + 302", group_ids: ["g1", "g2"] }];
 const LECTURE = {
   id: "w1",
-  target: { type: "STREAM", id: "st1" },
+  group_id: null,
+  subgroup_id: null,
+  stream_id: "st1",
   subject_id: "s1",
   lesson_type: "LECTURE",
-  format: "ONSITE",
+  lesson_format: "ONSITE",
   occurrences_per_cycle: 2,
   duration_minutes: null,
   required_teacher_count: 1
@@ -90,10 +92,12 @@ describe("Workloads section", () => {
     expect(await within(list).findByText("301 / 1")).toBeTruthy();
     const [, init] = fetchMock.mock.calls.find(isWorkloadWrite);
     expect(JSON.parse(init.body)).toEqual({
-      target: { type: "SUBGROUP", id: "sg1" },
+      group_id: null,
+      subgroup_id: "sg1",
+      stream_id: null,
       subject_id: "s2",
       lesson_type: "LAB",
-      format: "REMOTE",
+      lesson_format: "REMOTE",
       occurrences_per_cycle: 4,
       duration_minutes: null,
       required_teacher_count: 2

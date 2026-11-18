@@ -8,7 +8,6 @@ import {
   Stack
 } from "@mui/material";
 
-// Оболочка диалога создания и изменения. Поля и состояние задаёт раздел через useResourceForm
 export default function ResourceFormDialog({
   open,
   title,

@@ -4,9 +4,11 @@ import {
   Box,
   Button,
   Checkbox,
+  FormControl,
   FormControlLabel,
   FormGroup,
-  FormHelperText,
+  FormLabel,
+  Paper,
   Radio,
   RadioGroup,
   Stack,
@@ -16,205 +18,191 @@ import {
 import { useOutletContext } from "react-router";
 
 import { projectsApi } from "../../projects/api.js";
-import { toFormErrors } from "../formErrors.js";
-import { WEEKDAYS } from "../intervals.js";
-import { validatePositiveInteger } from "../validation.js";
+import {
+  createSettingsDraft,
+  settingsPayload,
+  validateSettingsDraft,
+  WEEKDAYS
+} from "../projectSettings.js";
 
-// Значения по умолчанию совпадают с backend (domain/projects/settings.py)
-const MONDAY_TO_SATURDAY = WEEKDAYS.slice(0, 6).map((day) => day.value);
-const DEFAULT_DURATION_MINUTES = 100;
+const WEEKS = [
+  { field: "oddWeekDays", label: "Нечётная неделя" },
+  { field: "evenWeekDays", label: "Чётная неделя" }
+];
 
-function toValues(project) {
-  return {
-    odd_week_days: project.cycle?.odd_week_days ?? MONDAY_TO_SATURDAY,
-    even_week_days: project.cycle?.even_week_days ?? MONDAY_TO_SATURDAY,
-    time_mode: project.time_mode?.type ?? "HOUR_START",
-    step_minutes: String(project.time_mode?.step_minutes ?? ""),
-    duration_mode: project.duration_mode?.type ?? "UNIFORM",
-    duration_minutes: String(
-      project.duration_mode ? (project.duration_mode.duration_minutes ?? "") : DEFAULT_DURATION_MINUTES
-    )
-  };
-}
+const API_FIELDS = {
+  "time_mode.step_minutes": "stepMinutes",
+  "duration_mode.duration_minutes": "durationMinutes"
+};
 
-// Порядок дней как в неделе, а не как их отметили
-const ordered = (days) => WEEKDAYS.map((day) => day.value).filter((day) => days.includes(day));
-
-function validate(values) {
-  const errors = {
-    "time_mode.step_minutes":
-      values.time_mode === "STEP"
-        ? validatePositiveInteger(values.step_minutes, "Нужен положительный шаг в минутах")
-        : null,
-    "duration_mode.duration_minutes":
-      values.duration_mode === "UNIFORM"
-        ? validatePositiveInteger(values.duration_minutes, "Нужна положительная длительность в минутах")
-        : null
-  };
-  return Object.fromEntries(Object.entries(errors).filter(([, error]) => error));
-}
-
-function WeekDays({ legend, value, onChange }) {
-  const toggle = (day) => onChange(value.includes(day) ? value.filter((item) => item !== day) : [...value, day]);
-
-  return (
-    <Box component="fieldset" sx={{ border: 0, p: 0, m: 0 }}>
-      <Typography component="legend" variant="subtitle2">
-        {legend}
-      </Typography>
-      <FormGroup row>
-        {WEEKDAYS.map((day) => (
-          <FormControlLabel
-            key={day.value}
-            control={<Checkbox checked={value.includes(day.value)} onChange={() => toggle(day.value)} />}
-            label={day.short}
-            aria-label={`${day.label}, ${legend.toLowerCase()}`}
-          />
-        ))}
-      </FormGroup>
-      {value.length === 0 && (
-        <FormHelperText>Учебных дней нет: занятия на этой неделе не планируются.</FormHelperText>
-      )}
-    </Box>
-  );
-}
-
-// Настройки времени проекта (F_Data_1–F_Data_3). Несовместимость с уже введёнными данными
-// проверяется перед расчётом, а не здесь
 export default function ProjectSettingsPage() {
-  const { project, onProjectChange } = useOutletContext();
-  const [values, setValues] = useState(() => toValues(project));
+  const { project, updateProject } = useOutletContext();
+  const [draft, setDraft] = useState(() => createSettingsDraft(project));
   const [errors, setErrors] = useState({});
-  const [formError, setFormError] = useState(null);
+  const [message, setMessage] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
 
-  const setValue = (name, value) => {
-    setValues((current) => ({ ...current, [name]: value }));
-    setErrors({});
-    setSaved(false);
+  const changeField = (field, value) => {
+    setDraft((current) => ({ ...current, [field]: value }));
+    setErrors((current) => ({ ...current, [field]: undefined }));
+    setMessage(null);
   };
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
-    setFormError(null);
+  const toggleWeekday = (field, day, checked) => {
+    setDraft((current) => ({
+      ...current,
+      [field]: checked
+        ? [...current[field], day]
+        : current[field].filter((value) => value !== day)
+    }));
+    setMessage(null);
+  };
 
-    const found = validate(values);
-    setErrors(found);
-    if (Object.keys(found).length > 0) {
+  const save = async (event) => {
+    event.preventDefault();
+    const validationErrors = validateSettingsDraft(draft);
+    setErrors(validationErrors);
+    setMessage(null);
+
+    if (Object.keys(validationErrors).length > 0) {
       return;
     }
 
     setSaving(true);
     try {
-      const updated = await projectsApi.update(project.id, {
-        cycle: { odd_week_days: ordered(values.odd_week_days), even_week_days: ordered(values.even_week_days) },
-        time_mode:
-          values.time_mode === "STEP"
-            ? { type: "STEP", step_minutes: Number(values.step_minutes) }
-            : { type: "HOUR_START" },
-        duration_mode:
-          values.duration_mode === "UNIFORM"
-            ? { type: "UNIFORM", duration_minutes: Number(values.duration_minutes) }
-            : { type: "INDIVIDUAL" }
-      });
-      onProjectChange(updated);
-      setValues(toValues(updated));
-      setSaved(true);
+      const updated = await projectsApi.update(project.id, settingsPayload(draft));
+      updateProject(updated);
+      setDraft(createSettingsDraft(updated));
+      setMessage({ severity: "success", text: "Настройки сохранены" });
     } catch (error) {
-      const { fields, form } = toFormErrors(error);
-      setErrors(fields);
-      setFormError(form);
+      const field = API_FIELDS[error.details?.field];
+      if (field) {
+        setErrors({ [field]: error.message });
+      } else {
+        setMessage({
+          severity: "error",
+          text: error.message ?? "Не удалось сохранить настройки"
+        });
+      }
     } finally {
       setSaving(false);
     }
   };
 
-  const stepError = errors["time_mode.step_minutes"] ?? errors.time_mode;
-  const durationError = errors["duration_mode.duration_minutes"] ?? errors.duration_mode;
-
   return (
-    <Box component="form" noValidate onSubmit={handleSubmit} sx={{ py: 2, maxWidth: 640 }}>
-      <Typography component="h2" variant="h5" sx={{ mb: 1 }}>
-        Настройки проекта
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 2 }}>
-        Учебные дни двухнедельного цикла, время начала и длительность занятий.
-      </Typography>
+    <Box component="form" noValidate onSubmit={save} sx={{ mt: 3 }}>
+      <Stack spacing={3} sx={{ maxWidth: 800 }}>
+        <Typography component="h2" variant="h5">
+          Настройки проекта
+        </Typography>
 
-      <Stack spacing={3}>
-        {formError && <Alert severity="error">{formError}</Alert>}
+        <Paper variant="outlined" sx={{ p: 3 }}>
+          <Stack spacing={2}>
+            <Typography variant="h6">Учебные дни</Typography>
+            <Stack direction={{ xs: "column", md: "row" }} spacing={3}>
+              {WEEKS.map(({ field, label }) => (
+                <FormControl component="fieldset" key={field} sx={{ flex: 1 }}>
+                  <FormLabel component="legend">{label}</FormLabel>
+                  <FormGroup row>
+                    {WEEKDAYS.map(({ value, label: day }) => (
+                      <FormControlLabel
+                        key={value}
+                        label={day}
+                        control={
+                          <Checkbox
+                            checked={draft[field].includes(value)}
+                            onChange={(event) => toggleWeekday(field, value, event.target.checked)}
+                            disabled={saving}
+                          />
+                        }
+                      />
+                    ))}
+                  </FormGroup>
+                </FormControl>
+              ))}
+            </Stack>
+            <Typography variant="body2" color="text.secondary">
+              Можно оставить неделю без учебных дней. Возможность составить расписание
+              проверяется при запуске расчёта.
+            </Typography>
+          </Stack>
+        </Paper>
 
-        <Stack spacing={1}>
-          <Typography component="h3" variant="h6">
-            Учебные дни
-          </Typography>
-          <WeekDays
-            legend="Нечётная неделя"
-            value={values.odd_week_days}
-            onChange={(next) => setValue("odd_week_days", next)}
-          />
-          <WeekDays
-            legend="Чётная неделя"
-            value={values.even_week_days}
-            onChange={(next) => setValue("even_week_days", next)}
-          />
-        </Stack>
+        <Paper variant="outlined" sx={{ p: 3 }}>
+          <FormControl component="fieldset">
+            <FormLabel component="legend">Начало занятий</FormLabel>
+            <RadioGroup
+              value={draft.timeMode}
+              onChange={(event) => changeField("timeMode", event.target.value)}
+            >
+              <FormControlLabel
+                value="HOUR_START"
+                control={<Radio disabled={saving} />}
+                label="Только в начале часа"
+              />
+              <FormControlLabel
+                value="STEP"
+                control={<Radio disabled={saving} />}
+                label="С минимальным временным шагом"
+              />
+            </RadioGroup>
+            {draft.timeMode === "STEP" && (
+              <TextField
+                label="Минимальный шаг, минут"
+                type="number"
+                value={draft.stepMinutes}
+                onChange={(event) => changeField("stepMinutes", event.target.value)}
+                error={Boolean(errors.stepMinutes)}
+                helperText={errors.stepMinutes}
+                slotProps={{ htmlInput: { min: 1, step: 1 } }}
+                disabled={saving}
+                margin="dense"
+                sx={{ maxWidth: 280 }}
+              />
+            )}
+          </FormControl>
+        </Paper>
 
-        <Stack spacing={1}>
-          <Typography component="h3" variant="h6" id="time-mode">
-            Начало занятий
-          </Typography>
-          <RadioGroup
-            aria-labelledby="time-mode"
-            value={values.time_mode}
-            onChange={(event) => setValue("time_mode", event.target.value)}
-          >
-            <FormControlLabel value="HOUR_START" control={<Radio />} label="В начале часа" />
-            <FormControlLabel value="STEP" control={<Radio />} label="С заданным шагом" />
-          </RadioGroup>
-          {values.time_mode === "STEP" && (
-            <TextField
-              label="Шаг, минут"
-              value={values.step_minutes}
-              onChange={(event) => setValue("step_minutes", event.target.value)}
-              error={Boolean(stepError)}
-              helperText={stepError ?? "Например, 30: занятия начинаются в 9:00, 9:30, 10:00…"}
-              slotProps={{ htmlInput: { inputMode: "numeric" } }}
-            />
-          )}
-        </Stack>
+        <Paper variant="outlined" sx={{ p: 3 }}>
+          <FormControl component="fieldset">
+            <FormLabel component="legend">Длительность занятий</FormLabel>
+            <RadioGroup
+              value={draft.durationMode}
+              onChange={(event) => changeField("durationMode", event.target.value)}
+            >
+              <FormControlLabel
+                value="UNIFORM"
+                control={<Radio disabled={saving} />}
+                label="Единая для всех занятий"
+              />
+              <FormControlLabel
+                value="INDIVIDUAL"
+                control={<Radio disabled={saving} />}
+                label="Индивидуальная для каждого элемента нагрузки"
+              />
+            </RadioGroup>
+            {draft.durationMode === "UNIFORM" && (
+              <TextField
+                label="Длительность занятия, минут"
+                type="number"
+                value={draft.durationMinutes}
+                onChange={(event) => changeField("durationMinutes", event.target.value)}
+                error={Boolean(errors.durationMinutes)}
+                helperText={errors.durationMinutes}
+                slotProps={{ htmlInput: { min: 1, step: 1 } }}
+                disabled={saving}
+                margin="dense"
+                sx={{ maxWidth: 280 }}
+              />
+            )}
+          </FormControl>
+        </Paper>
 
-        <Stack spacing={1}>
-          <Typography component="h3" variant="h6" id="duration-mode">
-            Длительность занятий
-          </Typography>
-          <RadioGroup
-            aria-labelledby="duration-mode"
-            value={values.duration_mode}
-            onChange={(event) => setValue("duration_mode", event.target.value)}
-          >
-            <FormControlLabel value="UNIFORM" control={<Radio />} label="Одинаковая для всех занятий" />
-            <FormControlLabel value="INDIVIDUAL" control={<Radio />} label="Своя у каждого элемента нагрузки" />
-          </RadioGroup>
-          {values.duration_mode === "UNIFORM" ? (
-            <TextField
-              label="Длительность, минут"
-              value={values.duration_minutes}
-              onChange={(event) => setValue("duration_minutes", event.target.value)}
-              error={Boolean(durationError)}
-              helperText={durationError}
-              slotProps={{ htmlInput: { inputMode: "numeric" } }}
-            />
-          ) : (
-            <FormHelperText>Длительность указывается в разделе «Нагрузка» для каждого занятия.</FormHelperText>
-          )}
-        </Stack>
+        {message && <Alert severity={message.severity}>{message.text}</Alert>}
 
-        {saved && <Alert severity="success">Настройки сохранены</Alert>}
         <Box>
           <Button type="submit" variant="contained" disabled={saving}>
-            Сохранить
+            {saving ? "Сохранение..." : "Сохранить настройки"}
           </Button>
         </Box>
       </Stack>

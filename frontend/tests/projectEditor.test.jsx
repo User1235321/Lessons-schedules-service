@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 
 import { findHeading, renderRoute, TEST_PROJECTS } from "./renderRoute.jsx";
 
-// implemented: раздел уже работает с API и не показывает заглушку «В разработке»
 const editorSections = [
   { path: "teachers", label: "Преподаватели", heading: "Преподаватели", implemented: true },
   { path: "rooms", label: "Аудитории", heading: "Аудитории", implemented: true },
@@ -49,7 +48,6 @@ describe("project editor", () => {
         expect(tab.getAttribute("aria-selected")).toBe("true");
       }
 
-      // Проект грузится один раз; запросы данных разделов идут по адресам глубже
       const projectRequests = fetchMock.mock.calls.filter(([url]) => /^\/api\/projects\/[^/]+$/.test(url));
       expect(projectRequests.map(([url]) => url)).toEqual([`/api/projects/${project.id}`]);
     });

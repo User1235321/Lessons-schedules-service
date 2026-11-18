@@ -7,7 +7,6 @@ import ResourceFormDialog from "./ResourceFormDialog.jsx";
 
 const total = (subgroups) => subgroups.reduce((sum, subgroup) => sum + subgroup.student_count, 0);
 
-// Группа: название и число студентов (F_Data_10). Подгруппы добавляются отдельно
 export default function GroupDialog({ open, item, projectId, onClose, onSaved }) {
   const subgroupsTotal = total(item?.subgroups ?? []);
 
@@ -19,7 +18,6 @@ export default function GroupDialog({ open, item, projectId, onClose, onSaved })
         name: validateName(name, "Укажите название группы"),
         student_count: validateStudentCount(count)
       };
-      // F_Data_12: подгруппы не могут вместить больше студентов, чем в группе
       if (!errors.student_count && Number(count) < subgroupsTotal) {
         errors.student_count = `Меньше суммы студентов в подгруппах (${subgroupsTotal})`;
       }

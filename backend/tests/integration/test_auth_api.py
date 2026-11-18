@@ -10,6 +10,7 @@ from httpx2 import Response
 from app.api.cookies import REFRESH_COOKIE_NAME
 from app.bootstrap.container import Container
 from app.domain.auth.user import Email, User
+from tests.fakes import FakeClock
 
 
 def register(api: TestClient, email: str = "ivan@mail.ru", password: str = "secret1") -> Response:
@@ -52,25 +53,6 @@ def another_browser(api: TestClient, refresh_token: str | None = None) -> TestCl
 
 def me(api: TestClient, access_token: str) -> Response:
     return api.get("/auth/me", headers={"Authorization": f"Bearer {access_token}"})
-
-
-class FakeClock:
-    """Часы, которые тест переводит вперёд."""
-
-    def __init__(self) -> None:
-        self.current = datetime.now(UTC)
-
-    def now(self) -> datetime:
-        return self.current
-
-    def advance(self, delta: timedelta) -> None:
-        self.current += delta
-
-
-@pytest.fixture
-def clock(container: Container) -> FakeClock:
-    container.clock = fake = FakeClock()
-    return fake
 
 
 def stored_user(container: Container, email: str) -> User:

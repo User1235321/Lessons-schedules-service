@@ -1,5 +1,3 @@
-// Правила совпадают с backend (domain/academic/names.py): название без пробелов по краям,
-// непустое и не длиннее 200 символов
 export const MAX_NAME_LENGTH = 200;
 
 export function validateName(name, missing) {
@@ -13,14 +11,12 @@ export function validateName(name, missing) {
   return null;
 }
 
-// Предел хранения на backend (колонка integer), а не правило предметной области
 export const MAX_STUDENT_COUNT = 2 ** 31 - 1;
 
-// Положительное целое (F_Valid_1). Принимает строку из поля ввода
-export function validatePositiveInteger(value, invalid) {
+export function validatePositiveInteger(value, invalidMessage) {
   const text = String(value).trim();
   if (!/^\d+$/.test(text) || Number(text) <= 0) {
-    return invalid;
+    return invalidMessage;
   }
   if (Number(text) > MAX_STUDENT_COUNT) {
     return "Слишком большое число";
@@ -28,6 +24,5 @@ export function validatePositiveInteger(value, invalid) {
   return null;
 }
 
-export function validateStudentCount(value) {
-  return validatePositiveInteger(value, "Нужно положительное целое число студентов");
-}
+export const validateStudentCount = (value) =>
+  validatePositiveInteger(value, "Нужно положительное целое число студентов");

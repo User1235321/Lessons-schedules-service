@@ -2,8 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 
 import { toFormErrors } from "./formErrors.js";
 
-// Состояние формы диалога: значения, ошибки полей, общая ошибка и отправка.
-// Значения сбрасываются при каждом открытии диалога. onSubmit при ошибке бросает ApiError
 export function useResourceForm({ open, initialValues, validate, onSubmit }) {
   const [values, setValues] = useState(initialValues);
   const [errors, setErrors] = useState({});
@@ -17,7 +15,6 @@ export function useResourceForm({ open, initialValues, validate, onSubmit }) {
       setFormError(null);
       setSubmitting(false);
     }
-    // initialValues собирается заново на каждый рендер, а сброс нужен только при открытии
   }, [open]);
 
   const setValue = useCallback((name, value) => {

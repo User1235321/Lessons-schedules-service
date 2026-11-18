@@ -4,8 +4,6 @@ import { LESSON_TYPES } from "../intervals.js";
 
 const nativeSelect = { select: { native: true } };
 
-// Набор пар «дисциплина + тип занятия». Пара — то, что преподаватель может вести
-// или в какой аудитории можно проводить занятие (F_Data_4, F_Data_9)
 export default function CapabilitiesField({ label, subjects, value, onChange, error, hint }) {
   const update = (index, changes) =>
     onChange(value.map((item, i) => (i === index ? { ...item, ...changes } : item)));

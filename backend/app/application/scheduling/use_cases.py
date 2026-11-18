@@ -4,8 +4,9 @@ from app.application.auth.access import owned_project
 from app.application.scheduling.ports import JobStateStore
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
-from app.domain.scheduling.errors import JobNotCancellable
+from app.domain.scheduling.errors import JobNotCancellable, JobResultsUnavailable
 from app.domain.scheduling.job import Job, JobProgress, JobStatus, JobType, ResultOptions
+from app.domain.scheduling.schedule import Schedule
 from app.domain.shared.errors import NotFound
 from app.domain.shared.ids import JobId, ProjectId, UserId
 
@@ -50,6 +51,20 @@ class GetGenerationJob:
             if job is None:
                 raise NotFound("Задание не найдено", job_id=str(job_id))
         return JobView(job, self.state.get_progress(job_id))
+
+
+@dataclass
+class GetGenerationSchedules:
+    uow: UnitOfWork
+
+    def execute(self, user_id: UserId, job_id: JobId) -> list[Schedule]:
+        with self.uow:
+            job = self.uow.jobs.get_owned(job_id, user_id)
+            if job is None:
+                raise NotFound("Задание не найдено", job_id=str(job_id))
+            if job.status is not JobStatus.COMPLETED:
+                raise JobResultsUnavailable("Результаты задания ещё недоступны", job_id=str(job_id))
+            return self.uow.schedules.list_for_job(job.project_id, job_id)
 
 
 @dataclass

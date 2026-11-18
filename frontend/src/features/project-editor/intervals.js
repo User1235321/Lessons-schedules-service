@@ -1,5 +1,3 @@
-// Формат промежутка совпадает с backend (api/schemas/academic.py):
-// { week: ODD | EVEN | ANY, day: MONDAY…SUNDAY, start: "ЧЧ:ММ", end: "ЧЧ:ММ" }
 
 export const WEEKS = [
   { value: "ANY", label: "Обе недели" },
@@ -23,7 +21,8 @@ export const LESSON_TYPES = [
   { value: "LAB", label: "Лабораторная" }
 ];
 
-// Допустимые дисциплины задаются только специализированным и лабораторным (F_Data_9)
+export const newInterval = () => ({ week: "ANY", day: "MONDAY", start: "09:00", end: "18:00" });
+
 export const ROOM_TYPES = [
   { value: "LECTURE", label: "Лекционная", hasCapabilities: false },
   { value: "PRACTICE_UNIVERSAL", label: "Практическая универсальная", hasCapabilities: false },
@@ -31,20 +30,22 @@ export const ROOM_TYPES = [
   { value: "LABORATORY", label: "Лаборатория", hasCapabilities: true }
 ];
 
-// Дистанционному занятию аудитория не назначается (F_Data_17)
 export const LESSON_FORMATS = [
   { value: "ONSITE", label: "Очно" },
   { value: "REMOTE", label: "Дистанционно" }
 ];
 
-// Для кого нагрузка: ровно одна группа, подгруппа или поток (F_Data_16)
 export const TARGET_TYPES = [
   { value: "GROUP", label: "Группа" },
   { value: "SUBGROUP", label: "Подгруппа" },
   { value: "STREAM", label: "Поток" }
 ];
 
-export const newInterval = () => ({ week: "ANY", day: "MONDAY", start: "09:00", end: "18:00" });
+export const roomIntervalToForm = ({ week, weekday, start_time: start, end_time: end }) =>
+  ({ week, day: weekday, start, end });
+
+export const roomIntervalToApi = ({ week, day, start, end }) =>
+  ({ week, weekday: day, start_time: start, end_time: end });
 
 const labelOf = (options, value) => options.find((option) => option.value === value)?.label ?? value;
 
@@ -60,7 +61,8 @@ export function formatInterval({ week, day, start, end }) {
   return `${dayLabel}${weekLabel} ${start}–${end}`;
 }
 
-// Ошибка набора промежутков или null. required — нужен хотя бы один (F_Data_4, F_Data_7)
+export const formatRoomInterval = (interval) => formatInterval(roomIntervalToForm(interval));
+
 export function validateIntervals(intervals, { required }) {
   if (required && intervals.length === 0) {
     return "Добавьте хотя бы один промежуток";
@@ -76,7 +78,6 @@ export function validateIntervals(intervals, { required }) {
   return null;
 }
 
-// Ошибка набора пар «дисциплина + тип занятия» или null. Одна пара не должна повторяться
 export function validateCapabilities(capabilities, { required }) {
   if (required && capabilities.length === 0) {
     return "Добавьте хотя бы одну пару «дисциплина + тип занятия»";

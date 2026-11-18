@@ -17,8 +17,6 @@ import { useResourceForm } from "../useResourceForm.js";
 import { MAX_NAME_LENGTH, validateName } from "../validation.js";
 import ResourceFormDialog from "./ResourceFormDialog.jsx";
 
-// Поток: группы, которые слушают занятия вместе. Собирается только вручную (F_Data_14, F_Data_15).
-// Нужна хотя бы одна группа, поток из одной группы допустим
 export default function StreamDialog({ open, item, projectId, groups, onClose, onSaved }) {
   const form = useResourceForm({
     open,

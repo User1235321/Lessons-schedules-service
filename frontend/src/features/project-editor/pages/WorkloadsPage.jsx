@@ -45,9 +45,9 @@ export default function WorkloadsPage() {
         {
           label: "Занятие",
           render: (workload) =>
-            `${lessonTypeLabel(workload.lesson_type)}, ${lessonFormatLabel(workload.format).toLowerCase()}`
+            `${lessonTypeLabel(workload.lesson_type)}, ${lessonFormatLabel(workload.lesson_format).toLowerCase()}`
         },
-        { label: "Для кого", render: (workload) => targetLabel(targets, workload.target) },
+        { label: "Для кого", render: (workload) => targetLabel(targets, workload) },
         { label: "За цикл", render: (workload) => workload.occurrences_per_cycle },
         {
           label: "Длительность",
@@ -60,11 +60,11 @@ export default function WorkloadsPage() {
         },
         { label: "Преподавателей", render: (workload) => workload.required_teacher_count }
       ]}
-      itemLabel={(workload) => `${subjectName(workload.subject_id)}, ${targetLabel(targets, workload.target)}`}
+      itemLabel={(workload) => `${subjectName(workload.subject_id)}, ${targetLabel(targets, workload)}`}
       addLabel="Добавить нагрузку"
       emptyText="Нагрузки пока нет. Добавьте первое занятие."
       deleteText={(workload) =>
-        `Нагрузка «${subjectName(workload.subject_id)}» для «${targetLabel(targets, workload.target)}» будет удалена.`
+        `Нагрузка «${subjectName(workload.subject_id)}» для «${targetLabel(targets, workload)}» будет удалена.`
       }
       FormDialog={WorkloadDialog}
       dialogProps={{ subjects: subjects.items, targets, individualDuration, projectDuration }}

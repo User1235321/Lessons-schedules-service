@@ -1,96 +1,183 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { findHeading, renderRoute, TEST_PROJECTS } from "./renderRoute.jsx";
+import { DEFAULT_SETTINGS, findHeading, renderRoute, TEST_PROJECTS } from "./renderRoute.jsx";
 
-const SETTINGS = {
-  cycle: {
-    odd_week_days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"],
-    even_week_days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"]
-  },
-  time_mode: { type: "HOUR_START", step_minutes: null },
-  duration_mode: { type: "UNIFORM", duration_minutes: 100 }
-};
+const DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
-function openSettings(settings = SETTINGS) {
-  const projects = TEST_PROJECTS.map((project) => ({ ...project, ...settings }));
-  return renderRoute("/projects/42/settings", undefined, { projects });
+async function openSettings(backend) {
+  const result = renderRoute("/projects/42/settings", undefined, backend);
+  await findHeading("Настройки проекта");
+  return result;
 }
 
-const isProjectPatch = ([url, init]) => url === "/api/projects/42" && init?.method === "PATCH";
-const checkbox = (name) => screen.getByRole("checkbox", { name });
+function week(name) {
+  return screen.getByRole("group", { name });
+}
 
-describe("Project settings", () => {
-  it("shows the saved settings", async () => {
-    openSettings();
-    await findHeading("Настройки проекта");
+function savedPayload(fetchMock) {
+  const [, request] = fetchMock.mock.calls.find(
+    ([url, options]) => url === "/api/projects/42" && options?.method === "PATCH"
+  );
+  return JSON.parse(request.body);
+}
 
-    expect(checkbox("Суббота, нечётная неделя").checked).toBe(true);
-    expect(checkbox("Суббота, чётная неделя").checked).toBe(false);
-    expect(screen.getByRole("radio", { name: "В начале часа" }).checked).toBe(true);
-    expect(screen.getByLabelText("Длительность, минут").value).toBe("100");
+describe("ProjectSettingsPage", () => {
+  it("shows default settings from the already loaded project (F_Project_5)", async () => {
+    const { fetchMock } = await openSettings();
+
+    for (const weekName of ["Нечётная неделя", "Чётная неделя"]) {
+      const controls = within(week(weekName));
+      for (const day of DAYS.slice(0, 6)) {
+        expect(controls.getByRole("checkbox", { name: day }).checked).toBe(true);
+      }
+      expect(controls.getByRole("checkbox", { name: "Вс" }).checked).toBe(false);
+    }
+
+    expect(screen.getByRole("radio", { name: "Только в начале часа" }).checked).toBe(true);
+    expect(screen.getByRole("radio", { name: "Единая для всех занятий" }).checked).toBe(true);
+    expect(screen.getByRole("spinbutton", { name: "Длительность занятия, минут" }).value).toBe("100");
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/projects/42")).toHaveLength(1);
   });
 
-  it("saves days, a time step and individual durations (F_Data_1–F_Data_3)", async () => {
-    const { user, fetchMock } = openSettings();
-    await findHeading("Настройки проекта");
+  it("saves different weekdays and modes, then restores them on reopening (F_Project_4, F_Data_1–3)", async () => {
+    const { user, router, fetchMock } = await openSettings();
 
-    await user.click(checkbox("Суббота, нечётная неделя"));
-    await user.click(checkbox("Суббота, чётная неделя"));
-    await user.click(screen.getByRole("radio", { name: "С заданным шагом" }));
-    await user.type(screen.getByLabelText("Шаг, минут"), "30");
-    await user.click(screen.getByRole("radio", { name: "Своя у каждого элемента нагрузки" }));
-    await user.click(screen.getByRole("button", { name: "Сохранить" }));
+    await user.click(within(week("Нечётная неделя")).getByRole("checkbox", { name: "Пн" }));
+    await user.click(within(week("Чётная неделя")).getByRole("checkbox", { name: "Вс" }));
+    await user.click(screen.getByRole("radio", { name: "С минимальным временным шагом" }));
+    await user.type(screen.getByRole("spinbutton", { name: "Минимальный шаг, минут" }), "15");
+    await user.click(
+      screen.getByRole("radio", { name: "Индивидуальная для каждого элемента нагрузки" })
+    );
+    await user.click(screen.getByRole("button", { name: "Сохранить настройки" }));
 
     expect(await screen.findByText("Настройки сохранены")).toBeTruthy();
-    const [, init] = fetchMock.mock.calls.find(isProjectPatch);
-    expect(JSON.parse(init.body)).toEqual({
+    expect(savedPayload(fetchMock)).toEqual({
       cycle: {
-        odd_week_days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"],
-        even_week_days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"]
+        odd_week_days: DEFAULT_SETTINGS.cycle.odd_week_days.slice(1),
+        even_week_days: [...DEFAULT_SETTINGS.cycle.even_week_days, "SUNDAY"]
       },
-      time_mode: { type: "STEP", step_minutes: 30 },
+      time_mode: { type: "STEP", step_minutes: 15 },
       duration_mode: { type: "INDIVIDUAL" }
     });
-  });
 
-  it("requires a positive step and duration", async () => {
-    const { user, fetchMock } = openSettings();
-    await findHeading("Настройки проекта");
-
-    await user.click(screen.getByRole("radio", { name: "С заданным шагом" }));
-    const duration = screen.getByLabelText("Длительность, минут");
-    await user.clear(duration);
-    await user.type(duration, "0");
-    await user.click(screen.getByRole("button", { name: "Сохранить" }));
-
-    expect(screen.getByText("Нужен положительный шаг в минутах")).toBeTruthy();
-    expect(screen.getByText("Нужна положительная длительность в минутах")).toBeTruthy();
-    expect(fetchMock.mock.calls.some(isProjectPatch)).toBe(false);
-  });
-
-  it("warns when a week has no study days", async () => {
-    const { user } = openSettings({ ...SETTINGS, cycle: { ...SETTINGS.cycle, even_week_days: ["MONDAY"] } });
-    await findHeading("Настройки проекта");
-
-    await user.click(checkbox("Понедельник, чётная неделя"));
-
-    expect(screen.getByText(/Учебных дней нет/)).toBeTruthy();
-  });
-
-  it("keeps the saved settings after reopening the section", async () => {
-    const { user, router } = openSettings();
-    await findHeading("Настройки проекта");
-
-    await user.click(screen.getByRole("radio", { name: "Своя у каждого элемента нагрузки" }));
-    await user.click(screen.getByRole("button", { name: "Сохранить" }));
-    await screen.findByText("Настройки сохранены");
-
-    await router.navigate("/projects/42/rooms");
-    await findHeading("Аудитории");
+    await router.navigate("/projects");
+    await findHeading("Мои проекты");
     await router.navigate("/projects/42/settings");
     await findHeading("Настройки проекта");
 
-    expect(screen.getByRole("radio", { name: "Своя у каждого элемента нагрузки" }).checked).toBe(true);
+    expect(within(week("Нечётная неделя")).getByRole("checkbox", { name: "Пн" }).checked).toBe(false);
+    expect(within(week("Чётная неделя")).getByRole("checkbox", { name: "Вс" }).checked).toBe(true);
+    expect(screen.getByRole("radio", { name: "С минимальным временным шагом" }).checked).toBe(true);
+    expect(screen.getByRole("spinbutton", { name: "Минимальный шаг, минут" }).value).toBe("15");
+    expect(screen.getByRole("radio", {
+      name: "Индивидуальная для каждого элемента нагрузки"
+    }).checked).toBe(true);
+  });
+
+  it("does not block locally valid empty weeks (F_Valid_3)", async () => {
+    const project = {
+      ...TEST_PROJECTS[0],
+      cycle: { odd_week_days: [], even_week_days: [] }
+    };
+    const { user, fetchMock } = await openSettings({ projects: [project] });
+
+    await user.click(screen.getByRole("button", { name: "Сохранить настройки" }));
+
+    expect(await screen.findByText("Настройки сохранены")).toBeTruthy();
+    expect(savedPayload(fetchMock).cycle).toEqual({
+      odd_week_days: [],
+      even_week_days: []
+    });
+  });
+
+  it("requires positive whole minutes and does not submit invalid values (F_Valid_1–2)", async () => {
+    const { user, fetchMock } = await openSettings();
+
+    await user.click(screen.getByRole("radio", { name: "С минимальным временным шагом" }));
+    await user.type(screen.getByRole("spinbutton", { name: "Минимальный шаг, минут" }), "0");
+    await user.clear(screen.getByRole("spinbutton", { name: "Длительность занятия, минут" }));
+    await user.type(screen.getByRole("spinbutton", { name: "Длительность занятия, минут" }), "0");
+    await user.click(screen.getByRole("button", { name: "Сохранить настройки" }));
+
+    expect(screen.getAllByText("Укажите положительное целое число минут")).toHaveLength(2);
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === "PATCH")).toBe(false);
+
+    await user.clear(screen.getByRole("spinbutton", { name: "Минимальный шаг, минут" }));
+    await user.type(screen.getByRole("spinbutton", { name: "Минимальный шаг, минут" }), "30");
+    await user.clear(screen.getByRole("spinbutton", { name: "Длительность занятия, минут" }));
+    await user.type(screen.getByRole("spinbutton", { name: "Длительность занятия, минут" }), "90");
+    await user.click(screen.getByRole("button", { name: "Сохранить настройки" }));
+
+    expect(await screen.findByText("Настройки сохранены")).toBeTruthy();
+    expect(savedPayload(fetchMock).time_mode).toEqual({ type: "STEP", step_minutes: 30 });
+    expect(savedPayload(fetchMock).duration_mode).toEqual({
+      type: "UNIFORM",
+      duration_minutes: 90
+    });
+  });
+
+  it("omits inactive parameters when switching modes", async () => {
+    const project = {
+      ...TEST_PROJECTS[0],
+      time_mode: { type: "STEP", step_minutes: 20 },
+      duration_mode: { type: "UNIFORM", duration_minutes: 85 }
+    };
+    const { user, fetchMock } = await openSettings({ projects: [project] });
+
+    await user.click(screen.getByRole("radio", { name: "Только в начале часа" }));
+    await user.click(
+      screen.getByRole("radio", { name: "Индивидуальная для каждого элемента нагрузки" })
+    );
+    await user.click(screen.getByRole("button", { name: "Сохранить настройки" }));
+
+    expect(await screen.findByText("Настройки сохранены")).toBeTruthy();
+    expect(savedPayload(fetchMock).time_mode).toEqual({ type: "HOUR_START" });
+    expect(savedPayload(fetchMock).duration_mode).toEqual({ type: "INDIVIDUAL" });
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+  });
+
+  it("loads the selected project's settings when moving between projects", async () => {
+    const second = {
+      ...TEST_PROJECTS[1],
+      time_mode: { type: "STEP", step_minutes: 45 },
+      duration_mode: { type: "UNIFORM", duration_minutes: 75 }
+    };
+    const { router } = await openSettings({ projects: [TEST_PROJECTS[0], second] });
+
+    await router.navigate("/projects/43/settings");
+    await findHeading("Весенний семестр");
+    await findHeading("Настройки проекта");
+
+    expect(screen.getByRole("radio", { name: "С минимальным временным шагом" }).checked).toBe(true);
+    expect(screen.getByRole("spinbutton", { name: "Минимальный шаг, минут" }).value).toBe("45");
+    expect(screen.getByRole("spinbutton", { name: "Длительность занятия, минут" }).value).toBe("75");
+  });
+
+  it("shows API validation errors without claiming success", async () => {
+    const { user, fetchMock } = await openSettings();
+    const respond = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (url, options) => {
+      if (url === "/api/projects/42" && options?.method === "PATCH") {
+        return new Response(JSON.stringify({
+          code: "INVALID_VALUE",
+          message: "Укажите положительный шаг",
+          details: { field: "time_mode.step_minutes" }
+        }), { status: 422 });
+      }
+      return respond(url, options);
+    });
+
+    await user.click(screen.getByRole("radio", { name: "С минимальным временным шагом" }));
+    await user.type(screen.getByRole("spinbutton", { name: "Минимальный шаг, минут" }), "30");
+    await user.click(screen.getByRole("button", { name: "Сохранить настройки" }));
+
+    expect(await screen.findByText("Укажите положительный шаг")).toBeTruthy();
+    expect(screen.queryByText("Настройки сохранены")).toBeNull();
+
+    fetchMock.mockImplementation(respond);
+    await user.click(screen.getByRole("button", { name: "Сохранить настройки" }));
+    await waitFor(() => expect(screen.getByText("Настройки сохранены")).toBeTruthy());
   });
 });

@@ -39,6 +39,26 @@ async function fillSubgroup(user, dialog, name, count) {
 }
 
 describe("Subgroups dialog", () => {
+  it("allows equal subgroup names in different groups but not in the same group", async () => {
+    const { user } = renderRoute("/projects/42/groups", undefined, {
+      resources: {
+        groups: [...GROUPS, { id: "g2", name: "ПИ-22", student_count: 20, subgroups: [] }],
+        subgroups: SUBGROUPS
+      }
+    });
+    const groups = await screen.findByRole("table", { name: "Группы и подгруппы" });
+    await user.click(within(groups).getByRole("button", { name: "Подгруппы: ПИ-22" }));
+    const dialog = await screen.findByRole("dialog", { name: "Подгруппы: ПИ-22" });
+
+    await fillSubgroup(user, dialog, "ИВТ-21/1", "5");
+    await user.click(within(dialog).getByRole("button", { name: "Добавить подгруппу" }));
+    expect(await within(dialog).findByText("ИВТ-21/1")).toBeTruthy();
+
+    await fillSubgroup(user, dialog, "ИВТ-21/1", "4");
+    await user.click(within(dialog).getByRole("button", { name: "Добавить подгруппу" }));
+    expect(await within(dialog).findByText("Такое название уже есть")).toBeTruthy();
+  });
+
   it("shows the subgroups and how many students are distributed", async () => {
     const { dialog } = await openSubgroups();
 
@@ -115,7 +135,7 @@ describe("Subgroups dialog", () => {
     const { user, fetchMock, dialog } = await openSubgroups();
 
     await user.click(within(dialog).getByRole("button", { name: "Изменить подгруппу: ИВТ-21/1" }));
-    await fillSubgroup(user, dialog, "ИВТ-21/1", "16"); // 16 + 10 = 26 > 25
+    await fillSubgroup(user, dialog, "ИВТ-21/1", "16");
     await user.click(within(dialog).getByRole("button", { name: "Сохранить подгруппу" }));
 
     expect(within(dialog).getByText(/свободно: 15/)).toBeTruthy();
@@ -130,7 +150,6 @@ describe("Subgroups dialog", () => {
     await user.click(within(confirm).getByRole("button", { name: "Удалить" }));
 
     await within(dialog).findByText("Распределено 12 из 25 студентов");
-    // Пока подтверждение закрывается, диалог под ним скрыт от доступности
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "Удалить подгруппу?" })).toBeNull()
     );

@@ -137,7 +137,6 @@ describe("Teachers section", () => {
     expect(within(dialog).getByText(/Иванов Иван Иванович/)).toBeTruthy();
     await user.click(within(dialog).getByRole("button", { name: "Удалить" }));
 
-    // Преподаватель был единственным: вместо таблицы показывается пустое состояние
     expect(await screen.findByText(/Преподавателей пока нет/)).toBeTruthy();
     expect(screen.queryByText("Иванов Иван Иванович")).toBeNull();
   });

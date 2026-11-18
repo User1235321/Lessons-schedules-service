@@ -9,8 +9,6 @@ import {
   DialogTitle
 } from "@mui/material";
 
-// Подтверждение опасного действия. onConfirm — асинхронное действие: при ошибке диалог
-// остаётся открытым и показывает сообщение, при успехе закрывается
 export default function ConfirmDialog({
   open,
   title,

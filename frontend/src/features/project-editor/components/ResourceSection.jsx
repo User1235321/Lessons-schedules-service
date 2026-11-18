@@ -18,9 +18,6 @@ import ErrorState from "../../../components/ErrorState.jsx";
 import LoadingState from "../../../components/LoadingState.jsx";
 import { resourceApi } from "../api.js";
 
-// Раздел редактора: таблица ресурсов проекта с добавлением, изменением и удалением.
-// FormDialog({ open, item, projectId, onClose, onSaved }) — диалог раздела. item === null
-// для создания, dialogProps передаются диалогу как есть. columns: [{ label, render(item) }]. itemLabel(item) — название для подписей
 export default function ResourceSection({
   title,
   description,
@@ -58,9 +55,11 @@ export default function ResourceSection({
 
   const replaceItem = (saved) =>
     setItems((current) =>
-      current.some((item) => item.id === saved.id)
-        ? current.map((item) => (item.id === saved.id ? saved : item))
-        : [...current, saved]
+      current === null
+        ? current
+        : current.some((item) => item.id === saved.id)
+          ? current.map((item) => (item.id === saved.id ? saved : item))
+          : [...current, saved]
     );
 
   const handleSaved = (saved) => {
@@ -73,7 +72,6 @@ export default function ResourceSection({
     try {
       await api.remove(item.id);
     } catch (error) {
-      // Уже удалено в другой вкладке: для пользователя результат тот же
       if (error.code !== "NOT_FOUND") {
         throw error;
       }
@@ -91,7 +89,11 @@ export default function ResourceSection({
         <Typography component="h2" variant="h5">
           {title}
         </Typography>
-        <Button variant="contained" onClick={() => setDialog({ open: true, item: null })}>
+        <Button
+          variant="contained"
+          disabled={items === null || Boolean(loadError)}
+          onClick={() => setDialog({ open: true, item: null })}
+        >
           {addLabel}
         </Button>
       </Stack>
@@ -170,7 +172,6 @@ export default function ResourceSection({
         <Dialog
           key={label}
           open={action.index === index}
-          // Строка берётся из текущего списка: диалог видит изменения, которые сам внёс
           item={items?.find((item) => item.id === action.itemId) ?? null}
           projectId={projectId}
           onClose={() => setAction((current) => ({ ...current, index: null }))}

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Protocol
 
 from app.domain.projects.project import Project
@@ -23,6 +24,10 @@ class ProjectRepository(Protocol):
 
         Если у project.owner_id нет такого проекта — NotFound.
         """
+        ...
+
+    def touch(self, project_id: ProjectId, owner_id: UserId, now: datetime) -> None:
+        """Обновляет только время изменения проекта. Чужой или отсутствующий — NotFound."""
         ...
 
     def delete(self, project_id: ProjectId, owner_id: UserId) -> None:

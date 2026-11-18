@@ -74,6 +74,7 @@ def test_single_and_top_n_limit_the_number_of_results() -> None:
         {"mode": ResultMode.TOP_N},
         {"mode": ResultMode.TOP_N, "top_n": 0},
         {"mode": ResultMode.TOP_N, "top_n": -1},
+        {"mode": ResultMode.TOP_N, "top_n": 2_147_483_648},
         {"mode": ResultMode.SINGLE, "top_n": 1},
     ):
         with pytest.raises(InvalidValue) as error:

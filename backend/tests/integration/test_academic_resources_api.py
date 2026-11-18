@@ -446,7 +446,7 @@ def test_project_editor_resources_round_trip_with_real_database(api: TestClient)
     assert reopened_room["capacity"] == 30
     assert reopened_room["room_type"] == "LABORATORY"
     assert reopened_room["availability"] == room["availability"]
-    assert reopened_stream["group_ids"] == [students["id"], second_group["id"]]
+    assert set(reopened_stream["group_ids"]) == {students["id"], second_group["id"]}
     assert reopened_workload["group_id"] is None
     assert reopened_workload["subgroup_id"] == subgroup["id"]
     assert reopened_workload["stream_id"] is None

@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import time, timedelta
+from datetime import UTC, datetime, time, timedelta
 from uuid import uuid4
 
 import pytest
@@ -30,7 +30,7 @@ from app.infrastructure.persistence.models.jobs import JobRow
 from app.infrastructure.persistence.models.schedules import ScheduleRow
 
 
-def make_file(project_id: ProjectId, owner_id: UserId, created_at) -> StoredFile:
+def make_file(project_id: ProjectId, owner_id: UserId, created_at: datetime) -> StoredFile:
     return StoredFile(
         id=StoredFileId(uuid4()),
         project_id=project_id,
@@ -125,6 +125,8 @@ def test_file_links_cannot_reference_another_project(scheduling_context: tuple) 
     )
     with container.uow() as uow:
         uow.projects.add(other)
+        uow.commit()
+    with container.uow() as uow:
         uow.schedules.add(schedule)
         uow.commit()
     job = container.create_generation_job().execute(owner.id, other.id, ResultOptions())
@@ -229,7 +231,7 @@ def test_deleting_project_removes_file_metadata(scheduling_context: tuple) -> No
     ],
 )
 def test_invalid_file_metadata_is_rejected(values: dict, field: str) -> None:
-    file = make_file(ProjectId(uuid4()), UserId(uuid4()), None)
+    file = make_file(ProjectId(uuid4()), UserId(uuid4()), datetime.now(UTC))
 
     with pytest.raises(InvalidValue) as error:
         replace(file, **values)

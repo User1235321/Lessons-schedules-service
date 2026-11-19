@@ -1,4 +1,4 @@
-import { lessonTypeLabel, WEEKDAYS, WEEKS } from "../project-editor/intervals.js";
+import { lessonFormatLabel, lessonTypeLabel, WEEKDAYS, WEEKS } from "../project-editor/intervals.js";
 import { targetLabel, targetOptions } from "../project-editor/workloadTargets.js";
 
 export const CONSTRAINT_TYPES = [
@@ -54,14 +54,29 @@ export const allowedScopeTypes = (kind) =>
 export function createScopeOptions({ groups, streams, workloads, subjects }) {
   const targets = targetOptions({ groups, streams });
   const subjectNames = new Map(subjects.map((subject) => [subject.id, subject.name]));
+  const labels = workloads.map((workload) => {
+    const format = workload.lesson_format
+      ? `, ${lessonFormatLabel(workload.lesson_format).toLowerCase()}` : "";
+    const occurrences = workload.occurrences_per_cycle == null
+      ? "" : `, ${workload.occurrences_per_cycle} за цикл`;
+    const duration = workload.duration_minutes == null
+      ? "" : `, ${workload.duration_minutes} мин`;
+    return `${subjectNames.get(workload.subject_id) ?? "Дисциплина"} (${lessonTypeLabel(workload.lesson_type)}${format}) — ${targetLabel(targets, workload)}${occurrences}${duration}`;
+  });
+  const labelCounts = new Map();
+  for (const label of labels) {
+    labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+  }
   return {
     PROJECT: [],
     GROUP: targets.GROUP,
     SUBGROUP: targets.SUBGROUP,
     STREAM: targets.STREAM,
-    WORKLOAD: workloads.map((workload) => ({
+    WORKLOAD: workloads.map((workload, index) => ({
       id: workload.id,
-      label: `${subjectNames.get(workload.subject_id) ?? "Дисциплина"} (${lessonTypeLabel(workload.lesson_type)}) — ${targetLabel(targets, workload)}`
+      label: labelCounts.get(labels[index]) > 1
+        ? `${labels[index]} — ID: ${workload.id}`
+        : labels[index]
     }))
   };
 }

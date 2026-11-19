@@ -14,6 +14,7 @@ from app.infrastructure.persistence.repositories.constraints import (
     SqlConstraintRepository,
     SqlCriterionRepository,
 )
+from app.infrastructure.persistence.repositories.files import SqlStoredFileRepository
 from app.infrastructure.persistence.repositories.job_outbox import SqlJobOutbox
 from app.infrastructure.persistence.repositories.jobs import SqlJobRepository
 from app.infrastructure.persistence.repositories.projects import SqlProjectRepository
@@ -41,6 +42,7 @@ class SqlUnitOfWork:
     schedules: SqlScheduleRepository
     constraints: SqlConstraintRepository
     criteria: SqlCriterionRepository
+    files: SqlStoredFileRepository
 
     def __init__(self, session_factory: sessionmaker[Session]) -> None:
         self._session_factory = session_factory
@@ -61,6 +63,7 @@ class SqlUnitOfWork:
         self.schedules = SqlScheduleRepository(self._session)
         self.constraints = SqlConstraintRepository(self._session)
         self.criteria = SqlCriterionRepository(self._session)
+        self.files = SqlStoredFileRepository(self._session)
         return self
 
     def __exit__(self, *exc: object) -> None:

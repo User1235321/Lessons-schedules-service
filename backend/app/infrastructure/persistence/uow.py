@@ -20,6 +20,7 @@ from app.infrastructure.persistence.repositories.jobs import SqlJobRepository
 from app.infrastructure.persistence.repositories.projects import SqlProjectRepository
 from app.infrastructure.persistence.repositories.schedules import SqlScheduleRepository
 from app.infrastructure.persistence.repositories.users import (
+    SqlPasswordResetRepository,
     SqlUserRepository,
     SqlUserSessionRepository,
 )
@@ -30,6 +31,7 @@ class SqlUnitOfWork:
 
     users: SqlUserRepository
     user_sessions: SqlUserSessionRepository
+    password_resets: SqlPasswordResetRepository
     projects: SqlProjectRepository
     subjects: SqlSubjectRepository
     teachers: SqlTeacherRepository
@@ -51,6 +53,7 @@ class SqlUnitOfWork:
         self._session = self._session_factory()
         self.users = SqlUserRepository(self._session)
         self.user_sessions = SqlUserSessionRepository(self._session)
+        self.password_resets = SqlPasswordResetRepository(self._session)
         self.projects = SqlProjectRepository(self._session)
         self.subjects = SqlSubjectRepository(self._session)
         self.teachers = SqlTeacherRepository(self._session)

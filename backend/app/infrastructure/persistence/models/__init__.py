@@ -32,7 +32,11 @@ from app.infrastructure.persistence.models.schedules import (
     ScheduleEntryTeacherRow,
     ScheduleRow,
 )
-from app.infrastructure.persistence.models.users import UserRow, UserSessionRow
+from app.infrastructure.persistence.models.users import (
+    PasswordResetTokenRow,
+    UserRow,
+    UserSessionRow,
+)
 
 __all__ = [
     "Base",
@@ -40,6 +44,7 @@ __all__ = [
     "JobOutboxRow",
     "JobRow",
     "OptimizationCriterionRow",
+    "PasswordResetTokenRow",
     "ProjectRow",
     "RoomAvailabilityRow",
     "RoomCapabilityRow",

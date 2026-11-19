@@ -32,3 +32,11 @@ class UserSessionRow(Base):
     created_at: Mapped[datetime]
     expires_at: Mapped[datetime]
     revoked_at: Mapped[datetime | None]
+
+
+class PasswordResetTokenRow(Base):
+    __tablename__ = "password_reset_tokens"
+
+    user_id: Mapped[UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    expires_at: Mapped[datetime]

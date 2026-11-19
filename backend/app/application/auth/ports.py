@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Protocol
 
+from app.domain.auth.password_reset import PasswordResetToken
 from app.domain.auth.session import UserSession
 from app.domain.auth.user import Email, User
 from app.domain.shared.ids import UserId
@@ -14,6 +15,28 @@ class UserRepository(Protocol):
     def get(self, user_id: UserId) -> User | None: ...
 
     def get_by_email(self, email: Email) -> User | None: ...
+
+    def update_password_hash(self, user_id: UserId, password_hash: str) -> None: ...
+
+
+class PasswordResetRepository(Protocol):
+    def replace(self, token: PasswordResetToken) -> None:
+        """Оставляет один актуальный токен для пользователя."""
+        ...
+
+    def get_for_update(self, token_hash: str) -> PasswordResetToken | None: ...
+
+    def remove(self, user_id: UserId) -> None: ...
+
+
+class MailDeliveryError(Exception):
+    """Сбой доставки. Сообщение содержит только безопасную диагностическую информацию."""
+
+
+class MailSender(Protocol):
+    def send(self, recipient: Email, subject: str, body: str) -> None:
+        """Отправляет письмо или поднимает MailDeliveryError."""
+        ...
 
 
 class UserSessionRepository(Protocol):

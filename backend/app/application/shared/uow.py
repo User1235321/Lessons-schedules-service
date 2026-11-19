@@ -8,7 +8,11 @@ from app.application.academic.ports import (
     TeacherRepository,
     WorkloadRepository,
 )
-from app.application.auth.ports import UserRepository, UserSessionRepository
+from app.application.auth.ports import (
+    PasswordResetRepository,
+    UserRepository,
+    UserSessionRepository,
+)
 from app.application.constraints.ports import ConstraintRepository, CriterionRepository
 from app.application.import_export.ports import StoredFileRepository
 from app.application.projects.ports import ProjectRepository
@@ -20,6 +24,7 @@ class UnitOfWork(Protocol):
 
     users: UserRepository
     user_sessions: UserSessionRepository
+    password_resets: PasswordResetRepository
     projects: ProjectRepository
     subjects: SubjectRepository
     teachers: TeacherRepository

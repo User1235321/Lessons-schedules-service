@@ -1222,6 +1222,7 @@ JobRepository
 JobPublisher
 JobStateStore
 ObjectStorage
+StoredFileRepository
 MailSender
 TokenService
 ScheduleSolver
@@ -1229,7 +1230,7 @@ Clock
 IdGenerator
 ```
 
-Рабочие реализации:
+Реализованные и целевые адаптеры (фактическое наличие определяется кодом):
 
 ```text
 SQLAlchemy repositories

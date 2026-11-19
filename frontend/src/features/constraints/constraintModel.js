@@ -1,4 +1,4 @@
-import { lessonTypeLabel } from "../project-editor/intervals.js";
+import { lessonTypeLabel, WEEKDAYS, WEEKS } from "../project-editor/intervals.js";
 import { targetLabel, targetOptions } from "../project-editor/workloadTargets.js";
 
 export const CONSTRAINT_TYPES = [
@@ -41,6 +41,9 @@ export const NEW_WINDOW = { week: "ANY", day: "MONDAY", start: "09:00", end: "18
 
 export const constraintTypeLabel = (type) =>
   CONSTRAINT_TYPES.find((option) => option.value === type)?.label ?? type;
+
+const dayLabel = (day) => WEEKDAYS.find((item) => item.value === day)?.label ?? day;
+const weekLabel = (week) => WEEKS.find((item) => item.value === week)?.label ?? week;
 
 export const criterionTypeLabel = (type) =>
   CRITERION_TYPES.find((option) => option.value === type)?.label ?? type;
@@ -167,10 +170,10 @@ export function constraintParametersLabel(constraint, options) {
     case "MAX_END_TIME":
       return data.time;
     case "ALLOWED_DAYS":
-      return data.days.join(", ");
+      return data.days.map(dayLabel).join(", ");
     case "TIME_RANGE":
       return data.windows.map((window) =>
-        `${window.week}: ${window.day} ${window.start}–${window.end}`).join("; ");
+        `${weekLabel(window.week)}: ${dayLabel(window.day)} ${window.start}–${window.end}`).join("; ");
     case "EVERY_WEEK":
       return "Каждую неделю";
     case "CONSECUTIVE":
@@ -180,7 +183,7 @@ export function constraintParametersLabel(constraint, options) {
     case "MIN_GAP":
       return `${workloadName(data.workload_id)}, ${data.minutes} мин`;
     case "FIXED_DAY":
-      return `${data.day}, ${data.week ?? "ANY"}`;
+      return `${dayLabel(data.day)}, ${weekLabel(data.week ?? "ANY")}`;
     default:
       return "—";
   }

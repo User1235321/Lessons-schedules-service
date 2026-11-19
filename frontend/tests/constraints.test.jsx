@@ -32,6 +32,87 @@ const sentRequests = (fetchMock, method, suffix) =>
   fetchMock.mock.calls.filter(([url, init]) => url.endsWith(suffix) && (init?.method ?? "GET") === method);
 
 describe("constraints", () => {
+  it("distinguishes onsite and remote workloads in both selectors", async () => {
+    const workloads = [
+      {
+        id: workloadA,
+        group_id: "g-1",
+        subject_id: "s-1",
+        lesson_type: "PRACTICE",
+        lesson_format: "ONSITE",
+        occurrences_per_cycle: 2
+      },
+      {
+        id: workloadB,
+        group_id: "g-1",
+        subject_id: "s-1",
+        lesson_type: "PRACTICE",
+        lesson_format: "REMOTE",
+        occurrences_per_cycle: 2
+      }
+    ];
+    const { user, fetchMock } = renderRoute("/projects/42/constraints", undefined, {
+      resources: { ...academicData, workloads }
+    });
+
+    await findHeading("Ограничения");
+    await user.click(await screen.findByRole("button", { name: "Добавить ограничение" }));
+    await user.selectOptions(screen.getByLabelText("Тип ограничения"), "CONSECUTIVE");
+
+    const scope = screen.getByLabelText("Учебная нагрузка");
+    expect([...scope.options].map((option) => option.textContent)).toEqual([
+      expect.stringContaining("очно"),
+      expect.stringContaining("дистанционно")
+    ]);
+
+    await user.selectOptions(scope, workloadB);
+    const related = screen.getByLabelText("Вторая учебная нагрузка");
+    expect(related.options).toHaveLength(1);
+    expect(related.options[0].textContent).toContain("очно");
+
+    await user.click(screen.getByRole("button", { name: "Добавить", exact: true }));
+    await waitFor(() => expect(sentRequests(fetchMock, "POST", "/constraints")).toHaveLength(1));
+    const body = JSON.parse(sentRequests(fetchMock, "POST", "/constraints")[0][1].body);
+    expect(body.scope).toEqual({ type: "WORKLOAD", id: workloadB });
+    expect(body.parameters).toEqual({ workload_id: workloadA });
+  });
+
+  it("uses stable unique IDs when workload attributes are identical", async () => {
+    const workloads = [workloadA, workloadB].map((id) => ({
+      id,
+      group_id: "g-1",
+      subject_id: "s-1",
+      lesson_type: "PRACTICE",
+      lesson_format: "ONSITE",
+      occurrences_per_cycle: 2,
+      duration_minutes: 100
+    }));
+    const { user, fetchMock } = renderRoute("/projects/42/constraints", undefined, {
+      resources: { ...academicData, workloads }
+    });
+
+    await findHeading("Ограничения");
+    await user.click(await screen.findByRole("button", { name: "Добавить ограничение" }));
+    await user.selectOptions(screen.getByLabelText("Тип ограничения"), "MIN_GAP");
+    const scope = screen.getByLabelText("Учебная нагрузка");
+    const labels = [...scope.options].map((option) => option.textContent);
+    expect(labels[0]).toContain(workloadA);
+    expect(labels[1]).toContain(workloadB);
+    expect(new Set(labels).size).toBe(2);
+
+    const related = screen.getByLabelText("Вторая учебная нагрузка");
+    expect(related.options[0].textContent).toBe(labels[1]);
+    await user.selectOptions(scope, workloadB);
+    expect(screen.getByLabelText("Вторая учебная нагрузка").options[0].textContent).toBe(labels[0]);
+    await user.click(screen.getByRole("button", { name: "Добавить", exact: true }));
+
+    await waitFor(() => expect(sentRequests(fetchMock, "POST", "/constraints")).toHaveLength(1));
+    const body = JSON.parse(sentRequests(fetchMock, "POST", "/constraints")[0][1].body);
+    expect(body.scope.id).toBe(workloadB);
+    expect(body.parameters.workload_id).toBe(workloadA);
+    expect(body.parameters.minutes).toBe(30);
+  });
+
   it.each(cases)("creates an %s constraint with the backend contract", async (type, parameters) => {
     const { user, fetchMock } = renderRoute("/projects/42/constraints", undefined, {
       resources: academicData

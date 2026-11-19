@@ -17,7 +17,7 @@ const academicData = {
 
 const cases = [
   ["MIN_START_TIME", { time: "08:00" }],
-  ["MAX_END_TIME", { time: "08:00" }],
+  ["MAX_END_TIME", { time: "18:00" }],
   ["ALLOWED_DAYS", { days: ["MONDAY"] }],
   ["TIME_RANGE", { windows: [{ week: "ANY", day: "MONDAY", start: "09:00", end: "18:00" }] }],
   ["EVERY_WEEK", {}],

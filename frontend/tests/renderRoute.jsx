@@ -55,7 +55,8 @@ export function stubBackend({
   blockedDeletes = [],
   failedResourceLoads = [],
   job = { status: "QUEUED", progress: null, error_message: null },
-  schedules = [{ id: "schedule-1", result_index: 1 }]
+  schedules = [{ id: "schedule-1", result_index: 1 }],
+  optimizationCriteria = {}
 } = {}) {
   const store = projects.map((project) => ({ ...structuredClone(DEFAULT_SETTINGS), ...project }));
   let nextId = 100;
@@ -63,6 +64,18 @@ export function stubBackend({
     Object.entries(resources).map(([name, items]) => [name, structuredClone(items)])
   );
   const collection = (name) => (collections[name] ??= []);
+  const constraintCollections = new Map();
+  const projectConstraints = (projectId) => {
+    if (!constraintCollections.has(projectId)) {
+      constraintCollections.set(projectId, structuredClone(
+        resources.constraintsByProject?.[projectId] ?? resources.constraints ?? []
+      ));
+    }
+    return constraintCollections.get(projectId);
+  };
+  const criteriaCollections = new Map(Object.entries(optimizationCriteria).map(
+    ([projectId, criteria]) => [projectId, structuredClone(criteria)]
+  ));
 
   const syncSubgroup = (subgroup) => {
     const group = collection("groups").find((entry) => entry.id === subgroup.group_id);
@@ -171,12 +184,22 @@ export function stubBackend({
       store.push(project);
       return json(201, project);
     }
+    const optimization = url.match(/^\/api\/projects\/([^/]+)\/optimization-criteria$/);
+    if (optimization) {
+      const projectId = optimization[1];
+      if (method === "GET") return json(200, criteriaCollections.get(projectId) ?? []);
+      if (method === "PUT") {
+        criteriaCollections.set(projectId, structuredClone(body.criteria));
+        return json(200, criteriaCollections.get(projectId));
+      }
+    }
+
     const resource = url.match(
-      /^\/api\/projects\/[^/]+\/(subjects|teachers|rooms|groups|subgroups|streams|workloads|constraints)(?:\/([^/]+))?$/
+      /^\/api\/projects\/([^/]+)\/(subjects|teachers|rooms|groups|subgroups|streams|workloads|constraints)(?:\/([^/]+))?$/
     );
     if (resource) {
-      const [, name, id] = resource;
-      const items = collection(name);
+      const [, projectId, name, id] = resource;
+      const items = name === "constraints" ? projectConstraints(projectId) : collection(name);
       const index = id ? items.findIndex((item) => item.id === id) : -1;
 
       if (!id && method === "GET") {

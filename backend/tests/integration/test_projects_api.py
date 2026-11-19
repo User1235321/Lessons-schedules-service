@@ -84,6 +84,21 @@ def test_missing_settings_blocks_get_defaults(api: TestClient) -> None:
     assert project["duration_mode"] == DEFAULTS["duration_mode"]
 
 
+def test_post_still_ignores_unknown_fields(api: TestClient) -> None:
+    user = sign_in(api)
+
+    created = create(
+        api,
+        user,
+        unexpected=True,
+        cycle={**CUSTOM["cycle"], "unexpected": True},
+        time_mode={**CUSTOM["time_mode"], "unexpected": True},
+        duration_mode={**CUSTOM["duration_mode"], "unexpected": True},
+    )
+
+    assert settings_of(created) == CUSTOM
+
+
 @pytest.mark.parametrize("name", ["", "   "])
 def test_project_needs_a_name(api: TestClient, name: str) -> None:  # F_Project_1
     response = api.post("/projects", json={"name": name}, headers=sign_in(api))
@@ -215,6 +230,61 @@ def test_invalid_patch_changes_nothing(api: TestClient) -> None:
 
     assert response.status_code == 422
     assert api.get(f"/projects/{created['id']}", headers=user).json() == created
+
+
+@pytest.mark.parametrize(
+    ("changes", "field"),
+    [
+        ({"unexpected": True}, "unexpected"),
+        ({"cycle": {**CUSTOM["cycle"], "unexpected": True}}, "cycle.unexpected"),
+        ({"time_mode": {**CUSTOM["time_mode"], "unexpected": True}}, "time_mode.unexpected"),
+        (
+            {"duration_mode": {**CUSTOM["duration_mode"], "unexpected": True}},
+            "duration_mode.unexpected",
+        ),
+    ],
+)
+def test_unknown_patch_field_rejects_all_changes(
+    api: TestClient, changes: dict[str, Any], field: str
+) -> None:
+    user = sign_in(api)
+    created = create(api, user, **CUSTOM)
+    path = f"/projects/{created['id']}"
+
+    response = api.patch(path, json={"name": "Весна", **changes}, headers=user)
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["code"] == "VALIDATION_ERROR"
+    assert body["message"] == "Проверьте введённые данные"
+    assert [issue["field"] for issue in body["details"]["fields"]] == [field]
+    assert all(issue["reason"] for issue in body["details"]["fields"])
+    assert api.get(path, headers=user).json() == created
+
+
+def test_patch_reports_every_unknown_field_without_saving(api: TestClient) -> None:
+    user = sign_in(api)
+    created = create(api, user, **CUSTOM)
+    path = f"/projects/{created['id']}"
+    changes = {
+        "name": "Весна",
+        "unexpected": True,
+        "cycle": {**CUSTOM["cycle"], "extra_day": True},
+        "time_mode": {**CUSTOM["time_mode"], "extra_step": 15},
+        "duration_mode": {**CUSTOM["duration_mode"], "extra_duration": 100},
+    }
+
+    response = api.patch(path, json=changes, headers=user)
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_ERROR"
+    assert {issue["field"] for issue in response.json()["details"]["fields"]} == {
+        "unexpected",
+        "cycle.extra_day",
+        "time_mode.extra_step",
+        "duration_mode.extra_duration",
+    }
+    assert api.get(path, headers=user).json() == created
 
 
 def test_deleted_project_is_gone(api: TestClient) -> None:  # F_Project_2

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from app.api.schemas.paths import inside
 from app.application.projects.use_cases import SettingsChanges
@@ -77,10 +77,27 @@ class CreateProjectRequest(_SettingsBlocks):
     name: str
 
 
+class _PatchCycleSchema(CycleSchema):
+    model_config = ConfigDict(extra="forbid")
+
+
+class _PatchTimeModeSchema(TimeModeSchema):
+    model_config = ConfigDict(extra="forbid")
+
+
+class _PatchDurationModeSchema(DurationModeSchema):
+    model_config = ConfigDict(extra="forbid")
+
+
 class UpdateProjectRequest(_SettingsBlocks):
     """Присланный блок заменяется целиком. Отсутствующий или null — не меняется."""
 
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = None
+    cycle: _PatchCycleSchema | None = None
+    time_mode: _PatchTimeModeSchema | None = None
+    duration_mode: _PatchDurationModeSchema | None = None
 
 
 class ProjectResponse(BaseModel):

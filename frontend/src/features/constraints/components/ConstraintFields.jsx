@@ -1,6 +1,5 @@
 import {
   Alert,
-  Button,
   Checkbox,
   FormControlLabel,
   FormGroup,
@@ -10,37 +9,13 @@ import {
 } from "@mui/material";
 
 import { WEEKDAYS, WEEKS } from "../../project-editor/intervals.js";
+import ConstraintSelectField from "./ConstraintSelectField.jsx";
+import TimeWindowsFields from "./TimeWindowsFields.jsx";
 import {
   allowedScopeTypes,
   CONSTRAINT_TYPES,
-  NEW_WINDOW,
   SCOPE_TYPES
 } from "../constraintModel.js";
-
-const nativeSelect = { select: { native: true } };
-
-function SelectField({ label, value, onChange, options, error, disabled }) {
-  return (
-    <TextField
-      select
-      fullWidth
-      label={label}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      error={Boolean(error)}
-      helperText={error}
-      disabled={disabled}
-      slotProps={nativeSelect}
-    >
-      {options.length === 0 && <option value="">Нет доступных элементов</option>}
-      {options.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </TextField>
-  );
-}
 
 export default function ConstraintFields({ values, errors, setValue, options }) {
   const scopeTypes = allowedScopeTypes(values.kind);
@@ -59,24 +34,19 @@ export default function ConstraintFields({ values, errors, setValue, options }) 
     setValue("scopeType", type);
     setValue("scopeId", options[type]?.[0]?.id ?? "");
   };
-  const changeWindow = (index, field, value) => {
-    setValue("windows", values.windows.map((window, position) =>
-      position === index ? { ...window, [field]: value } : window
-    ));
-  };
   const relatedOptions = options.WORKLOAD.filter((item) => item.id !== values.scopeId)
     .map((item) => ({ value: item.id, label: item.label }));
 
   return (
     <>
-      <SelectField
+      <ConstraintSelectField
         label="Тип ограничения"
         value={values.kind}
         onChange={changeKind}
         options={CONSTRAINT_TYPES}
       />
       <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-        <SelectField
+        <ConstraintSelectField
           label="Область применения"
           value={values.scopeType}
           onChange={changeScopeType}
@@ -84,7 +54,7 @@ export default function ConstraintFields({ values, errors, setValue, options }) 
           disabled={workloadOnly}
         />
         {values.scopeType !== "PROJECT" && (
-          <SelectField
+          <ConstraintSelectField
             label={SCOPE_TYPES.find((scope) => scope.value === values.scopeType)?.label ?? "Ресурс"}
             value={options[values.scopeType]?.some((item) => item.id === values.scopeId)
               ? values.scopeId : ""}
@@ -129,56 +99,11 @@ export default function ConstraintFields({ values, errors, setValue, options }) 
         </Stack>
       )}
       {values.kind === "TIME_RANGE" && (
-        <Stack spacing={2}>
-          <Typography>Допустимые интервалы</Typography>
-          {values.windows.map((window, index) => (
-            <Stack key={index} spacing={2} sx={{ border: 1, borderColor: "divider", borderRadius: 1, p: 2 }}>
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                <SelectField
-                  label="Неделя"
-                  value={window.week}
-                  onChange={(value) => changeWindow(index, "week", value)}
-                  options={WEEKS}
-                />
-                <SelectField
-                  label="День"
-                  value={window.day}
-                  onChange={(value) => changeWindow(index, "day", value)}
-                  options={WEEKDAYS}
-                />
-              </Stack>
-              <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                <TextField
-                  label="Начало"
-                  type="time"
-                  value={window.start}
-                  onChange={(event) => changeWindow(index, "start", event.target.value)}
-                  slotProps={{ inputLabel: { shrink: true } }}
-                  fullWidth
-                />
-                <TextField
-                  label="Конец"
-                  type="time"
-                  value={window.end}
-                  onChange={(event) => changeWindow(index, "end", event.target.value)}
-                  slotProps={{ inputLabel: { shrink: true } }}
-                  fullWidth
-                />
-              </Stack>
-              <Button
-                color="error"
-                size="small"
-                onClick={() => setValue("windows", values.windows.filter((_, position) => position !== index))}
-              >
-                Удалить интервал
-              </Button>
-            </Stack>
-          ))}
-          {errors.windows && <Alert severity="error">{errors.windows}</Alert>}
-          <Button onClick={() => setValue("windows", [...values.windows, { ...NEW_WINDOW }])}>
-            Добавить интервал
-          </Button>
-        </Stack>
+        <TimeWindowsFields
+          windows={values.windows}
+          error={errors.windows}
+          onChange={(windows) => setValue("windows", windows)}
+        />
       )}
       {relatedTypes.includes(values.kind) && (
         <>
@@ -187,7 +112,7 @@ export default function ConstraintFields({ values, errors, setValue, options }) 
               Для этого ограничения нужны две разные учебные нагрузки.
             </Alert>
           )}
-          <SelectField
+          <ConstraintSelectField
             label="Вторая учебная нагрузка"
             value={relatedOptions.some((item) => item.value === values.relatedWorkloadId)
               ? values.relatedWorkloadId : ""}
@@ -210,13 +135,13 @@ export default function ConstraintFields({ values, errors, setValue, options }) 
       )}
       {values.kind === "FIXED_DAY" && (
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-          <SelectField
+          <ConstraintSelectField
             label="День"
             value={values.day}
             onChange={(value) => setValue("day", value)}
             options={WEEKDAYS}
           />
-          <SelectField
+          <ConstraintSelectField
             label="Неделя"
             value={values.week}
             onChange={(value) => setValue("week", value)}

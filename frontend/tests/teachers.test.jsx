@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { renderRoute } from "./renderRoute.jsx";
@@ -24,7 +24,9 @@ const isTeacherWrite = ([url, init]) =>
   /^\/api\/projects\/42\/teachers/.test(url) && ["POST", "PATCH"].includes(init?.method);
 
 async function openAddDialog(user) {
-  await user.click(await screen.findByRole("button", { name: "Добавить преподавателя" }));
+  const button = await screen.findByRole("button", { name: "Добавить преподавателя" });
+  await waitFor(() => expect(button.disabled).toBe(false));
+  await user.click(button);
   return screen.findByRole("dialog", { name: "Новый преподаватель" });
 }
 

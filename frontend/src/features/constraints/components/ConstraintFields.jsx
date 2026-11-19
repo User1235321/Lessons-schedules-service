@@ -25,14 +25,28 @@ export default function ConstraintFields({ values, errors, setValue, options }) 
     setValue("kind", kind);
     if (kind === "MIN_START_TIME") setValue("time", "08:00");
     if (kind === "MAX_END_TIME") setValue("time", "18:00");
-    if (allowedScopeTypes(kind).length === 1 && values.scopeType !== "WORKLOAD") {
+    const workloadOnly = allowedScopeTypes(kind).length === 1;
+    const scopeId = workloadOnly
+      ? values.scopeType === "WORKLOAD" ? values.scopeId : options.WORKLOAD[0]?.id ?? ""
+      : values.scopeId;
+    if (workloadOnly && values.scopeType !== "WORKLOAD") {
       setValue("scopeType", "WORKLOAD");
-      setValue("scopeId", options.WORKLOAD[0]?.id ?? "");
+      setValue("scopeId", scopeId);
+    }
+    if (relatedTypes.includes(kind) &&
+      !options.WORKLOAD.some((item) => item.id === values.relatedWorkloadId && item.id !== scopeId)) {
+      setValue("relatedWorkloadId", options.WORKLOAD.find((item) => item.id !== scopeId)?.id ?? "");
+    }
+  };
+  const changeScopeId = (id) => {
+    setValue("scopeId", id);
+    if (relatedTypes.includes(values.kind) && id === values.relatedWorkloadId) {
+      setValue("relatedWorkloadId", options.WORKLOAD.find((item) => item.id !== id)?.id ?? "");
     }
   };
   const changeScopeType = (type) => {
     setValue("scopeType", type);
-    setValue("scopeId", options[type]?.[0]?.id ?? "");
+    changeScopeId(options[type]?.[0]?.id ?? "");
   };
   const relatedOptions = options.WORKLOAD.filter((item) => item.id !== values.scopeId)
     .map((item) => ({ value: item.id, label: item.label }));
@@ -50,7 +64,7 @@ export default function ConstraintFields({ values, errors, setValue, options }) 
           label="Область применения"
           value={values.scopeType}
           onChange={changeScopeType}
-          options={scopeTypes.map((type) => ({ ...type }))}
+          options={scopeTypes}
           disabled={workloadOnly}
         />
         {values.scopeType !== "PROJECT" && (
@@ -58,7 +72,7 @@ export default function ConstraintFields({ values, errors, setValue, options }) 
             label={SCOPE_TYPES.find((scope) => scope.value === values.scopeType)?.label ?? "Ресурс"}
             value={options[values.scopeType]?.some((item) => item.id === values.scopeId)
               ? values.scopeId : ""}
-            onChange={(id) => setValue("scopeId", id)}
+            onChange={changeScopeId}
             options={(options[values.scopeType] ?? []).map((item) => ({ value: item.id, label: item.label }))}
             error={errors.scopeId}
           />

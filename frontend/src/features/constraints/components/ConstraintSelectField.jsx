@@ -15,7 +15,9 @@ export default function ConstraintSelectField({ label, value, onChange, options,
       disabled={disabled}
       slotProps={nativeSelect}
     >
-      {options.length === 0 && <option value="">Нет доступных элементов</option>}
+      {(value === "" || options.length === 0) && (
+        <option value="">{options.length ? "Выберите..." : "Нет доступных элементов"}</option>
+      )}
       {options.map((option) => (
         <option key={option.value} value={option.value}>
           {option.label}

@@ -48,6 +48,8 @@ export default function ConstraintFields({ values, errors, setValue, options }) 
   const relatedTypes = ["CONSECUTIVE", "NOT_CONSECUTIVE", "MIN_GAP", "BEFORE"];
   const changeKind = (kind) => {
     setValue("kind", kind);
+    if (kind === "MIN_START_TIME") setValue("time", "08:00");
+    if (kind === "MAX_END_TIME") setValue("time", "18:00");
     if (allowedScopeTypes(kind).length === 1 && values.scopeType !== "WORKLOAD") {
       setValue("scopeType", "WORKLOAD");
       setValue("scopeId", options.WORKLOAD[0]?.id ?? "");

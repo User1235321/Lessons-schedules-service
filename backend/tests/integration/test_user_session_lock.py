@@ -1,4 +1,3 @@
-import time
 from collections.abc import Iterator
 from dataclasses import replace
 from threading import Thread
@@ -8,7 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from httpx2 import Response
-from sqlalchemy import Engine, delete, select, text
+from sqlalchemy import Engine, delete, select
 
 from app.api.cookies import REFRESH_COOKIE_NAME
 from app.bootstrap.api import create_app
@@ -16,6 +15,7 @@ from app.bootstrap.container import Container, build_container
 from app.bootstrap.settings import Settings
 from app.infrastructure.persistence.database import create_session_factory
 from app.infrastructure.persistence.models import UserRow, UserSessionRow
+from tests.database import wait_for_lock_waiters
 
 BASE_URL = "https://testserver"
 
@@ -52,23 +52,6 @@ def refresh_in_background(client: TestClient, responses: list[Response]) -> Thre
     thread = Thread(target=lambda: responses.append(client.post("/auth/refresh")))
     thread.start()
     return thread
-
-
-def wait_for_lock_waiters(engine: Engine, count: int, timeout: float = 10) -> None:
-    query = text(
-        "SELECT count(*) FROM pg_stat_activity"
-        " WHERE wait_event_type = 'Lock' AND datname = current_database()"
-    )
-    deadline = time.monotonic() + timeout
-    with engine.connect() as connection:
-        while time.monotonic() < deadline:
-            waiting = connection.scalar(query)
-            # pg_stat_activity запоминается до конца транзакции, свежие данные — в новой
-            connection.rollback()
-            if waiting == count:
-                return
-            time.sleep(0.02)
-    raise AssertionError(f"Не дождались {count} запросов, ждущих блокировку")
 
 
 def test_only_one_of_two_simultaneous_refreshes_wins(

@@ -53,7 +53,8 @@ from app.application.academic.workloads import (
     ListWorkloads,
     UpdateWorkload,
 )
-from app.application.auth.ports import PasswordHasher, TokenService
+from app.application.auth.password_reset import ConfirmPasswordReset, RequestPasswordReset
+from app.application.auth.ports import MailSender, PasswordHasher, TokenService
 from app.application.auth.use_cases import (
     Authenticate,
     GetCurrentUser,
@@ -91,6 +92,7 @@ from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
 from app.bootstrap.settings import Settings
 from app.infrastructure.job_state import RedisJobStateStore
+from app.infrastructure.mail import SMTPMailSender
 from app.infrastructure.messaging.kafka import KafkaJobPublisher
 from app.infrastructure.persistence.database import create_database_engine, create_session_factory
 from app.infrastructure.persistence.job_lock import PostgresJobExecutionLock
@@ -117,6 +119,7 @@ class Container:
     passwords: PasswordHasher
     tokens: TokenService
     redis: Redis
+    mail_sender: MailSender
 
     def uow(self) -> UnitOfWork:
         # Новая транзакция на каждый вызов: сценарии не делят сессию между запросами
@@ -141,6 +144,19 @@ class Container:
 
     def refresh(self) -> Refresh:
         return Refresh(uow=self.uow(), tokens=self.tokens, clock=self.clock)
+
+    def request_password_reset(self) -> RequestPasswordReset:
+        base_url = self.settings.password_reset_base_url
+        return RequestPasswordReset(
+            uow=self.uow(),
+            mail=self.mail_sender,
+            clock=self.clock,
+            ttl_minutes=self.settings.password_reset_token_ttl_minutes,
+            base_url=str(base_url) if base_url is not None else None,
+        )
+
+    def confirm_password_reset(self) -> ConfirmPasswordReset:
+        return ConfirmPasswordReset(uow=self.uow(), passwords=self.passwords, clock=self.clock)
 
     def logout(self) -> Logout:
         return Logout(uow=self.uow(), tokens=self.tokens, clock=self.clock)
@@ -356,6 +372,13 @@ def build_container(settings: Settings) -> Container:
         passwords=Argon2PasswordHasher(),
         tokens=JwtTokenService(
             settings.jwt_secret, access_ttl=timedelta(minutes=settings.access_token_ttl_minutes)
+        ),
+        mail_sender=SMTPMailSender(
+            host=settings.mail_host,
+            port=settings.mail_port,
+            username=settings.mail_username,
+            password=settings.mail_password.get_secret_value(),
+            sender=settings.mail_from,
         ),
         redis=Redis.from_url(
             settings.redis_url,

@@ -51,6 +51,7 @@ from app.application.academic.workloads import (
     ListWorkloads,
     UpdateWorkload,
 )
+from app.application.auth.password_reset import ConfirmPasswordReset, RequestPasswordReset
 from app.application.auth.use_cases import (
     Authenticate,
     GetCurrentUser,
@@ -84,6 +85,10 @@ class UseCases(Protocol):
     def login(self) -> Login: ...
 
     def refresh(self) -> Refresh: ...
+
+    def request_password_reset(self) -> RequestPasswordReset: ...
+
+    def confirm_password_reset(self) -> ConfirmPasswordReset: ...
 
     def logout(self) -> Logout: ...
 

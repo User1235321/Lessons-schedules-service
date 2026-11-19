@@ -5,6 +5,7 @@ from uuid import UUID
 JobId = NewType("JobId", UUID)
 ScheduleId = NewType("ScheduleId", UUID)
 ScheduleEntryId = NewType("ScheduleEntryId", UUID)
+StoredFileId = NewType("StoredFileId", UUID)
 UserId = NewType("UserId", UUID)
 SessionId = NewType("SessionId", UUID)
 ProjectId = NewType("ProjectId", UUID)

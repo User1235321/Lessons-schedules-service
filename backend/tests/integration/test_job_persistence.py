@@ -3,6 +3,7 @@ from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 
 from app.application.scheduling.delivery import DeliverPendingJob
@@ -10,7 +11,7 @@ from app.application.scheduling.ports import JobPublishError
 from app.domain.scheduling.job import JobMessage, JobStatus, ResultOptions
 from app.domain.shared.errors import AlreadyExists, InvalidValue
 from app.domain.shared.ids import ProjectId, UserId
-from app.infrastructure.persistence.models.jobs import JobOutboxRow
+from app.infrastructure.persistence.models.jobs import JobOutboxRow, JobRow
 from app.infrastructure.persistence.repositories.job_outbox import SqlJobOutbox
 
 
@@ -91,3 +92,21 @@ def test_other_job_integrity_errors_remain_database_errors(scheduling_context: t
     invalid = replace(job, id=container.ids.new_id(), project_id=ProjectId(uuid4()))
     with pytest.raises(IntegrityError), container.uow() as uow:
         uow.jobs.add(invalid)
+
+
+def test_database_rejects_completion_without_start_time(scheduling_context: tuple) -> None:
+    container, owner, project = scheduling_context
+    job = container.create_generation_job().execute(owner.id, project.id, ResultOptions())
+
+    with (
+        pytest.raises(IntegrityError, match="ck_schedule_jobs_started_at_required"),
+        container.session_factory() as session,
+    ):
+        session.execute(
+            update(JobRow)
+            .where(JobRow.id == job.id)
+            .values(status=JobStatus.COMPLETED.value, finished_at=job.created_at)
+        )
+
+    with container.uow() as uow:
+        assert uow.jobs.get(project.id, job.id) == job

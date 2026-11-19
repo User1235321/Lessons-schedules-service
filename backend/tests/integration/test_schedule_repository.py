@@ -1,14 +1,22 @@
 from dataclasses import replace
-from datetime import timedelta
+from datetime import time, timedelta
 from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.exc import IntegrityError
 
+from app.domain.projects.project import Project
 from app.domain.scheduling.job import ResultOptions
-from app.domain.scheduling.schedule import Schedule, ScheduleSource
+from app.domain.scheduling.schedule import (
+    LessonFormat,
+    Schedule,
+    ScheduleEntry,
+    ScheduleSource,
+    TeacherAssignment,
+)
 from app.domain.shared.errors import AlreadyExists
-from app.domain.shared.ids import ProjectId, ScheduleId
+from app.domain.shared.ids import ProjectId, ScheduleEntryId, ScheduleId
+from app.domain.shared.week import Weekday
 
 
 def test_list_sorts_newest_first_then_by_id(scheduling_context: tuple) -> None:
@@ -73,3 +81,70 @@ def test_other_schedule_integrity_errors_remain_database_errors(scheduling_conte
     )
     with pytest.raises(IntegrityError), container.uow() as uow:
         uow.schedules.add(schedule)
+
+
+def test_imported_schedule_persists_entries_without_academic_references(
+    scheduling_context: tuple,
+) -> None:
+    container, _, project = scheduling_context
+    entry = ScheduleEntry(
+        id=ScheduleEntryId(uuid4()),
+        week="ODD",
+        weekday=Weekday.MONDAY,
+        start_time=time(9),
+        end_time=time(10, 40),
+        subject_name="Физика",
+        participant_label="Группа 101",
+        lesson_type="LAB",
+        lesson_format=LessonFormat.ONSITE,
+        room_name="Аудитория 12",
+        teachers=(TeacherAssignment("Иванова"), TeacherAssignment("Петров")),
+    )
+    schedule = Schedule(
+        id=ScheduleId(uuid4()),
+        project_id=project.id,
+        source=ScheduleSource.IMPORTED,
+        entries=(entry,),
+        created_at=project.created_at,
+    )
+
+    with container.uow() as uow:
+        uow.schedules.add(schedule)
+        uow.commit()
+
+    with container.uow() as uow:
+        assert uow.schedules.get(project.id, schedule.id) == schedule
+
+
+def test_generated_schedule_cannot_reference_job_from_another_project(
+    scheduling_context: tuple,
+) -> None:
+    container, owner, project = scheduling_context
+    other = Project.create(
+        project_id=ProjectId(uuid4()),
+        owner_id=owner.id,
+        name="Другой проект",
+        now=project.created_at,
+    )
+    with container.uow() as uow:
+        uow.projects.add(other)
+        uow.commit()
+
+    job = container.create_generation_job().execute(owner.id, project.id, ResultOptions())
+    schedule = Schedule(
+        id=ScheduleId(uuid4()),
+        project_id=other.id,
+        source=ScheduleSource.GENERATED,
+        entries=(),
+        created_at=job.created_at,
+        job_id=job.id,
+        result_index=1,
+        criterion_scores=(),
+    )
+
+    with (
+        pytest.raises(IntegrityError, match="fk_schedules_project_id_schedule_jobs"),
+        container.uow() as uow,
+    ):
+        uow.schedules.add(schedule)
+        uow.commit()

@@ -24,6 +24,7 @@ from app.infrastructure.persistence.models.constraints import (
     ExtraConstraintRow,
     OptimizationCriterionRow,
 )
+from app.infrastructure.persistence.models.files import StoredFileRow
 from app.infrastructure.persistence.models.jobs import JobOutboxRow, JobRow
 from app.infrastructure.persistence.models.projects import ProjectRow
 from app.infrastructure.persistence.models.schedules import (
@@ -46,6 +47,7 @@ __all__ = [
     "ScheduleEntryRow",
     "ScheduleEntryTeacherRow",
     "ScheduleRow",
+    "StoredFileRow",
     "StreamGroupRow",
     "StreamRow",
     "StudentGroupRow",

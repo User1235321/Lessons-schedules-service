@@ -891,9 +891,12 @@ API использует JSON для прикладных данных и multip
 | Схема | Поля |
 |---|---|
 | User | id: uuid; email: string |
-| Project | id: uuid; name: string; odd_week_days: string[]; even_week_days: string[]; time_mode: HOUR_START или STEP; time_step_minutes: integer или null; duration_mode: UNIFORM или INDIVIDUAL; duration_minutes: integer или null; created_at: datetime; updated_at: datetime |
-| ProjectCreate | name: string (обязательно, 1–200 символов после trim); необязательные настройки проекта |
-| ProjectPatch | любое подмножество name, odd_week_days, even_week_days, time_mode, time_step_minutes, duration_mode, duration_minutes |
+| Project | id: uuid; name: string; cycle: Cycle; time_mode: TimeMode; duration_mode: DurationMode; created_at: datetime; updated_at: datetime |
+| ProjectCreate | name: string (обязательно, 1–200 символов после trim); необязательные блоки cycle: Cycle, time_mode: TimeMode, duration_mode: DurationMode |
+| ProjectPatch | необязательные name: string или null, cycle: Cycle или null, time_mode: TimeMode или null, duration_mode: DurationMode или null |
+| Cycle | odd_week_days: Weekday[] (обязательно); even_week_days: Weekday[] (обязательно) |
+| TimeMode | type: HOUR_START или STEP (обязательно); step_minutes: integer или null (для STEP обязательно положительное число; для HOUR_START отсутствует или null) |
+| DurationMode | type: UNIFORM или INDIVIDUAL (обязательно); duration_minutes: integer или null (для UNIFORM обязательно положительное число; для INDIVIDUAL отсутствует или null) |
 | Error | code: string; message: string; details: object |
 | Interval | week: ODD или EVEN; weekday: MONDAY…SUNDAY; start_time: HH:MM; end_time: HH:MM (целевой контракт доступности групп и подгрупп) |
 | TeacherInterval | week: ODD, EVEN или ANY; day: MONDAY…SUNDAY; start: HH:MM; end: HH:MM (действующий API преподавателей) |
@@ -903,6 +906,14 @@ API использует JSON для прикладных данных и multip
 | Schedule | id: uuid; project_id: uuid; source: GENERATED/IMPORTED; job_id: uuid или null; result_index: integer или null; criterion_scores: object или null; entries: ScheduleEntry[] |
 | ScheduleEntry | id: uuid; workload_id: uuid или null; subject_name: string или null; participant_label: string или null; lesson_type: string или null; lesson_format: ONSITE/REMOTE или null; week: ODD/EVEN; weekday: MONDAY…SUNDAY; start_time: HH:MM; end_time: HH:MM; room_id: uuid или null; room_name: string или null; teachers: TeacherAssignment[] |
 | StoredFile | id: uuid; project_id: uuid; category: UPLOAD/EXPORT; original_name: string; file_format: string; size_bytes: integer; created_at: datetime; schedule_id: uuid или null; job_id: uuid или null |
+
+Во вложенном блоке `cycle` при передаче обязательны оба массива: `odd_week_days` и `even_week_days`. Элементы — дни `MONDAY`…`SUNDAY`; пустые массивы допустимы. При сохранении дни нормализуются: повторы удаляются, порядок приводится к календарному. В блоках `time_mode` и `duration_mode` всегда обязателен `type`. Для `STEP` обязателен `step_minutes > 0`, для `UNIFORM` — `duration_minutes > 0`; при `HOUR_START` и `INDIVIDUAL` соответствующий числовой параметр не должен иметь ненулевого значения.
+
+В `ProjectCreate` обязателен только `name`. Отсутствующий или равный `null` блок настроек заменяется настройками по умолчанию независимо от остальных блоков. Если блок передан объектом, его обязательные внутренние поля должны присутствовать: частичное содержимое блока не дополняется значениями по умолчанию. Неизвестные поля в POST `/projects` (в том числе внутри блоков) текущая схема игнорирует.
+
+В `ProjectPatch` каждый переданный непустой объект `cycle`, `time_mode` или `duration_mode` полностью заменяет соответствующий сохранённый блок, а не объединяется с его полями; остальные блоки сохраняются. Для заменяемого блока действуют те же требования к обязательным полям, что и при создании. Отсутствующие и равные `null` блоки, как и `name: null`, не изменяются. Пустой PATCH-объект не меняет проект и `updated_at`. Неизвестные поля на любом уровне PATCH вызывают 422; некорректные значения также отклоняются без сохранения изменений.
+
+В ответе `Project` все три блока присутствуют всегда; необязательные числовые параметры со значением `null` не сериализуются (например, `{"type": "HOUR_START"}` и `{"type": "INDIVIDUAL"}`).
 
 В реализованных API преподавателей и аудиторий значение `ANY` означает одинаковый промежуток на нечётной и чётной неделях. Схема `Interval` для групп и подгрупп остаётся целевым контрактом; их доступность пока не представлена в действующем Backend API. Имена полей API не обязательно совпадают с именами столбцов базы данных.
 
@@ -940,7 +951,7 @@ API использует JSON для прикладных данных и multip
 }
 ~~~
 
-### 10.4. Проекты (целевые контракты)
+### 10.4. Проекты (реализовано в dev)
 
 | HTTP | Маршрут | Тело запроса | Успешный ответ | Ошибки |
 |---|---|---|---|---|
@@ -950,9 +961,48 @@ API использует JSON для прикладных данных и multip
 | PATCH | /projects/{project_id} | ProjectPatch | 200; Project | 401, 404, 422, 500 |
 | DELETE | /projects/{project_id} | нет | 204; нет | 401, 404, 500 |
 
-Пример создания проекта: { "name": "Университет, осень 2026" }. Если настройки не заданы, используются понедельник–суббота обеих недель, HOUR_START и UNIFORM/100 минут.
+Все пять маршрутов реализованы в Backend в ветке `dev`. Запросы требуют Bearer JWT; операции с чужим проектом возвращают 404 так же, как с отсутствующим.
 
-Сейчас в dev представлены доменные модели и frontend-клиент этих маршрутов; наличие интерфейса клиента не подтверждает наличие всех соответствующих Backend endpoints.
+Минимальный пример POST `/projects`:
+
+~~~json
+{
+  "name": "Университет, осень 2026"
+}
+~~~
+
+Если блоки настроек не переданы, возвращаются `cycle` с понедельника по субботу обеих недель, `time_mode: {"type": "HOUR_START"}` и `duration_mode: {"type": "UNIFORM", "duration_minutes": 100}`.
+
+Пример POST `/projects` с явными настройками:
+
+~~~json
+{
+  "name": "Университет, осень 2026",
+  "cycle": {
+    "odd_week_days": ["MONDAY", "TUESDAY"],
+    "even_week_days": ["MONDAY", "TUESDAY"]
+  },
+  "time_mode": {
+    "type": "STEP",
+    "step_minutes": 30
+  },
+  "duration_mode": {
+    "type": "INDIVIDUAL"
+  }
+}
+~~~
+
+Пример PATCH `/projects/{project_id}` для переключения режима начала занятий:
+
+~~~json
+{
+  "time_mode": {
+    "type": "HOUR_START"
+  }
+}
+~~~
+
+В ответе 200 возвращается полный `Project` с новым `time_mode: {"type": "HOUR_START"}` без прежнего `step_minutes`. Сохранённые `cycle` и `duration_mode` остаются без изменений. Аналогично при передаче `cycle` или `duration_mode` заменяется только соответствующий блок.
 
 ### 10.5. Исходные данные (целевые контракты)
 

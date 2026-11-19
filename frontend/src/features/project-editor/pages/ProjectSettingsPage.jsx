@@ -31,8 +31,8 @@ const WEEKS = [
 ];
 
 const API_FIELDS = {
-  "time_mode.step_minutes": "stepMinutes",
-  "duration_mode.duration_minutes": "durationMinutes"
+  "time_step_minutes": "stepMinutes",
+  "duration_minutes": "durationMinutes"
 };
 
 export default function ProjectSettingsPage() {

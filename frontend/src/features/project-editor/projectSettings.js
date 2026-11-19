@@ -10,12 +10,12 @@ export const WEEKDAYS = [
 
 export function createSettingsDraft(project) {
   return {
-    oddWeekDays: [...project.cycle.odd_week_days],
-    evenWeekDays: [...project.cycle.even_week_days],
-    timeMode: project.time_mode.type,
-    stepMinutes: String(project.time_mode.step_minutes ?? ""),
-    durationMode: project.duration_mode.type,
-    durationMinutes: String(project.duration_mode.duration_minutes ?? "")
+    oddWeekDays: [...project.odd_week_days],
+    evenWeekDays: [...project.even_week_days],
+    timeMode: project.time_mode,
+    stepMinutes: String(project.time_step_minutes ?? ""),
+    durationMode: project.duration_mode,
+    durationMinutes: String(project.duration_minutes ?? "")
   };
 }
 
@@ -40,19 +40,15 @@ export function validateSettingsDraft(draft) {
 
 export function settingsPayload(draft) {
   return {
-    cycle: {
-      odd_week_days: WEEKDAYS.map(({ value }) => value).filter((day) =>
-        draft.oddWeekDays.includes(day)
-      ),
-      even_week_days: WEEKDAYS.map(({ value }) => value).filter((day) =>
-        draft.evenWeekDays.includes(day)
-      )
-    },
-    time_mode: draft.timeMode === "STEP"
-      ? { type: "STEP", step_minutes: Number(draft.stepMinutes) }
-      : { type: "HOUR_START" },
-    duration_mode: draft.durationMode === "UNIFORM"
-      ? { type: "UNIFORM", duration_minutes: Number(draft.durationMinutes) }
-      : { type: "INDIVIDUAL" }
+    odd_week_days: WEEKDAYS.map(({ value }) => value).filter((day) =>
+      draft.oddWeekDays.includes(day)
+    ),
+    even_week_days: WEEKDAYS.map(({ value }) => value).filter((day) =>
+      draft.evenWeekDays.includes(day)
+    ),
+    time_mode: draft.timeMode,
+    time_step_minutes: draft.timeMode === "STEP" ? Number(draft.stepMinutes) : null,
+    duration_mode: draft.durationMode,
+    duration_minutes: draft.durationMode === "UNIFORM" ? Number(draft.durationMinutes) : null
   };
 }

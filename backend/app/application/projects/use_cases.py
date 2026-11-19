@@ -4,36 +4,78 @@ from app.application.auth.access import owned_project
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
 from app.domain.projects.project import Project
-from app.domain.projects.settings import DurationMode, ProjectSettings, StudyCycle, TimeMode
+from app.domain.projects.settings import (
+    DurationMode,
+    DurationModeKind,
+    ProjectSettings,
+    StudyCycle,
+    TimeMode,
+    TimeModeKind,
+)
+from app.domain.shared.errors import InvalidValue
 from app.domain.shared.ids import ProjectId, UserId
+from app.domain.shared.week import Weekday
 
 
 @dataclass(frozen=True)
 class SettingsChanges:
-    """Блоки настроек, которые прислал клиент. None — блок не прислан и не меняется."""
-
-    cycle: StudyCycle | None = None
-    time_mode: TimeMode | None = None
-    duration_mode: DurationMode | None = None
+    odd_week_days: tuple[Weekday, ...] | None = None
+    even_week_days: tuple[Weekday, ...] | None = None
+    time_mode: TimeModeKind | None = None
+    time_step_minutes: int | None = None
+    has_time_step_minutes: bool = False
+    duration_mode: DurationModeKind | None = None
+    duration_minutes: int | None = None
+    has_duration_minutes: bool = False
 
     def is_empty(self) -> bool:
-        return self.cycle is None and self.time_mode is None and self.duration_mode is None
+        return (
+            self.odd_week_days is None
+            and self.even_week_days is None
+            and self.time_mode is None
+            and not self.has_time_step_minutes
+            and self.duration_mode is None
+            and not self.has_duration_minutes
+        )
 
     def applied_to(self, settings: ProjectSettings) -> ProjectSettings:
-        # Блок заменяется целиком: режим и его параметр не разойдутся
-        return ProjectSettings(
-            cycle=self.cycle if self.cycle is not None else settings.cycle,
-            time_mode=self.time_mode if self.time_mode is not None else settings.time_mode,
-            duration_mode=(
-                self.duration_mode if self.duration_mode is not None else settings.duration_mode
-            ),
-        )
+        cycle = settings.cycle
+        if self.odd_week_days is not None or self.even_week_days is not None:
+            cycle = StudyCycle(
+                self.odd_week_days
+                if self.odd_week_days is not None
+                else cycle.odd_week_days,
+                self.even_week_days
+                if self.even_week_days is not None
+                else cycle.even_week_days,
+            )
+
+        time_mode = settings.time_mode
+        if self.time_mode is not None or self.has_time_step_minutes:
+            try:
+                time_mode = TimeMode(
+                    self.time_mode if self.time_mode is not None else time_mode.kind,
+                    self.time_step_minutes
+                    if self.has_time_step_minutes
+                    else time_mode.step_minutes,
+                )
+            except InvalidValue as error:
+                raise InvalidValue(error.message, field="time_step_minutes") from error
+
+        duration_mode = settings.duration_mode
+        if self.duration_mode is not None or self.has_duration_minutes:
+            duration_mode = DurationMode(
+                self.duration_mode if self.duration_mode is not None else duration_mode.kind,
+                self.duration_minutes
+                if self.has_duration_minutes
+                else duration_mode.duration_minutes,
+            )
+
+        return ProjectSettings(cycle, time_mode, duration_mode)
 
 
 @dataclass(frozen=True)
 class CreateProject:
-    """Новый проект (F_Project_1). Чего клиент не прислал, берётся по умолчанию (F_Project_5)."""
-
     uow: UnitOfWork
     clock: Clock
     ids: IdGenerator
@@ -54,8 +96,6 @@ class CreateProject:
 
 @dataclass(frozen=True)
 class ListProjects:
-    """Проекты пользователя, сначала недавно изменённые (F_Project_3)."""
-
     uow: UnitOfWork
 
     def execute(self, owner_id: UserId) -> list[Project]:
@@ -65,8 +105,6 @@ class ListProjects:
 
 @dataclass(frozen=True)
 class GetProject:
-    """Открытие проекта (F_Project_2, F_Project_4)."""
-
     uow: UnitOfWork
 
     def execute(self, owner_id: UserId, project_id: ProjectId) -> Project:
@@ -76,8 +114,6 @@ class GetProject:
 
 @dataclass(frozen=True)
 class UpdateProject:
-    """Переименование и смена настроек (F_Project_2, F_Data_1–3)."""
-
     uow: UnitOfWork
     clock: Clock
 
@@ -100,8 +136,6 @@ class UpdateProject:
 
 @dataclass(frozen=True)
 class DeleteProject:
-    """Удаление проекта вместе со всеми его данными (F_Project_2)."""
-
     uow: UnitOfWork
 
     def execute(self, owner_id: UserId, project_id: ProjectId) -> None:

@@ -26,8 +26,8 @@ export default function ConstraintFields({ values, errors, setValue, options }) 
     if (kind === "MIN_START_TIME") setValue("time", "08:00");
     if (kind === "MAX_END_TIME") setValue("time", "18:00");
     const workloadOnly = allowedScopeTypes(kind).length === 1;
-    const scopeId = workloadOnly
-      ? values.scopeType === "WORKLOAD" ? values.scopeId : options.WORKLOAD[0]?.id ?? ""
+    const scopeId = workloadOnly && values.scopeType !== "WORKLOAD"
+      ? options.WORKLOAD[0]?.id ?? ""
       : values.scopeId;
     if (workloadOnly && values.scopeType !== "WORKLOAD") {
       setValue("scopeType", "WORKLOAD");

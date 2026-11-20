@@ -23,3 +23,7 @@ class InvalidRefreshToken(NotAuthenticated):
     """Refresh-токен неизвестен, уже обменян, отозван или истёк. Клиенту нужно войти заново."""
 
     code = "INVALID_REFRESH_TOKEN"
+
+
+class InvalidPasswordResetToken(NotAuthenticated):
+    code = "INVALID_PASSWORD_RESET_TOKEN"

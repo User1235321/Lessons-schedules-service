@@ -1,7 +1,7 @@
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.application.auth.use_cases import AuthTokens, Credentials
 from app.domain.auth.user import User
@@ -13,6 +13,19 @@ class CredentialsRequest(BaseModel):
 
     def to_credentials(self) -> Credentials:
         return Credentials(email=self.email, password=self.password)
+
+
+class PasswordResetRequest(BaseModel):
+    email: str
+
+
+class PasswordResetRequested(BaseModel):
+    message: str
+
+
+class PasswordResetConfirmation(BaseModel):
+    token: str = Field(repr=False)
+    password: str = Field(repr=False)
 
 
 class AccessTokenResponse(BaseModel):

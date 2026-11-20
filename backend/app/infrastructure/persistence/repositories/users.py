@@ -1,8 +1,10 @@
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domain.auth.errors import EmailAlreadyRegistered
+from app.domain.auth.password_reset import PasswordResetToken
 from app.domain.auth.session import UserSession
 from app.domain.auth.user import Email, User
 from app.domain.shared.errors import NotFound
@@ -15,7 +17,7 @@ from app.infrastructure.persistence.mappers.users import (
     user_to_domain,
     user_to_row,
 )
-from app.infrastructure.persistence.models import UserRow, UserSessionRow
+from app.infrastructure.persistence.models import PasswordResetTokenRow, UserRow, UserSessionRow
 
 
 class SqlUserRepository:
@@ -43,6 +45,44 @@ class SqlUserRepository:
     def get_by_email(self, email: Email) -> User | None:
         row = self._session.scalar(select(UserRow).where(UserRow.email == email.value))
         return user_to_domain(row) if row else None
+
+    def update_password_hash(self, user_id: UserId, password_hash: str) -> None:
+        updated = self._session.scalar(
+            update(UserRow)
+            .where(UserRow.id == user_id)
+            .values(password_hash=password_hash)
+            .returning(UserRow.id)
+        )
+        if updated is None:
+            raise NotFound("Учётная запись не найдена", user_id=str(user_id))
+
+
+class SqlPasswordResetRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def replace(self, token: PasswordResetToken) -> None:
+        values = {"token_hash": token.token_hash, "expires_at": token.expires_at}
+        self._session.execute(
+            insert(PasswordResetTokenRow)
+            .values(user_id=token.user_id, **values)
+            .on_conflict_do_update(index_elements=[PasswordResetTokenRow.user_id], set_=values)
+        )
+
+    def get_for_update(self, token_hash: str) -> PasswordResetToken | None:
+        row = self._session.scalar(
+            select(PasswordResetTokenRow)
+            .where(PasswordResetTokenRow.token_hash == token_hash)
+            .with_for_update()
+        )
+        if row is None:
+            return None
+        return PasswordResetToken(UserId(row.user_id), row.token_hash, row.expires_at)
+
+    def remove(self, user_id: UserId) -> None:
+        self._session.execute(
+            delete(PasswordResetTokenRow).where(PasswordResetTokenRow.user_id == user_id)
+        )
 
 
 class SqlUserSessionRepository:

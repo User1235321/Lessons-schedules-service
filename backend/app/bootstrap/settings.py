@@ -1,6 +1,6 @@
 from typing import Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, HttpUrl, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Ключ из .env.example известен всем, кто видел репозиторий: подходит только для разработки
@@ -42,8 +42,20 @@ class Settings(BaseSettings):
     mail_host: str = ""
     mail_port: int = 587
     mail_username: str = ""
-    mail_password: str = ""
+    mail_password: SecretStr = SecretStr("")
     mail_from: str = ""
+    password_reset_token_ttl_minutes: int = Field(30, gt=0)
+    password_reset_base_url: HttpUrl | None = None
+
+    @field_validator("password_reset_base_url")
+    @classmethod
+    def _require_reset_origin(cls, url: HttpUrl | None) -> HttpUrl | None:
+        if url is not None and (
+            url.path not in (None, "/")
+            or any(part is not None for part in (url.username, url.password, url.query, url.fragment))
+        ):
+            raise ValueError("PASSWORD_RESET_BASE_URL должен содержать только origin приложения")
+        return url
 
     @model_validator(mode="after")
     def _refuse_unsafe_production(self) -> Self:
@@ -56,4 +68,6 @@ class Settings(BaseSettings):
             )
         if not self.refresh_cookie_secure:
             raise ValueError("В production REFRESH_COOKIE_SECURE должен быть true")
+        if self.password_reset_base_url and self.password_reset_base_url.scheme != "https":
+            raise ValueError("В production PASSWORD_RESET_BASE_URL должен использовать HTTPS")
         return self

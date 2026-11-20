@@ -1,111 +1,73 @@
 from datetime import datetime
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, StrictInt, field_validator
 
-from app.api.schemas.paths import inside
 from app.application.projects.use_cases import SettingsChanges
 from app.domain.projects.project import Project
-from app.domain.projects.settings import (
-    DurationMode,
-    DurationModeKind,
-    StudyCycle,
-    TimeMode,
-    TimeModeKind,
-)
+from app.domain.projects.settings import DurationModeKind, TimeModeKind
 from app.domain.shared.week import Weekday
 
-# Форма проекта совпадает с test-data/minimal-project.json
 
+class ProjectSettingsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
-class CycleSchema(BaseModel):
-    odd_week_days: list[Weekday]
-    even_week_days: list[Weekday]
+    odd_week_days: list[Weekday] | None = None
+    even_week_days: list[Weekday] | None = None
+    time_mode: TimeModeKind | None = None
+    time_step_minutes: StrictInt | None = None
+    duration_mode: DurationModeKind | None = None
+    duration_minutes: StrictInt | None = None
 
-    def to_domain(self) -> StudyCycle:
-        return StudyCycle(tuple(self.odd_week_days), tuple(self.even_week_days))
-
+    @field_validator("odd_week_days", "even_week_days", "time_mode", "duration_mode")
     @classmethod
-    def of(cls, cycle: StudyCycle) -> "CycleSchema":
-        return cls(
-            odd_week_days=list(cycle.odd_week_days), even_week_days=list(cycle.even_week_days)
-        )
-
-
-class TimeModeSchema(BaseModel):
-    type: TimeModeKind
-    step_minutes: int | None = None
-
-    def to_domain(self) -> TimeMode:
-        with inside("time_mode"):
-            return TimeMode(self.type, self.step_minutes)
-
-    @classmethod
-    def of(cls, mode: TimeMode) -> "TimeModeSchema":
-        return cls(type=mode.kind, step_minutes=mode.step_minutes)
-
-
-class DurationModeSchema(BaseModel):
-    type: DurationModeKind
-    duration_minutes: int | None = None
-
-    def to_domain(self) -> DurationMode:
-        with inside("duration_mode"):
-            return DurationMode(self.type, self.duration_minutes)
-
-    @classmethod
-    def of(cls, mode: DurationMode) -> "DurationModeSchema":
-        return cls(type=mode.kind, duration_minutes=mode.duration_minutes)
-
-
-class _SettingsBlocks(BaseModel):
-    cycle: CycleSchema | None = None
-    time_mode: TimeModeSchema | None = None
-    duration_mode: DurationModeSchema | None = None
+    def reject_null(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("Поле не может быть null")
+        return value
 
     def settings_changes(self) -> SettingsChanges:
+        supplied = self.model_fields_set
         return SettingsChanges(
-            cycle=self.cycle.to_domain() if self.cycle else None,
-            time_mode=self.time_mode.to_domain() if self.time_mode else None,
-            duration_mode=self.duration_mode.to_domain() if self.duration_mode else None,
+            odd_week_days=(
+                tuple(self.odd_week_days) if "odd_week_days" in supplied else None
+            ),
+            even_week_days=(
+                tuple(self.even_week_days) if "even_week_days" in supplied else None
+            ),
+            time_mode=self.time_mode,
+            time_step_minutes=self.time_step_minutes,
+            has_time_step_minutes="time_step_minutes" in supplied,
+            duration_mode=self.duration_mode,
+            duration_minutes=self.duration_minutes,
+            has_duration_minutes="duration_minutes" in supplied,
         )
 
 
-class CreateProjectRequest(_SettingsBlocks):
-    """Обязательно только имя. Остальные блоки — по умолчанию (F_Project_5)."""
-
+class CreateProjectRequest(ProjectSettingsRequest):
     name: str
 
 
-class _PatchCycleSchema(CycleSchema):
-    model_config = ConfigDict(extra="forbid")
-
-
-class _PatchTimeModeSchema(TimeModeSchema):
-    model_config = ConfigDict(extra="forbid")
-
-
-class _PatchDurationModeSchema(DurationModeSchema):
-    model_config = ConfigDict(extra="forbid")
-
-
-class UpdateProjectRequest(_SettingsBlocks):
-    """Присланный блок заменяется целиком. Отсутствующий или null — не меняется."""
-
-    model_config = ConfigDict(extra="forbid")
-
+class UpdateProjectRequest(ProjectSettingsRequest):
     name: str | None = None
-    cycle: _PatchCycleSchema | None = None
-    time_mode: _PatchTimeModeSchema | None = None
-    duration_mode: _PatchDurationModeSchema | None = None
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def reject_null_name(cls, value: object) -> object:
+        if value is None:
+            raise ValueError("Имя проекта не может быть null")
+        return value
 
 
 class ProjectResponse(BaseModel):
     id: UUID
     name: str
-    cycle: CycleSchema
-    time_mode: TimeModeSchema
-    duration_mode: DurationModeSchema
+    odd_week_days: list[Weekday]
+    even_week_days: list[Weekday]
+    time_mode: TimeModeKind
+    time_step_minutes: int | None
+    duration_mode: DurationModeKind
+    duration_minutes: int | None
     created_at: datetime
     updated_at: datetime
 
@@ -114,9 +76,12 @@ class ProjectResponse(BaseModel):
         return cls(
             id=project.id,
             name=project.name,
-            cycle=CycleSchema.of(project.settings.cycle),
-            time_mode=TimeModeSchema.of(project.settings.time_mode),
-            duration_mode=DurationModeSchema.of(project.settings.duration_mode),
+            odd_week_days=list(project.settings.cycle.odd_week_days),
+            even_week_days=list(project.settings.cycle.even_week_days),
+            time_mode=project.settings.time_mode.kind,
+            time_step_minutes=project.settings.time_mode.step_minutes,
+            duration_mode=project.settings.duration_mode.kind,
+            duration_minutes=project.settings.duration_mode.duration_minutes,
             created_at=project.created_at,
             updated_at=project.updated_at,
         )

@@ -370,12 +370,12 @@ def test_project_editor_resources_round_trip_with_real_database(api: TestClient)
     project_id = new_project(api, user)
     project_url = f"/projects/{project_id}"
     settings = {
-        "cycle": {
-            "odd_week_days": ["MONDAY", "WEDNESDAY"],
-            "even_week_days": ["TUESDAY", "THURSDAY"],
-        },
-        "time_mode": {"type": "STEP", "step_minutes": 15},
-        "duration_mode": {"type": "INDIVIDUAL"},
+        "odd_week_days": ["MONDAY", "WEDNESDAY"],
+        "even_week_days": ["TUESDAY", "THURSDAY"],
+        "time_mode": "STEP",
+        "time_step_minutes": 15,
+        "duration_mode": "INDIVIDUAL",
+        "duration_minutes": None,
     }
     saved_settings = api.patch(project_url, json=settings, headers=user)
     assert saved_settings.status_code == 200

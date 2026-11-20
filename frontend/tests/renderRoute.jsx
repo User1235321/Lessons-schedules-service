@@ -16,12 +16,12 @@ function json(status, body) {
 
 
 export const DEFAULT_SETTINGS = {
-  cycle: {
-    odd_week_days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"],
-    even_week_days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"]
-  },
-  time_mode: { type: "HOUR_START" },
-  duration_mode: { type: "UNIFORM", duration_minutes: 100 }
+  odd_week_days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"],
+  even_week_days: ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"],
+  time_mode: "HOUR_START",
+  time_step_minutes: null,
+  duration_mode: "UNIFORM",
+  duration_minutes: 100
 };
 
 export const TEST_PROJECTS = [

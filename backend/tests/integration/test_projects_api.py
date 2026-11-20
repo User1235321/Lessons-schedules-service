@@ -7,19 +7,24 @@ from fastapi.testclient import TestClient
 
 from tests.fakes import FakeClock
 
-DEFAULTS = {  # F_Project_5
-    "cycle": {
-        "odd_week_days": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"],
-        "even_week_days": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"],
-    },
-    "time_mode": {"type": "HOUR_START"},
-    "duration_mode": {"type": "UNIFORM", "duration_minutes": 100},
+DAYS = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"]
+DEFAULTS = {
+    "odd_week_days": DAYS,
+    "even_week_days": DAYS,
+    "time_mode": "HOUR_START",
+    "time_step_minutes": None,
+    "duration_mode": "UNIFORM",
+    "duration_minutes": 100,
 }
-CUSTOM = {  # как в test-data/minimal-project.json
-    "cycle": {"odd_week_days": ["MONDAY", "TUESDAY"], "even_week_days": ["MONDAY", "TUESDAY"]},
-    "time_mode": {"type": "STEP", "step_minutes": 30},
-    "duration_mode": {"type": "INDIVIDUAL"},
+CUSTOM = {
+    "odd_week_days": ["MONDAY", "TUESDAY"],
+    "even_week_days": ["MONDAY", "TUESDAY"],
+    "time_mode": "STEP",
+    "time_step_minutes": 30,
+    "duration_mode": "INDIVIDUAL",
+    "duration_minutes": None,
 }
+SETTINGS_FIELDS = tuple(DEFAULTS)
 
 
 def sign_in(api: TestClient, email: str = "ivan@mail.ru") -> dict[str, str]:
@@ -34,7 +39,7 @@ def create(api: TestClient, user: dict[str, str], **body: Any) -> dict[str, Any]
 
 
 def settings_of(project: dict[str, Any]) -> dict[str, Any]:
-    return {block: project[block] for block in ("cycle", "time_mode", "duration_mode")}
+    return {field: project[field] for field in SETTINGS_FIELDS}
 
 
 @pytest.mark.parametrize(
@@ -54,7 +59,7 @@ def test_projects_require_sign_in(api: TestClient, method: str, path: str) -> No
     assert response.json()["code"] == "NOT_AUTHENTICATED"
 
 
-def test_project_with_only_name_gets_default_settings(api: TestClient) -> None:  # F_Project_5
+def test_project_with_only_name_gets_default_settings(api: TestClient) -> None:
     user = sign_in(api)
 
     project = create(api, user, name="  Осень 2026  ")
@@ -74,29 +79,29 @@ def test_project_keeps_settings_given_on_creation(api: TestClient) -> None:  # F
     assert settings_of(reopened) == CUSTOM
 
 
-def test_missing_settings_blocks_get_defaults(api: TestClient) -> None:
+def test_missing_settings_fields_get_defaults(api: TestClient) -> None:
     user = sign_in(api)
 
-    project = create(api, user, time_mode={"type": "STEP", "step_minutes": 15})
+    project = create(api, user, time_mode="STEP", time_step_minutes=15)
 
-    assert project["time_mode"] == {"type": "STEP", "step_minutes": 15}
-    assert project["cycle"] == DEFAULTS["cycle"]
+    assert project["time_mode"] == "STEP"
+    assert project["time_step_minutes"] == 15
+    assert project["odd_week_days"] == DEFAULTS["odd_week_days"]
+    assert project["even_week_days"] == DEFAULTS["even_week_days"]
     assert project["duration_mode"] == DEFAULTS["duration_mode"]
+    assert project["duration_minutes"] == DEFAULTS["duration_minutes"]
 
 
-def test_post_still_ignores_unknown_fields(api: TestClient) -> None:
+@pytest.mark.parametrize("unknown", ["unexpected", "cycle", "step_minutes"])
+def test_post_rejects_unknown_fields(api: TestClient, unknown: str) -> None:
     user = sign_in(api)
 
-    created = create(
-        api,
-        user,
-        unexpected=True,
-        cycle={**CUSTOM["cycle"], "unexpected": True},
-        time_mode={**CUSTOM["time_mode"], "unexpected": True},
-        duration_mode={**CUSTOM["duration_mode"], "unexpected": True},
-    )
+    response = api.post("/projects", json={"name": "Осень", unknown: True}, headers=user)
 
-    assert settings_of(created) == CUSTOM
+    assert response.status_code == 422
+    assert response.json()["code"] == "VALIDATION_ERROR"
+    assert response.json()["details"]["fields"][0]["field"] == unknown
+    assert api.get("/projects", headers=user).json() == []
 
 
 @pytest.mark.parametrize("name", ["", "   "])
@@ -109,42 +114,44 @@ def test_project_needs_a_name(api: TestClient, name: str) -> None:  # F_Project_
 
 
 @pytest.mark.parametrize(
-    ("block", "value", "field"),
+    ("changes", "field"),
     [
-        ("time_mode", {"type": "STEP"}, "time_mode.step_minutes"),
-        ("time_mode", {"type": "HOUR_START", "step_minutes": 30}, "time_mode.step_minutes"),
-        (
-            "duration_mode",
-            {"type": "UNIFORM", "duration_minutes": 0},
-            "duration_mode.duration_minutes",
-        ),
+        ({"time_mode": "STEP"}, "time_step_minutes"),
+        ({"time_mode": "HOUR_START", "time_step_minutes": 30}, "time_step_minutes"),
+        ({"duration_mode": "UNIFORM", "duration_minutes": 0}, "duration_minutes"),
+        ({"duration_mode": "INDIVIDUAL", "duration_minutes": 30}, "duration_minutes"),
     ],
-    ids=["step missing", "step with hour start", "zero duration"],
 )
 def test_invalid_setting_names_its_json_path(
-    api: TestClient, block: str, value: dict[str, Any], field: str
-) -> None:  # F_Valid_1, F_Valid_2
-    response = api.post("/projects", json={"name": "Осень", block: value}, headers=sign_in(api))
+    api: TestClient, changes: dict[str, Any], field: str
+) -> None:
+    response = api.post("/projects", json={"name": "Осень", **changes}, headers=sign_in(api))
 
     assert response.status_code == 422
     assert response.json()["details"] == {"field": field}
 
 
-def test_unknown_weekday_is_rejected(api: TestClient) -> None:  # F_Valid_2
-    cycle = {"odd_week_days": ["MONDAY", "FUNDAY"], "even_week_days": []}
-
-    response = api.post("/projects", json={"name": "Осень", "cycle": cycle}, headers=sign_in(api))
+def test_unknown_weekday_is_rejected(api: TestClient) -> None:
+    response = api.post(
+        "/projects",
+        json={"name": "Осень", "odd_week_days": ["MONDAY", "FUNDAY"]},
+        headers=sign_in(api),
+    )
 
     assert response.status_code == 422
-    assert response.json()["details"]["fields"][0]["field"] == "cycle.odd_week_days.1"
+    assert response.json()["details"]["fields"][0]["field"] == "odd_week_days.1"
 
 
 def test_empty_week_is_allowed(api: TestClient) -> None:  # F_Valid_3
-    cycle = {"odd_week_days": ["SATURDAY", "MONDAY", "MONDAY"], "even_week_days": []}
+    project = create(
+        api,
+        sign_in(api),
+        odd_week_days=["SATURDAY", "MONDAY", "MONDAY"],
+        even_week_days=[],
+    )
 
-    project = create(api, sign_in(api), cycle=cycle)
-
-    assert project["cycle"] == {"odd_week_days": ["MONDAY", "SATURDAY"], "even_week_days": []}
+    assert project["odd_week_days"] == ["MONDAY", "SATURDAY"]
+    assert project["even_week_days"] == []
 
 
 def test_list_has_only_own_projects_recently_changed_first(
@@ -192,19 +199,72 @@ def test_rename_keeps_settings_and_moves_update_time(api: TestClient, clock: Fak
     assert updated["updated_at"] > created["updated_at"] == updated["created_at"]
 
 
-def test_sent_settings_block_replaces_the_old_one(api: TestClient) -> None:
+def test_patch_preserves_fields_not_sent(api: TestClient) -> None:
     user = sign_in(api)
     created = create(api, user, **CUSTOM)
 
     response = api.patch(
-        f"/projects/{created['id']}", json={"time_mode": {"type": "HOUR_START"}}, headers=user
+        f"/projects/{created['id']}",
+        json={"odd_week_days": ["FRIDAY"]},
+        headers=user,
     )
 
+    assert response.status_code == 200
     updated = response.json()
-    assert updated["time_mode"] == {"type": "HOUR_START"}  # шаг ушёл вместе со старым блоком
-    assert updated["cycle"] == CUSTOM["cycle"]
-    assert updated["duration_mode"] == CUSTOM["duration_mode"]
+    assert updated["odd_week_days"] == ["FRIDAY"]
+    assert {key: updated[key] for key in SETTINGS_FIELDS if key != "odd_week_days"} == {
+        key: CUSTOM[key] for key in SETTINGS_FIELDS if key != "odd_week_days"
+    }
     assert api.get(f"/projects/{created['id']}", headers=user).json() == updated
+
+
+def test_patch_can_clear_inactive_mode_parameters(api: TestClient) -> None:
+    user = sign_in(api)
+    created = create(api, user, **CUSTOM)
+
+    response = api.patch(
+        f"/projects/{created['id']}",
+        json={"time_mode": "HOUR_START", "time_step_minutes": None},
+        headers=user,
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["time_mode"] == "HOUR_START"
+    assert updated["time_step_minutes"] is None
+    assert updated["even_week_days"] == CUSTOM["even_week_days"]
+    assert updated["duration_mode"] == CUSTOM["duration_mode"]
+
+
+def test_patch_mode_change_without_required_parameter_is_invalid(api: TestClient) -> None:
+    user = sign_in(api)
+    created = create(api, user, **CUSTOM)
+
+    response = api.patch(
+        f"/projects/{created['id']}",
+        json={"time_mode": "HOUR_START"},
+        headers=user,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["details"]["field"] == "time_step_minutes"
+    assert api.get(f"/projects/{created['id']}", headers=user).json() == created
+
+
+def test_patch_only_minutes_preserves_mode(api: TestClient) -> None:
+    user = sign_in(api)
+    created = create(api, user, **CUSTOM)
+
+    response = api.patch(
+        f"/projects/{created['id']}",
+        json={"time_step_minutes": 45},
+        headers=user,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["time_mode"] == "STEP"
+    assert response.json()["time_step_minutes"] == 45
+    assert response.json()["duration_mode"] == CUSTOM["duration_mode"]
 
 
 def test_empty_patch_changes_nothing(api: TestClient, clock: FakeClock) -> None:
@@ -224,7 +284,7 @@ def test_invalid_patch_changes_nothing(api: TestClient) -> None:
 
     response = api.patch(
         f"/projects/{created['id']}",
-        json={"name": " ", "time_mode": {"type": "STEP", "step_minutes": 30}},
+        json={"name": " ", "time_mode": "STEP", "time_step_minutes": 30},
         headers=user,
     )
 
@@ -236,12 +296,9 @@ def test_invalid_patch_changes_nothing(api: TestClient) -> None:
     ("changes", "field"),
     [
         ({"unexpected": True}, "unexpected"),
-        ({"cycle": {**CUSTOM["cycle"], "unexpected": True}}, "cycle.unexpected"),
-        ({"time_mode": {**CUSTOM["time_mode"], "unexpected": True}}, "time_mode.unexpected"),
-        (
-            {"duration_mode": {**CUSTOM["duration_mode"], "unexpected": True}},
-            "duration_mode.unexpected",
-        ),
+        ({"cycle": CUSTOM["odd_week_days"]}, "cycle"),
+        ({"time_mode": {"type": "STEP"}}, "time_mode"),
+        ({"duration_mode": {"type": "INDIVIDUAL"}}, "duration_mode"),
     ],
 )
 def test_unknown_patch_field_rejects_all_changes(
@@ -269,9 +326,9 @@ def test_patch_reports_every_unknown_field_without_saving(api: TestClient) -> No
     changes = {
         "name": "Весна",
         "unexpected": True,
-        "cycle": {**CUSTOM["cycle"], "extra_day": True},
-        "time_mode": {**CUSTOM["time_mode"], "extra_step": 15},
-        "duration_mode": {**CUSTOM["duration_mode"], "extra_duration": 100},
+        "extra_day": True,
+        "extra_step": 15,
+        "extra_duration": 100,
     }
 
     response = api.patch(path, json=changes, headers=user)
@@ -280,9 +337,9 @@ def test_patch_reports_every_unknown_field_without_saving(api: TestClient) -> No
     assert response.json()["code"] == "VALIDATION_ERROR"
     assert {issue["field"] for issue in response.json()["details"]["fields"]} == {
         "unexpected",
-        "cycle.extra_day",
-        "time_mode.extra_step",
-        "duration_mode.extra_duration",
+        "extra_day",
+        "extra_step",
+        "extra_duration",
     }
     assert api.get(path, headers=user).json() == created
 
@@ -304,12 +361,15 @@ def test_patch_restores_both_empty_weeks_without_changing_other_settings(
 ) -> None:
     user = sign_in(api)
     created = create(api, user, **CUSTOM)
-    cycle = {"odd_week_days": [], "even_week_days": []}
-
-    response = api.patch(f"/projects/{created['id']}", json={"cycle": cycle}, headers=user)
+    response = api.patch(
+        f"/projects/{created['id']}",
+        json={"odd_week_days": [], "even_week_days": []},
+        headers=user,
+    )
 
     assert response.status_code == 200
-    assert response.json()["cycle"] == cycle
+    assert response.json()["odd_week_days"] == []
+    assert response.json()["even_week_days"] == []
     assert response.json()["time_mode"] == CUSTOM["time_mode"]
     assert response.json()["duration_mode"] == CUSTOM["duration_mode"]
     assert api.get(f"/projects/{created['id']}", headers=user).json() == response.json()
@@ -321,12 +381,12 @@ def test_invalid_step_patch_keeps_previous_settings(api: TestClient) -> None:
 
     response = api.patch(
         f"/projects/{created['id']}",
-        json={"time_mode": {"type": "STEP", "step_minutes": 0}},
+        json={"time_mode": "STEP", "time_step_minutes": 0},
         headers=user,
     )
 
     assert response.status_code == 422
-    assert response.json()["details"]["field"] == "time_mode.step_minutes"
+    assert response.json()["details"]["field"] == "time_step_minutes"
     assert api.get(f"/projects/{created['id']}", headers=user).json() == created
 
 
@@ -336,12 +396,51 @@ def test_duration_mode_patch_replaces_only_its_block(api: TestClient) -> None:
 
     response = api.patch(
         f"/projects/{created['id']}",
-        json={"duration_mode": {"type": "UNIFORM", "duration_minutes": 95}},
+        json={"duration_mode": "UNIFORM", "duration_minutes": 95},
         headers=user,
     )
 
     assert response.status_code == 200
-    assert response.json()["duration_mode"] == {"type": "UNIFORM", "duration_minutes": 95}
+    assert response.json()["duration_mode"] == "UNIFORM"
+    assert response.json()["duration_minutes"] == 95
     assert response.json()["time_mode"] == CUSTOM["time_mode"]
-    assert response.json()["cycle"] == CUSTOM["cycle"]
+    assert response.json()["odd_week_days"] == CUSTOM["odd_week_days"]
     assert api.get(f"/projects/{created['id']}", headers=user).json() == response.json()
+
+
+@pytest.mark.parametrize("field", ["odd_week_days", "even_week_days", "time_mode", "duration_mode"])
+def test_post_rejects_null_nonnullable_fields(api: TestClient, field: str) -> None:
+    user = sign_in(api)
+
+    response = api.post("/projects", json={"name": "Осень", field: None}, headers=user)
+
+    assert response.status_code == 422
+    assert response.json()["details"]["fields"][0]["field"] == field
+
+
+def test_patch_rejects_unknown_fields_without_mutation(api: TestClient) -> None:
+    user = sign_in(api)
+    project = create(api, user)
+    path = f"/projects/{project['id']}"
+
+    response = api.patch(
+        path, json={"name": "Весна", "old_mode": {"type": "STEP"}}, headers=user
+    )
+
+    assert response.status_code == 422
+    assert api.get(path, headers=user).json() == project
+
+
+def test_patch_rejects_null_name(api: TestClient) -> None:
+    user = sign_in(api)
+    project = create(api, user)
+
+    response = api.patch(
+        f"/projects/{project['id']}",
+        json={"name": None},
+        headers=user,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["details"]["fields"][0]["field"] == "name"
+    assert api.get(f"/projects/{project['id']}", headers=user).json() == project

@@ -23,7 +23,7 @@ function savedPayload(fetchMock) {
 }
 
 describe("ProjectSettingsPage", () => {
-  it("shows default settings from the already loaded project (F_Project_5)", async () => {
+  it("shows default settings from the already loaded project (HLD 10.4)", async () => {
     const { fetchMock } = await openSettings();
 
     for (const weekName of ["Нечётная неделя", "Чётная неделя"]) {
@@ -54,12 +54,12 @@ describe("ProjectSettingsPage", () => {
 
     expect(await screen.findByText("Настройки сохранены")).toBeTruthy();
     expect(savedPayload(fetchMock)).toEqual({
-      cycle: {
-        odd_week_days: DEFAULT_SETTINGS.cycle.odd_week_days.slice(1),
-        even_week_days: [...DEFAULT_SETTINGS.cycle.even_week_days, "SUNDAY"]
-      },
-      time_mode: { type: "STEP", step_minutes: 15 },
-      duration_mode: { type: "INDIVIDUAL" }
+      odd_week_days: DEFAULT_SETTINGS.odd_week_days.slice(1),
+      even_week_days: [...DEFAULT_SETTINGS.even_week_days, "SUNDAY"],
+      time_mode: "STEP",
+      time_step_minutes: 15,
+      duration_mode: "INDIVIDUAL",
+      duration_minutes: null
     });
 
     await router.navigate("/projects");
@@ -79,17 +79,15 @@ describe("ProjectSettingsPage", () => {
   it("does not block locally valid empty weeks (F_Valid_3)", async () => {
     const project = {
       ...TEST_PROJECTS[0],
-      cycle: { odd_week_days: [], even_week_days: [] }
+      odd_week_days: [], even_week_days: []
     };
     const { user, fetchMock } = await openSettings({ projects: [project] });
 
     await user.click(screen.getByRole("button", { name: "Сохранить настройки" }));
 
     expect(await screen.findByText("Настройки сохранены")).toBeTruthy();
-    expect(savedPayload(fetchMock).cycle).toEqual({
-      odd_week_days: [],
-      even_week_days: []
-    });
+    expect(savedPayload(fetchMock).odd_week_days).toEqual([]);
+    expect(savedPayload(fetchMock).even_week_days).toEqual([]);
   });
 
   it("requires positive whole minutes and does not submit invalid values (F_Valid_1–2)", async () => {
@@ -111,18 +109,19 @@ describe("ProjectSettingsPage", () => {
     await user.click(screen.getByRole("button", { name: "Сохранить настройки" }));
 
     expect(await screen.findByText("Настройки сохранены")).toBeTruthy();
-    expect(savedPayload(fetchMock).time_mode).toEqual({ type: "STEP", step_minutes: 30 });
-    expect(savedPayload(fetchMock).duration_mode).toEqual({
-      type: "UNIFORM",
-      duration_minutes: 90
-    });
+    expect(savedPayload(fetchMock).time_mode).toBe("STEP");
+    expect(savedPayload(fetchMock).time_step_minutes).toBe(30);
+    expect(savedPayload(fetchMock).duration_mode).toBe("UNIFORM");
+    expect(savedPayload(fetchMock).duration_minutes).toBe(90);
   });
 
   it("omits inactive parameters when switching modes", async () => {
     const project = {
       ...TEST_PROJECTS[0],
-      time_mode: { type: "STEP", step_minutes: 20 },
-      duration_mode: { type: "UNIFORM", duration_minutes: 85 }
+      time_mode: "STEP",
+      time_step_minutes: 20,
+      duration_mode: "UNIFORM",
+      duration_minutes: 85
     };
     const { user, fetchMock } = await openSettings({ projects: [project] });
 
@@ -133,16 +132,20 @@ describe("ProjectSettingsPage", () => {
     await user.click(screen.getByRole("button", { name: "Сохранить настройки" }));
 
     expect(await screen.findByText("Настройки сохранены")).toBeTruthy();
-    expect(savedPayload(fetchMock).time_mode).toEqual({ type: "HOUR_START" });
-    expect(savedPayload(fetchMock).duration_mode).toEqual({ type: "INDIVIDUAL" });
+    expect(savedPayload(fetchMock).time_mode).toBe("HOUR_START");
+    expect(savedPayload(fetchMock).time_step_minutes).toBeNull();
+    expect(savedPayload(fetchMock).duration_mode).toBe("INDIVIDUAL");
+    expect(savedPayload(fetchMock).duration_minutes).toBeNull();
     expect(screen.queryByRole("spinbutton")).toBeNull();
   });
 
   it("loads the selected project's settings when moving between projects", async () => {
     const second = {
       ...TEST_PROJECTS[1],
-      time_mode: { type: "STEP", step_minutes: 45 },
-      duration_mode: { type: "UNIFORM", duration_minutes: 75 }
+      time_mode: "STEP",
+      time_step_minutes: 45,
+      duration_mode: "UNIFORM",
+      duration_minutes: 75
     };
     const { router } = await openSettings({ projects: [TEST_PROJECTS[0], second] });
 
@@ -163,7 +166,7 @@ describe("ProjectSettingsPage", () => {
         return new Response(JSON.stringify({
           code: "INVALID_VALUE",
           message: "Укажите положительный шаг",
-          details: { field: "time_mode.step_minutes" }
+          details: { field: "time_step_minutes" }
         }), { status: 422 });
       }
       return respond(url, options);

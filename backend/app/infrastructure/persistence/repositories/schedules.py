@@ -1,4 +1,5 @@
 from collections import defaultdict
+from uuid import UUID
 
 from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
@@ -6,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.scheduling.schedule import Schedule
 from app.domain.shared.errors import AlreadyExists, NotFound
-from app.domain.shared.ids import JobId, ProjectId, ScheduleId
+from app.domain.shared.ids import JobId, ProjectId, ScheduleId, UserId
 from app.infrastructure.persistence.errors import violated_constraint
 from app.infrastructure.persistence.mappers.schedules import (
     entry_to_domain,
@@ -14,6 +15,7 @@ from app.infrastructure.persistence.mappers.schedules import (
     schedule_to_domain,
     schedule_to_row,
 )
+from app.infrastructure.persistence.models.projects import ProjectRow
 from app.infrastructure.persistence.models.schedules import (
     ScheduleEntryRow,
     ScheduleEntryTeacherRow,
@@ -42,6 +44,19 @@ class SqlScheduleRepository:
 
     def get_for_update(self, project_id: ProjectId, schedule_id: ScheduleId) -> Schedule | None:
         return self._get(project_id, schedule_id, for_update=True)
+
+    def get_owned(
+        self, schedule_id: ScheduleId, owner_id: UserId, *, for_update: bool = False
+    ) -> Schedule | None:
+        query = (
+            select(ScheduleRow)
+            .join(ProjectRow, ProjectRow.id == ScheduleRow.project_id)
+            .where(ScheduleRow.id == schedule_id, ProjectRow.owner_id == owner_id)
+        )
+        if for_update:
+            query = query.with_for_update(of=ScheduleRow)
+        row = self._session.scalar(query)
+        return self._load(row) if row else None
 
     def _get(
         self, project_id: ProjectId, schedule_id: ScheduleId, *, for_update: bool
@@ -103,20 +118,23 @@ class SqlScheduleRepository:
         )
 
     def _load(self, row: ScheduleRow) -> Schedule:
-        entries = self._session.scalars(
-            select(ScheduleEntryRow)
-            .where(ScheduleEntryRow.schedule_id == row.id)
-            .order_by(ScheduleEntryRow.position)
-        ).all()
-        teachers_by_entry = defaultdict(list)
-        if entries:
-            teachers = self._session.scalars(
-                select(ScheduleEntryTeacherRow)
-                .where(ScheduleEntryTeacherRow.entry_id.in_([entry.id for entry in entries]))
-                .order_by(ScheduleEntryTeacherRow.position)
+        rows = self._session.execute(
+            select(ScheduleEntryRow, ScheduleEntryTeacherRow)
+            .outerjoin(
+                ScheduleEntryTeacherRow, ScheduleEntryTeacherRow.entry_id == ScheduleEntryRow.id
             )
-            for teacher in teachers:
-                teachers_by_entry[teacher.entry_id].append(teacher)
+            .where(ScheduleEntryRow.schedule_id == row.id)
+            .order_by(ScheduleEntryRow.position, ScheduleEntryTeacherRow.position)
+        )
+        entries: dict[UUID, ScheduleEntryRow] = {}
+        teachers_by_entry: dict[UUID, list[ScheduleEntryTeacherRow]] = defaultdict(list)
+        for entry, teacher in rows:
+            entries[entry.id] = entry
+            if teacher is not None:
+                teachers_by_entry[entry.id].append(teacher)
         return schedule_to_domain(
-            row, tuple(entry_to_domain(entry, teachers_by_entry[entry.id]) for entry in entries)
+            row,
+            tuple(
+                entry_to_domain(entry, teachers_by_entry[entry.id]) for entry in entries.values()
+            ),
         )

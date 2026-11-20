@@ -67,6 +67,7 @@ from app.application.projects.use_cases import (
     ListProjects,
     UpdateProject,
 )
+from app.application.scheduling.schedules import GetSchedule, UpdateScheduleEntry, ValidateSchedule
 from app.application.scheduling.use_cases import (
     CancelGenerationJob,
     CreateGenerationJob,
@@ -181,6 +182,12 @@ class UseCases(Protocol):
     def get_generation_job(self) -> GetGenerationJob: ...
 
     def get_generation_schedules(self) -> GetGenerationSchedules: ...
+
+    def get_schedule(self) -> GetSchedule: ...
+
+    def update_schedule_entry(self) -> UpdateScheduleEntry: ...
+
+    def validate_schedule(self) -> ValidateSchedule: ...
 
     def cancel_generation_job(self) -> CancelGenerationJob: ...
 

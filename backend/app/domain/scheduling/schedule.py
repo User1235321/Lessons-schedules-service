@@ -25,6 +25,14 @@ class TeacherAssignment:
     teacher_id: UUID | None = None
 
 
+@dataclass(frozen=True)
+class ScheduleConflict:
+    code: str
+    message: str
+    entry_ids: tuple[ScheduleEntryId, ...]
+    details: dict[str, object]
+
+
 @dataclass(frozen=True, kw_only=True)
 class ScheduleEntry:
     id: ScheduleEntryId

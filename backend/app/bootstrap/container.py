@@ -82,6 +82,7 @@ from app.application.projects.use_cases import (
 from app.application.scheduling.delivery import DeliverPendingJob
 from app.application.scheduling.ports import JobProblemSource, JobStateStore, ScheduleProblemSolver
 from app.application.scheduling.processing import ProcessJob
+from app.application.scheduling.schedules import GetSchedule, UpdateScheduleEntry, ValidateSchedule
 from app.application.scheduling.use_cases import (
     CancelGenerationJob,
     CreateGenerationJob,
@@ -320,6 +321,15 @@ class Container:
 
     def get_generation_schedules(self) -> GetGenerationSchedules:
         return GetGenerationSchedules(uow=self.uow())
+
+    def get_schedule(self) -> GetSchedule:
+        return GetSchedule(uow=self.uow())
+
+    def update_schedule_entry(self) -> UpdateScheduleEntry:
+        return UpdateScheduleEntry(uow=self.uow())
+
+    def validate_schedule(self) -> ValidateSchedule:
+        return ValidateSchedule(uow=self.uow())
 
     def cancel_generation_job(self) -> CancelGenerationJob:
         return CancelGenerationJob(uow=self.uow(), state=self.job_state())

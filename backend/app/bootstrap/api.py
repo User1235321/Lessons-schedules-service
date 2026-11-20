@@ -14,6 +14,7 @@ from app.api.routers import (
     optimization,
     projects,
     rooms,
+    schedules,
     streams,
     subgroups,
     subjects,
@@ -51,4 +52,5 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(constraints.router)
     app.include_router(optimization.router)
     app.include_router(jobs.router)
+    app.include_router(schedules.router)
     return app

@@ -17,10 +17,12 @@ import {
 import ConfirmDialog from "../../../components/ConfirmDialog.jsx";
 import { resourceApi } from "../api.js";
 import { toFormErrors } from "../formErrors.js";
+import { validateIntervals } from "../intervals.js";
 import { MAX_NAME_LENGTH, validateName, validateStudentCount } from "../validation.js";
+import IntervalsField from "./IntervalsField.jsx";
 
 const total = (subgroups) => subgroups.reduce((sum, subgroup) => sum + subgroup.student_count, 0);
-const EMPTY = { name: "", student_count: "" };
+const EMPTY = { name: "", student_count: "", availability: [] };
 
 export default function SubgroupsDialog({ open, item: group, projectId, onClose, onChanged }) {
   const api = useMemo(() => resourceApi(projectId, "subgroups"), [projectId]);
@@ -50,7 +52,11 @@ export default function SubgroupsDialog({ open, item: group, projectId, onClose,
 
   const startEditing = (subgroup) => {
     setEditing(subgroup);
-    setValues({ name: subgroup.name, student_count: String(subgroup.student_count) });
+    setValues({
+      name: subgroup.name,
+      student_count: String(subgroup.student_count),
+      availability: (subgroup.availability ?? []).map((interval) => ({ ...interval }))
+    });
     setErrors({});
     setFormError(null);
   };
@@ -68,7 +74,8 @@ export default function SubgroupsDialog({ open, item: group, projectId, onClose,
 
     const found = {
       name: validateName(values.name, "Укажите название подгруппы"),
-      student_count: validateStudentCount(values.student_count)
+      student_count: validateStudentCount(values.student_count),
+      availability: validateIntervals(values.availability, { required: false })
     };
     if (!found.student_count && Number(values.student_count) > free) {
       found.student_count = `Сумма студентов в подгруппах не должна превышать численность группы (свободно: ${free})`;
@@ -79,13 +86,22 @@ export default function SubgroupsDialog({ open, item: group, projectId, onClose,
       return;
     }
 
-    const body = { name: values.name.trim(), student_count: Number(values.student_count) };
+    const body = {
+      name: values.name.trim(),
+      student_count: Number(values.student_count),
+      availability: values.availability
+    };
     setBusy(true);
     try {
       const saved = editing
         ? await api.update(editing.id, body)
         : await api.create({ group_id: group.id, ...body });
-      const entry = { id: saved.id, name: saved.name, student_count: saved.student_count };
+      const entry = {
+        id: saved.id,
+        name: saved.name,
+        student_count: saved.student_count,
+        availability: saved.availability
+      };
       replaceSubgroups(
         editing ? subgroups.map((s) => (s.id === entry.id ? entry : s)) : [...subgroups, entry]
       );
@@ -115,7 +131,7 @@ export default function SubgroupsDialog({ open, item: group, projectId, onClose,
   };
 
   return (
-    <Dialog open={open} onClose={busy ? undefined : onClose} fullWidth maxWidth="sm">
+    <Dialog open={open} onClose={busy ? undefined : onClose} fullWidth maxWidth="md">
       <DialogTitle>Подгруппы: {group?.name}</DialogTitle>
       <DialogContent>
         <Typography color="text.secondary" sx={{ mb: 1 }}>
@@ -179,6 +195,13 @@ export default function SubgroupsDialog({ open, item: group, projectId, onClose,
               helperText={errors.student_count}
               slotProps={{ htmlInput: { inputMode: "numeric" } }}
               fullWidth
+            />
+            <IntervalsField
+              label="Доступность"
+              hint="Если интервалы не заданы, подгруппа доступна в учебные дни проекта с учётом ограничений группы."
+              value={values.availability}
+              onChange={(next) => setValue("availability", next)}
+              error={errors.availability}
             />
             <Stack direction="row" spacing={1}>
               <Button type="submit" variant="contained" disabled={busy}>

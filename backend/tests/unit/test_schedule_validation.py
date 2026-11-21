@@ -250,10 +250,10 @@ def test_room_specialization_rule_matches_generation(
     missing = validate_schedule(schedule(entry), source)
     assert ("ROOM_SPECIALIZATION" in {c.code for c in missing}) is requires_capabilities
 
-    supported_room = replace(
-        room, capabilities=(TeachingCapability(SUBJECT, lesson_type),)
-    )
     if requires_capabilities:
+        supported_room = replace(
+            room, capabilities=(TeachingCapability(SUBJECT, lesson_type),)
+        )
         supported = validate_schedule(schedule(entry), replace(source, rooms=(supported_room,)))
         assert "ROOM_SPECIALIZATION" not in {c.code for c in supported}
 

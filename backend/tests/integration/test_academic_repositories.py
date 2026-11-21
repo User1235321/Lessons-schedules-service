@@ -783,10 +783,8 @@ def test_stream_with_workload_is_not_deleted(uow: SqlUnitOfWork) -> None:
 
 
 def test_group_availability_persists_and_reaches_schedule_snapshot(
-    migrated_engine: Engine,
+    uow: SqlUnitOfWork, db_connection: Connection
 ) -> None:
-    sessions = sessionmaker(bind=migrated_engine, expire_on_commit=False)
-    uow = SqlUnitOfWork(sessions)
     project = stored_project(uow)
     subgroup = Subgroup(
         id=SubgroupId(uuid4()),
@@ -814,9 +812,8 @@ def test_group_availability_persists_and_reaches_schedule_snapshot(
         assert problem.groups[0].availability[0].end == time(13)
         assert problem.subgroups[0].availability[0].day == Weekday.TUESDAY
 
-    with migrated_engine.connect() as connection:
-        assert count(connection, GroupAvailabilityRow) == 1
-        assert count(connection, SubgroupAvailabilityRow) == 1
+    assert count(db_connection, GroupAvailabilityRow) == 1
+    assert count(db_connection, SubgroupAvailabilityRow) == 1
 
     with uow:
         changed = uow.groups.get_for_update(project.id, group.id)
@@ -833,6 +830,5 @@ def test_group_availability_persists_and_reaches_schedule_snapshot(
         uow.groups.save(changed)
         uow.commit()
 
-    with migrated_engine.connect() as connection:
-        assert count(connection, GroupAvailabilityRow) == 0
-        assert count(connection, SubgroupAvailabilityRow) == 0
+    assert count(db_connection, GroupAvailabilityRow) == 0
+    assert count(db_connection, SubgroupAvailabilityRow) == 0

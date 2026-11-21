@@ -67,7 +67,10 @@ class FeasibleScheduleSolver:
         if any(criterion.is_active for criterion in problem.optimization_criteria):
             raise NotImplementedError("Оптимизация расписания реализуется в задаче #68")
 
-        requirements, diagnostics = prepare_requirements(problem)
+        try:
+            requirements, diagnostics = prepare_requirements(problem, control)
+        except SearchCancelled:
+            return SolverResult(SolverStatus.CANCELLED)
         if diagnostics:
             if control.is_cancel_requested():
                 return SolverResult(SolverStatus.CANCELLED)

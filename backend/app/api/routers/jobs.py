@@ -28,7 +28,11 @@ def create_generation_job(
     )
     logger.info(
         "Generation job queued",
-        extra={"event": "generation_job.queued", "job_id": str(job.id), "job_status": job.status.value},
+        extra={
+            "event": "generation_job.queued",
+            "job_id": str(job.id),
+            "job_status": job.status.value,
+        },
     )
     return QueuedJobResponse.of(job)
 

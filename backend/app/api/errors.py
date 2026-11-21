@@ -40,7 +40,11 @@ def install_error_handlers(app: FastAPI) -> None:
         body = error_body(exc.code, exc.message, exc.details)
         logger.info(
             "Domain error",
-            extra={"event": "http.request.domain_error", "error_code": exc.code, "status_code": status},
+            extra={
+                "event": "http.request.domain_error",
+                "error_code": exc.code,
+                "status_code": status,
+            },
         )
         return JSONResponse(status_code=status, content=body)
 
@@ -53,7 +57,11 @@ def install_error_handlers(app: FastAPI) -> None:
         ]
         logger.warning(
             "Request validation failed",
-            extra={"event": "http.request.validation_error", "error_code": "VALIDATION_ERROR", "status_code": 422},
+            extra={
+                "event": "http.request.validation_error",
+                "error_code": "VALIDATION_ERROR",
+                "status_code": 422,
+            },
         )
         return JSONResponse(
             status_code=422,

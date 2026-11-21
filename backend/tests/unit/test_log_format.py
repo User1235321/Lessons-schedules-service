@@ -106,3 +106,20 @@ def test_json_formatter_redacts_database_exception_details() -> None:
     assert "IntegrityError: [details redacted]" in payload["traceback"]
     assert "plaintext" not in payload["traceback"]
     assert "INSERT INTO users" not in payload["traceback"]
+
+
+def test_json_formatter_redacts_quoted_secrets_in_messages() -> None:
+    formatter = JsonFormatter()
+    record = logging.makeLogRecord(
+        {
+            "name": "app.api",
+            "levelno": logging.WARNING,
+            "msg": 'password="a private password" and "token": "another secret"',
+        }
+    )
+
+    payload = json.loads(formatter.format(record))
+
+    assert "a private password" not in payload["message"]
+    assert "another secret" not in payload["message"]
+    assert payload["message"].count("[REDACTED]") == 2

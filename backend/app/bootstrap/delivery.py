@@ -29,7 +29,10 @@ def main() -> None:
             except SQLAlchemyError as error:
                 logger.exception(
                     "Outbox delivery failed",
-                    extra={"event": "outbox.delivery.failed", "exception_type": type(error).__name__},
+                    extra={
+                        "event": "outbox.delivery.failed",
+                        "exception_type": type(error).__name__,
+                    },
                 )
                 delivered = False
             if not delivered:

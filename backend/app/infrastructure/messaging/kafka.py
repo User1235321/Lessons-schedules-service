@@ -47,7 +47,9 @@ class KafkaJobPublisher:
                 extra={
                     "event": "outbox.job.publish_failed",
                     "job_id": str(message.job_id),
-                    "exception_type": type(delivery_error).__name__ if delivery_error else "TimeoutError",
+                    "exception_type": (
+                        type(delivery_error).__name__ if delivery_error else "TimeoutError"
+                    ),
                 },
             )
             raise JobPublishError(

@@ -110,7 +110,9 @@ def _participants(
         group = groups.get(target)
         if group is None:
             return None
-        return Participants((group.id,), None, group.student_count, group.name, (group.availability,))
+        return Participants(
+            (group.id,), None, group.student_count, group.name, (group.availability,)
+        )
     if workload.target.kind is WorkloadTargetKind.SUBGROUP:
         subgroup = subgroups.get(target)
         if subgroup is None or subgroup.group_id not in groups:
@@ -185,7 +187,7 @@ def _suitable_rooms(
 
 
 def prepare_requirements(
-    problem: ScheduleProblem,
+    problem: ScheduleProblem, control: SolverControl
 ) -> tuple[tuple[LessonRequirements, ...], tuple[SolverDiagnostic, ...]]:
     subjects = {subject.id: subject.name for subject in problem.subjects}
     groups = {group.id: group for group in problem.groups}
@@ -195,6 +197,7 @@ def prepare_requirements(
     diagnostics: list[SolverDiagnostic] = []
 
     for workload in sorted(problem.workloads, key=lambda item: item.id):
+        check_cancelled(control)
         participants = _participants(workload, groups, subgroups, streams)
         teachers = _qualified_teachers(problem, workload)
         duration = (

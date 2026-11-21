@@ -268,6 +268,45 @@ def test_room_specialization_is_required() -> None:
     assert solve(replace(source, rooms=(unsupported,))).status is SolverStatus.INFEASIBLE
 
 
+@pytest.mark.parametrize(
+    ("room_type", "lesson_type"),
+    [
+        (RoomType.PRACTICE_SPECIALIZED, "PRACTICE"),
+        (RoomType.LABORATORY, "LAB"),
+    ],
+)
+def test_empty_specialization_excludes_specialized_rooms(
+    room_type: RoomType, lesson_type: str
+) -> None:
+    room = RoomSnapshot(ROOM, "Специализированная", 30, room_type, (window(),))
+    source = problem(
+        workloads=(workload(lesson_type=lesson_type, lesson_format=LessonFormat.ONSITE),),
+        teachers=(teacher(lesson_type=lesson_type),),
+        rooms=(room,),
+    )
+
+    result = solve(source)
+
+    assert result.status is SolverStatus.INFEASIBLE
+    assert result.diagnostics[0].workload_ids == (WORKLOAD,)
+
+
+def test_universal_practice_room_allows_empty_capabilities() -> None:
+    room = RoomSnapshot(
+        ROOM, "Универсальная", 30, RoomType.PRACTICE_UNIVERSAL, (window(),)
+    )
+    source = problem(
+        workloads=(workload(lesson_type="PRACTICE", lesson_format=LessonFormat.ONSITE),),
+        teachers=(teacher(lesson_type="PRACTICE"),),
+        rooms=(room,),
+    )
+
+    result = solve(source)
+
+    assert result.status is SolverStatus.SOLVED
+    assert result.variants[0].entries[0].room_id == ROOM
+
+
 def test_remote_lessons_do_not_require_or_reserve_a_room() -> None:
     result = solve(problem())
     entry = result.variants[0].entries[0]
@@ -377,7 +416,14 @@ def test_stream_room_must_hold_all_participating_students() -> None:
 
 
 def test_lab_requires_multiple_distinct_teachers_in_one_room() -> None:
-    lab = RoomSnapshot(ROOM, "Лаборатория", 30, RoomType.LABORATORY, (window(),))
+    lab = RoomSnapshot(
+        ROOM,
+        "Лаборатория",
+        30,
+        RoomType.LABORATORY,
+        (window(),),
+        (TeachingCapability(SUBJECT, "LAB"),),
+    )
     source = problem(
         workloads=(workload(
             lesson_type="LAB", lesson_format=LessonFormat.ONSITE, teacher_count=2

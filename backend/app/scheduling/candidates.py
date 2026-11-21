@@ -15,6 +15,7 @@ from app.domain.scheduling.resources import (
     SubgroupSnapshot,
     TeacherSnapshot,
     WeeklyWindow,
+    room_allows_lesson,
 )
 from app.domain.scheduling.schedule import LessonFormat, ScheduleEntry, TeacherAssignment
 from app.domain.scheduling.solver import SolverControl, SolverDiagnostic
@@ -173,14 +174,7 @@ def _suitable_rooms(
                 for room in problem.rooms
                 if room.room_type in _ROOM_TYPES[workload.lesson_type]
                 and room.capacity >= students
-                and (
-                    not room.capabilities
-                    or any(
-                        capability.subject_id == workload.subject_id
-                        and capability.lesson_type == workload.lesson_type
-                        for capability in room.capabilities
-                    )
-                )
+                and room_allows_lesson(room, workload.subject_id, workload.lesson_type)
             ),
             key=lambda room: room.id,
         )

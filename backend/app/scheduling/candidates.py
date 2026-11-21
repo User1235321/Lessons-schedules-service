@@ -1,7 +1,8 @@
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import time
 from itertools import combinations
-from typing import Iterator, Literal
+from typing import Literal
 from uuid import UUID
 
 from app.domain.projects.settings import DurationModeKind, ProjectSettings, TimeModeKind

@@ -37,7 +37,13 @@ def test_group_lifecycle(api: TestClient, user: dict[str, str], project: str) ->
 
     renamed = api.patch(f"{path}/{group['id']}", json={"name": "302а"}, headers=user).json()
 
-    assert group == {"id": group["id"], "name": "302", "student_count": 26, "availability": [], "subgroups": []}
+    assert group == {
+        "id": group["id"],
+        "name": "302",
+        "student_count": 26,
+        "availability": [],
+        "subgroups": [],
+    }
     assert renamed == group | {"name": "302а"}
     assert api.get(path, headers=user).json() == [other, renamed]
     assert api.delete(f"{path}/{group['id']}", headers=user).status_code == 204
@@ -220,7 +226,12 @@ def test_group_and_subgroup_availability_crud(
     ).json()
     assert renamed["availability"] == [ODD_MONDAY, EVEN_TUESDAY]
     assert renamed["subgroups"] == [
-        {"id": subgroup["id"], "name": "301-1", "student_count": 12, "availability": [EVEN_TUESDAY]},
+        {
+            "id": subgroup["id"],
+            "name": "301-1",
+            "student_count": 12,
+            "availability": [EVEN_TUESDAY],
+        },
         {"id": other["id"], "name": "301-2", "student_count": 12, "availability": []},
     ]
     assert api.get(f"{subgroup_path}/{subgroup['id']}", headers=user).json()["availability"] == [

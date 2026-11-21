@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { validateStudentCount } from "../src/features/project-editor/validation.js";
@@ -168,10 +168,8 @@ describe("Groups section", () => {
     await user.click(within(dialog).getByRole("button", { name: "Добавить промежуток" }));
     const start = within(dialog).getByLabelText("Начало: Доступность, промежуток 1");
     const end = within(dialog).getByLabelText("Окончание: Доступность, промежуток 1");
-    await user.clear(start);
-    await user.type(start, "19:00");
-    await user.clear(end);
-    await user.type(end, "18:00");
+    fireEvent.change(start, { target: { value: "19:00" } });
+    fireEvent.change(end, { target: { value: "18:00" } });
     await user.click(within(dialog).getByRole("button", { name: "Сохранить" }));
 
     expect(within(dialog).getByText("Время окончания должно быть позже начала")).toBeTruthy();

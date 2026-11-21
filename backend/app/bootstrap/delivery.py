@@ -24,7 +24,9 @@ def main() -> None:
         while not stopping.is_set():
             try:
                 delivered = delivery.execute()
-            except (JobPublishError, SQLAlchemyError) as error:
+            except JobPublishError:
+                delivered = False
+            except SQLAlchemyError as error:
                 logger.exception(
                     "Outbox delivery failed",
                     extra={"event": "outbox.delivery.failed", "exception_type": type(error).__name__},

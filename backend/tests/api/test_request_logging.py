@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -61,8 +62,6 @@ def test_error_responses_always_have_request_id() -> None:
 
 
 def test_request_id_is_not_reused_between_parallel_requests() -> None:
-    from concurrent.futures import ThreadPoolExecutor
-
     client = TestClient(create_app())
 
     with ThreadPoolExecutor(max_workers=4) as executor:

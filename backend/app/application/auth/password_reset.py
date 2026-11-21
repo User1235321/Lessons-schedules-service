@@ -58,7 +58,7 @@ class RequestPasswordReset:
             self.mail.send(email, "Восстановление пароля", body)
         except MailDeliveryError as error:
             logger.warning(
-                "Password reset email delivery failed",
+                "Password reset email delivery failed: %s", error,
                 extra={
                     "event": "auth.password_reset.delivery_failed",
                     "exception_type": type(error).__name__,

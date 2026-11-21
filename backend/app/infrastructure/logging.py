@@ -1,9 +1,41 @@
 import json
 import logging
+import re
 import sys
 import traceback
 from collections.abc import Callable
 from datetime import UTC, datetime
+
+_SENSITIVE_VALUES = re.compile(
+    r"(?i)\b(authorization|password|passwd|secret|access_token|refresh_token|token|api_key)"
+    r"\b\s*(?::|=|\bis\b)\s*(?:bearer\s+)?(?:[^\s,;]+)"
+)
+_EMAIL_ADDRESSES = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
+_SENSITIVE_EXCEPTION_MODULES = {"sqlalchemy", "psycopg", "smtplib"}
+
+
+def redact_sensitive_details(value: str) -> str:
+    value = _SENSITIVE_VALUES.sub(lambda m: f"{m.group(1)}=[REDACTED]", value)
+    return _EMAIL_ADDRESSES.sub("[REDACTED_EMAIL]", value)
+
+
+def format_diagnostic_exception(record: logging.LogRecord) -> str:
+    exception_type, exception, tb = record.exc_info
+    if any(
+        cls.__module__.split(".", 1)[0] in _SENSITIVE_EXCEPTION_MODULES
+        for cls in exception_type.__mro__
+    ):
+        frames = "".join(
+            f'  File "{frame.filename}", line {frame.lineno}, in {frame.name}\n'
+            for frame in traceback.extract_tb(tb)
+        )
+        return (
+            f"Traceback (most recent call last):\n{frames}"
+            f"{exception_type.__name__}: [details redacted]"
+        )
+    return redact_sensitive_details(
+        "".join(traceback.format_exception(exception_type, exception, tb, chain=False))
+    )
 
 
 class JsonFormatter(logging.Formatter):
@@ -13,14 +45,18 @@ class JsonFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, object] = {
-            "timestamp": datetime.fromtimestamp(record.created, UTC).isoformat().replace("+00:00", "Z"),
+            "timestamp": datetime.fromtimestamp(record.created, UTC).isoformat().replace(
+                "+00:00", "Z"
+            ),
             "level": record.levelname,
             "service": "backend",
             "logger": record.name,
             "event": getattr(record, "event", "log.message"),
-            "message": record.getMessage(),
+            "message": redact_sensitive_details(record.getMessage()),
         }
-        request_id = self.request_id_provider() if self.request_id_provider else None
+        request_id = getattr(record, "request_id", None)
+        if request_id is None and self.request_id_provider:
+            request_id = self.request_id_provider()
         if request_id:
             payload["request_id"] = request_id
         for field in (
@@ -37,7 +73,7 @@ class JsonFormatter(logging.Formatter):
                 payload[field] = getattr(record, field)
         if record.exc_info:
             payload["exception_type"] = record.exc_info[0].__name__
-            payload["traceback"] = "".join(traceback.format_tb(record.exc_info[2]))
+            payload["traceback"] = format_diagnostic_exception(record)
         return json.dumps(payload, ensure_ascii=False)
 
 

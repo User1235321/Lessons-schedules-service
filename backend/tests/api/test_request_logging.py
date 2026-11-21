@@ -69,3 +69,30 @@ def test_request_id_is_not_reused_between_parallel_requests() -> None:
 
     request_ids = [response.headers["X-Request-ID"] for response in responses]
     assert len(set(request_ids)) == len(request_ids)
+
+def test_unhandled_exception_log_correlates_with_error_response(capsys) -> None:
+    app = create_app()
+    router = APIRouter()
+
+    @router.get("/_test/correlation")
+    def crash() -> None:
+        raise RuntimeError("diagnostic failure")
+
+    app.include_router(router)
+    client = TestClient(app, raise_server_exceptions=False)
+    capsys.readouterr()
+
+    response = client.get("/_test/correlation")
+    events = [
+        json.loads(line)
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith("{")
+    ]
+    errors = [event for event in events if event.get("event") == "http.request.unhandled_error"]
+
+    assert response.status_code == 500
+    assert len(errors) == 1
+    assert errors[0]["request_id"] == response.headers["X-Request-ID"]
+    assert errors[0]["exception_type"] == "RuntimeError"
+    assert "RuntimeError: diagnostic failure" in errors[0]["traceback"]
+    assert "test_request_logging.py" in errors[0]["traceback"]

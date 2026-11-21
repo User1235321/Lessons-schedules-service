@@ -69,6 +69,7 @@ def install_error_handlers(app: FastAPI) -> None:
             exc_info=(type(exc), exc, exc.__traceback__),
             extra={
                 "event": "http.request.unhandled_error",
+                "request_id": request.state.request_id,
                 "error_code": "INTERNAL_ERROR",
                 "exception_type": type(exc).__name__,
                 "status_code": 500,

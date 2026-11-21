@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { validateStudentCount } from "../src/features/project-editor/validation.js";
@@ -82,7 +82,7 @@ describe("Groups section", () => {
 
     expect(await within(await table()).findByText("ФИЗ-23")).toBeTruthy();
     const [, init] = fetchMock.mock.calls.find(isGroupWrite);
-    expect(JSON.parse(init.body)).toEqual({ name: "ФИЗ-23", student_count: 28 });
+    expect(JSON.parse(init.body)).toEqual({ name: "ФИЗ-23", student_count: 28, availability: [] });
   });
 
   it("shows the backend error for a taken name next to the field", async () => {
@@ -127,7 +127,53 @@ describe("Groups section", () => {
     expect(await within(list).findByText("32")).toBeTruthy();
     const [url, init] = fetchMock.mock.calls.find(isGroupWrite);
     expect(url).toBe("/api/projects/42/groups/g2");
-    expect(JSON.parse(init.body)).toEqual({ name: "ПИ-22", student_count: 32 });
+    expect(JSON.parse(init.body)).toEqual({ name: "ПИ-22", student_count: 32, availability: [] });
+  });
+
+  it("edits group availability and preserves the saved intervals", async () => {
+    const { user, fetchMock } = openGroups();
+    const list = await table();
+
+    await user.click(within(list).getByRole("button", { name: "Изменить: ПИ-22" }));
+    const dialog = await screen.findByRole("dialog", { name: "Изменить группу" });
+    await user.click(within(dialog).getByRole("button", { name: "Добавить промежуток" }));
+    await user.selectOptions(
+      within(dialog).getByLabelText("Неделя: Доступность, промежуток 1"),
+      "EVEN"
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Сохранить" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Изменить группу" })).toBeNull());
+    const [, init] = fetchMock.mock.calls.find(isGroupWrite);
+    expect(JSON.parse(init.body).availability).toEqual([
+      { week: "EVEN", day: "MONDAY", start: "09:00", end: "18:00" }
+    ]);
+
+    await user.click(within(list).getByRole("button", { name: "Изменить: ПИ-22" }));
+    const reopened = await screen.findByRole("dialog", { name: "Изменить группу" });
+    expect(within(reopened).getByLabelText("Неделя: Доступность, промежуток 1").value).toBe("EVEN");
+    await user.click(within(reopened).getByRole("button", { name: "Удалить: Доступность, промежуток 1" }));
+    await user.click(within(reopened).getByRole("button", { name: "Сохранить" }));
+
+    const writes = fetchMock.mock.calls.filter(isGroupWrite);
+    expect(JSON.parse(writes.at(-1)[1].body).availability).toEqual([]);
+  });
+
+  it("rejects invalid group availability before sending a request", async () => {
+    const { user, fetchMock } = openGroups();
+    const list = await table();
+
+    await user.click(within(list).getByRole("button", { name: "Изменить: ПИ-22" }));
+    const dialog = await screen.findByRole("dialog", { name: "Изменить группу" });
+    await user.click(within(dialog).getByRole("button", { name: "Добавить промежуток" }));
+    const start = within(dialog).getByLabelText("Начало: Доступность, промежуток 1");
+    const end = within(dialog).getByLabelText("Окончание: Доступность, промежуток 1");
+    fireEvent.change(start, { target: { value: "19:00" } });
+    fireEvent.change(end, { target: { value: "18:00" } });
+    await user.click(within(dialog).getByRole("button", { name: "Сохранить" }));
+
+    expect(within(dialog).getByText("Время окончания должно быть позже начала")).toBeTruthy();
+    expect(fetchMock.mock.calls.some(isGroupWrite)).toBe(false);
   });
 
   it("deletes a group after confirmation", async () => {

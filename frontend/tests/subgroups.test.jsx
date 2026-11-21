@@ -80,7 +80,7 @@ describe("Subgroups dialog", () => {
     expect(within(groups).getByText("ИВТ-21/1 (12), ИВТ-21/2 (10), ИВТ-21/3 (3)")).toBeTruthy();
     const [url, init] = fetchMock.mock.calls.find(isSubgroupWrite);
     expect(url).toBe("/api/projects/42/subgroups");
-    expect(JSON.parse(init.body)).toEqual({ group_id: "g1", name: "ИВТ-21/3", student_count: 3 });
+    expect(JSON.parse(init.body)).toEqual({ group_id: "g1", name: "ИВТ-21/3", student_count: 3, availability: [] });
   });
 
   it("does not let subgroups exceed the group (F_Data_12)", async () => {
@@ -128,7 +128,7 @@ describe("Subgroups dialog", () => {
     const [url, init] = fetchMock.mock.calls.find(isSubgroupWrite);
     expect(url).toBe("/api/projects/42/subgroups/sg1");
     expect(init.method).toBe("PATCH");
-    expect(JSON.parse(init.body)).toEqual({ name: "ИВТ-21/А", student_count: 15 });
+    expect(JSON.parse(init.body)).toEqual({ name: "ИВТ-21/А", student_count: 15, availability: [] });
   });
 
   it("does not count the edited subgroup twice", async () => {
@@ -140,6 +140,29 @@ describe("Subgroups dialog", () => {
 
     expect(within(dialog).getByText(/свободно: 15/)).toBeTruthy();
     expect(fetchMock.mock.calls.some(isSubgroupWrite)).toBe(false);
+  });
+
+  it("changes subgroup availability without affecting another subgroup", async () => {
+    const { user, fetchMock, dialog } = await openSubgroups();
+    await user.click(within(dialog).getByRole("button", { name: "Изменить подгруппу: ИВТ-21/1" }));
+    await user.click(within(dialog).getByRole("button", { name: "Добавить промежуток" }));
+    await user.selectOptions(
+      within(dialog).getByLabelText("День: Доступность, промежуток 1"),
+      "TUESDAY"
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Сохранить подгруппу" }));
+
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Добавить подгруппу" })).toBeTruthy());
+    const [, init] = fetchMock.mock.calls.find(isSubgroupWrite);
+    expect(JSON.parse(init.body).availability).toEqual([
+      { week: "ANY", day: "TUESDAY", start: "09:00", end: "18:00" }
+    ]);
+
+    await user.click(within(dialog).getByRole("button", { name: "Изменить подгруппу: ИВТ-21/1" }));
+    expect(within(dialog).getByLabelText("День: Доступность, промежуток 1").value).toBe("TUESDAY");
+    await user.click(within(dialog).getByRole("button", { name: "Отменить изменение" }));
+    await user.click(within(dialog).getByRole("button", { name: "Изменить подгруппу: ИВТ-21/2" }));
+    expect(within(dialog).queryByLabelText("День: Доступность, промежуток 1")).toBeNull();
   });
 
   it("deletes a subgroup after confirmation (F_Data_13)", async () => {

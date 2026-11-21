@@ -5,6 +5,7 @@ from app.domain.academic.errors import SubgroupNameTaken, SubgroupsExceedGroup
 from app.domain.academic.names import check_student_count, clean_name, name_key
 from app.domain.shared.errors import NotFound
 from app.domain.shared.ids import GroupId, ProjectId, SubgroupId
+from app.domain.shared.week import WeeklyInterval, ordered_intervals
 
 _MISSING_GROUP_NAME = "Укажите название группы"
 _MISSING_SUBGROUP_NAME = "Укажите название подгруппы"
@@ -17,12 +18,14 @@ class Subgroup:
     id: SubgroupId
     name: str
     student_count: int
+    availability: tuple[WeeklyInterval, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
             self, "name", clean_name(self.name, field="name", missing=_MISSING_SUBGROUP_NAME)
         )
         check_student_count(self.student_count)
+        object.__setattr__(self, "availability", ordered_intervals(self.availability))
 
 
 @dataclass(kw_only=True)
@@ -38,11 +41,13 @@ class StudentGroup:
     project_id: ProjectId
     name: str
     student_count: int
+    availability: tuple[WeeklyInterval, ...] = ()
     subgroups: tuple[Subgroup, ...] = field(default=())
 
     def __post_init__(self) -> None:
         self.rename(self.name)
         check_student_count(self.student_count)
+        self.change_availability(self.availability)
         self._replace_subgroups(self.subgroups, self.student_count)
 
     def rename(self, name: str) -> None:
@@ -52,6 +57,9 @@ class StudentGroup:
         check_student_count(student_count)
         self._replace_subgroups(self.subgroups, student_count)
         self.student_count = student_count
+
+    def change_availability(self, availability: Iterable[WeeklyInterval]) -> None:
+        self.availability = ordered_intervals(availability)
 
     def add_subgroup(self, subgroup: Subgroup) -> None:
         self._replace_subgroups((*self.subgroups, subgroup), self.student_count)

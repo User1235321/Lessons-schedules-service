@@ -98,6 +98,28 @@ def test_teacher_preferences_are_optional_and_repeats_are_dropped() -> None:
     assert teacher.availability == (interval(),)
 
 
+def test_group_and_subgroup_availability_is_optional_and_normalized() -> None:
+    odd = interval(Week.ODD, Weekday.MONDAY, 9, 13)
+    even = interval(Week.EVEN, Weekday.TUESDAY, 10, 15)
+    subgroup = Subgroup(
+        id=SubgroupId(uuid4()),
+        name="301-1",
+        student_count=12,
+        availability=(even, odd, even),
+    )
+    group = a_group(24, subgroup)
+
+    assert group.availability == ()
+    assert subgroup.availability == (odd, even)
+
+    group.change_availability((even, odd, even))
+    assert group.availability == (odd, even)
+
+    group.change_availability(())
+    assert group.availability == ()
+    assert group.subgroups[0].availability == (odd, even)
+
+
 def test_group_and_subgroups_need_positive_student_count() -> None:  # F_Valid_1
     with pytest.raises(InvalidValue) as error:
         a_group(0)

@@ -21,11 +21,13 @@ from app.domain.shared.ids import (
 )
 from app.domain.shared.week import Week, Weekday, WeeklyInterval
 from app.infrastructure.persistence.models import (
+    GroupAvailabilityRow,
     RoomAvailabilityRow,
     RoomCapabilityRow,
     RoomRow,
     StreamRow,
     StudentGroupRow,
+    SubgroupAvailabilityRow,
     SubgroupRow,
     SubjectRow,
     TeacherAvailabilityRow,
@@ -75,7 +77,11 @@ def interval_rows(
 
 
 def _interval(
-    row: TeacherAvailabilityRow | TeacherPreferenceRow | RoomAvailabilityRow,
+    row: TeacherAvailabilityRow
+    | TeacherPreferenceRow
+    | RoomAvailabilityRow
+    | GroupAvailabilityRow
+    | SubgroupAvailabilityRow,
 ) -> WeeklyInterval:
     return WeeklyInterval(Week(row.week), Weekday(row.day), row.start_time, row.end_time)
 
@@ -113,12 +119,18 @@ def group_to_domain(row: StudentGroupRow) -> StudentGroup:
         project_id=ProjectId(row.project_id),
         name=row.name,
         student_count=row.student_count,
+        availability=tuple(_interval(interval) for interval in row.availability),
         subgroups=tuple(_subgroup(subgroup) for subgroup in row.subgroups),
     )
 
 
 def _subgroup(row: SubgroupRow) -> Subgroup:
-    return Subgroup(id=SubgroupId(row.id), name=row.name, student_count=row.student_count)
+    return Subgroup(
+        id=SubgroupId(row.id),
+        name=row.name,
+        student_count=row.student_count,
+        availability=tuple(_interval(interval) for interval in row.availability),
+    )
 
 
 def room_to_domain(row: RoomRow) -> Room:

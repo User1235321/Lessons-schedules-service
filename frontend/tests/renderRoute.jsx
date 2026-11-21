@@ -80,7 +80,12 @@ export function stubBackend({
   const syncSubgroup = (subgroup) => {
     const group = collection("groups").find((entry) => entry.id === subgroup.group_id);
     if (!group) return;
-    const nested = { id: subgroup.id, name: subgroup.name, student_count: subgroup.student_count };
+    const nested = {
+      id: subgroup.id,
+      name: subgroup.name,
+      student_count: subgroup.student_count,
+      availability: subgroup.availability ?? []
+    };
     const previous = group.subgroups ?? [];
     group.subgroups = previous.some((entry) => entry.id === subgroup.id)
       ? previous.map((entry) => (entry.id === subgroup.id ? nested : entry))

@@ -6,12 +6,14 @@
 
 from app.infrastructure.persistence.base import Base
 from app.infrastructure.persistence.models.academic import (
+    GroupAvailabilityRow,
     RoomAvailabilityRow,
     RoomCapabilityRow,
     RoomRow,
     StreamGroupRow,
     StreamRow,
     StudentGroupRow,
+    SubgroupAvailabilityRow,
     SubgroupRow,
     SubjectRow,
     TeacherAvailabilityRow,
@@ -41,6 +43,7 @@ from app.infrastructure.persistence.models.users import (
 __all__ = [
     "Base",
     "ExtraConstraintRow",
+    "GroupAvailabilityRow",
     "JobOutboxRow",
     "JobRow",
     "OptimizationCriterionRow",
@@ -56,6 +59,7 @@ __all__ = [
     "StreamGroupRow",
     "StreamRow",
     "StudentGroupRow",
+    "SubgroupAvailabilityRow",
     "SubgroupRow",
     "SubjectRow",
     "TeacherAvailabilityRow",

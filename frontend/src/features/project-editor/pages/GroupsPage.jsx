@@ -17,6 +17,11 @@ export default function GroupsPage() {
         { label: "Группа", render: (group) => group.name },
         { label: "Студентов", render: (group) => group.student_count },
         {
+          label: "Доступность",
+          render: (group) =>
+            group.availability?.length ? `Интервалов: ${group.availability.length}` : "Без ограничений"
+        },
+        {
           label: "Подгруппы",
           render: (group) =>
             group.subgroups.map((subgroup) => `${subgroup.name} (${subgroup.student_count})`).join(", ") ||

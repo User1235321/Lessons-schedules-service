@@ -308,6 +308,44 @@ def test_stream_and_its_group_cannot_overlap() -> None:
     assert solve(source).status is SolverStatus.INFEASIBLE
 
 
+def test_group_lesson_cannot_overlap_its_subgroup_lesson() -> None:
+    source = problem(
+        workloads=(
+            workload(WORKLOAD, GROUP),
+            workload(SECOND_WORKLOAD, LEFT, WorkloadTargetKind.SUBGROUP),
+        ),
+        teachers=(teacher(), teacher(SECOND_TEACHER)),
+        subgroups=(SubgroupSnapshot(LEFT, GROUP, "1", 10),),
+    )
+
+    assert solve(source).status is SolverStatus.INFEASIBLE
+
+
+def test_stream_room_must_hold_all_participating_students() -> None:
+    smaller = RoomSnapshot(
+        UUID(int=20), "Малая", 30, RoomType.LECTURE, (window(),)
+    )
+    larger = RoomSnapshot(ROOM, "Поточная", 40, RoomType.LECTURE, (window(),))
+    source = problem(
+        workloads=(workload(
+            target=STREAM,
+            kind=WorkloadTargetKind.STREAM,
+            lesson_format=LessonFormat.ONSITE,
+        ),),
+        groups=(
+            GroupSnapshot(GROUP, "П-101", 20),
+            GroupSnapshot(SECOND_GROUP, "П-102", 15),
+        ),
+        streams=(StreamSnapshot(STREAM, "Поток", (GROUP, SECOND_GROUP)),),
+        rooms=(smaller, larger),
+    )
+
+    result = solve(source)
+
+    assert result.status is SolverStatus.SOLVED
+    assert result.variants[0].entries[0].room_id == ROOM
+
+
 def test_lab_requires_multiple_distinct_teachers_in_one_room() -> None:
     lab = RoomSnapshot(ROOM, "Лаборатория", 30, RoomType.LABORATORY, (window(),))
     source = problem(

@@ -224,6 +224,40 @@ def test_room_teacher_timing_and_workload_conflicts(problem: ScheduleProblem) ->
     assert not any(c.code.startswith("ROOM_") for c in validate_schedule(schedule(remote), problem))
 
 
+@pytest.mark.parametrize(
+    ("room_type", "lesson_type", "requires_capabilities"),
+    [
+        (RoomType.LECTURE, "LECTURE", False),
+        (RoomType.PRACTICE_UNIVERSAL, "PRACTICE", False),
+        (RoomType.PRACTICE_SPECIALIZED, "PRACTICE", True),
+        (RoomType.LABORATORY, "LAB", True),
+    ],
+)
+def test_room_specialization_rule_matches_generation(
+    problem: ScheduleProblem,
+    room_type: RoomType,
+    lesson_type: str,
+    requires_capabilities: bool,
+) -> None:
+    available = (WeeklyWindow("ANY", MONDAY, time(9), time(10)),)
+    room = RoomSnapshot(ROOM, "Аудитория", 30, room_type, available)
+    workload = replace(
+        problem.workloads[0], lesson_type=lesson_type, lesson_format=LessonFormat.ONSITE
+    )
+    source = replace(problem, workloads=(workload,), rooms=(room,))
+    entry = lesson(lesson_type=lesson_type, lesson_format=LessonFormat.ONSITE, room_id=ROOM)
+
+    missing = validate_schedule(schedule(entry), source)
+    assert ("ROOM_SPECIALIZATION" in {c.code for c in missing}) is requires_capabilities
+
+    supported_room = replace(
+        room, capabilities=(TeachingCapability(SUBJECT, lesson_type),)
+    )
+    if requires_capabilities:
+        supported = validate_schedule(schedule(entry), replace(source, rooms=(supported_room,)))
+        assert "ROOM_SPECIALIZATION" not in {c.code for c in supported}
+
+
 def test_lab_count_individual_duration_and_excess_occurrences(problem: ScheduleProblem) -> None:
     first, second = problem.workloads
     problem = replace(

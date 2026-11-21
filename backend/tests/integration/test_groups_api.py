@@ -37,7 +37,7 @@ def test_group_lifecycle(api: TestClient, user: dict[str, str], project: str) ->
 
     renamed = api.patch(f"{path}/{group['id']}", json={"name": "302а"}, headers=user).json()
 
-    assert group == {"id": group["id"], "name": "302", "student_count": 26, "subgroups": []}
+    assert group == {"id": group["id"], "name": "302", "student_count": 26, "availability": [], "subgroups": []}
     assert renamed == group | {"name": "302а"}
     assert api.get(path, headers=user).json() == [other, renamed]
     assert api.delete(f"{path}/{group['id']}", headers=user).status_code == 204
@@ -71,10 +71,11 @@ def test_subgroups_appear_inside_their_group(
         "group_id": group["id"],
         "name": "301-1",
         "student_count": 12,
+        "availability": [],
     }
     assert reloaded["subgroups"] == [
-        {"id": first["id"], "name": "301-1", "student_count": 12},
-        {"id": second["id"], "name": "301-2", "student_count": 12},
+        {"id": first["id"], "name": "301-1", "student_count": 12, "availability": []},
+        {"id": second["id"], "name": "301-2", "student_count": 12, "availability": []},
     ]
 
 
@@ -177,3 +178,111 @@ def test_deleted_group_takes_subgroups_along(
     assert (
         api.get(f"/projects/{project}/subgroups/{subgroup['id']}", headers=user).status_code == 404
     )
+
+
+
+ODD_MONDAY = {"week": "ODD", "day": "MONDAY", "start": "09:00", "end": "13:00"}
+EVEN_TUESDAY = {"week": "EVEN", "day": "TUESDAY", "start": "10:00", "end": "15:00"}
+
+
+def test_group_and_subgroup_availability_crud(
+    api: TestClient, user: dict[str, str], project: str
+) -> None:
+    group_path = f"/projects/{project}/groups"
+    subgroup_path = f"/projects/{project}/subgroups"
+    group = created(
+        api, group_path, user,
+        {"name": "301", "student_count": 24, "availability": [EVEN_TUESDAY, ODD_MONDAY]},
+    )
+    subgroup = created(
+        api, subgroup_path, user,
+        {
+            "group_id": group["id"],
+            "name": "301-1",
+            "student_count": 12,
+            "availability": [ODD_MONDAY],
+        },
+    )
+    other = new_subgroup(api, user, project, group["id"], "301-2", 12)
+
+    assert group["availability"] == [ODD_MONDAY, EVEN_TUESDAY]
+    assert subgroup["availability"] == [ODD_MONDAY]
+
+    updated = api.patch(
+        f"{subgroup_path}/{subgroup['id']}",
+        json={"availability": [EVEN_TUESDAY]},
+        headers=user,
+    ).json()
+    assert updated["availability"] == [EVEN_TUESDAY]
+
+    renamed = api.patch(
+        f"{group_path}/{group['id']}", json={"name": "301-А"}, headers=user
+    ).json()
+    assert renamed["availability"] == [ODD_MONDAY, EVEN_TUESDAY]
+    assert renamed["subgroups"] == [
+        {"id": subgroup["id"], "name": "301-1", "student_count": 12, "availability": [EVEN_TUESDAY]},
+        {"id": other["id"], "name": "301-2", "student_count": 12, "availability": []},
+    ]
+    assert api.get(f"{subgroup_path}/{subgroup['id']}", headers=user).json()["availability"] == [
+        EVEN_TUESDAY
+    ]
+
+    cleared = api.patch(
+        f"{group_path}/{group['id']}", json={"availability": []}, headers=user
+    ).json()
+    assert cleared["availability"] == []
+    assert cleared["subgroups"][0]["availability"] == [EVEN_TUESDAY]
+    assert api.get(group_path, headers=user).json()[0]["availability"] == []
+
+    assert api.patch(
+        f"{subgroup_path}/{subgroup['id']}", json={"availability": []}, headers=user
+    ).json()["availability"] == []
+    assert api.get(f"{subgroup_path}/{other['id']}", headers=user).json()["availability"] == []
+
+
+def test_availability_rejects_invalid_interval_and_keeps_existing_data(
+    api: TestClient, user: dict[str, str], project: str
+) -> None:
+    group = created(
+        api,
+        f"/projects/{project}/groups",
+        user,
+        {"name": "301", "student_count": 24, "availability": [ODD_MONDAY]},
+    )
+    path = f"/projects/{project}/groups/{group['id']}"
+    invalid = ODD_MONDAY | {"end": "08:00"}
+
+    response = api.patch(path, json={"availability": [invalid]}, headers=user)
+
+    assert response.status_code == 422
+    assert response.json()["details"]["field"] == "availability.0.end"
+    assert api.get(path, headers=user).json()["availability"] == [ODD_MONDAY]
+
+    subgroup = new_subgroup(api, user, project, group["id"], "301-1", 12)
+    response = api.patch(
+        f"/projects/{project}/subgroups/{subgroup['id']}",
+        json={"availability": [invalid]},
+        headers=user,
+    )
+    assert response.status_code == 422
+    assert response.json()["details"]["field"] == "availability.0.end"
+    assert api.get(
+        f"/projects/{project}/subgroups/{subgroup['id']}", headers=user
+    ).json()["availability"] == []
+
+
+def test_availability_is_scoped_to_project(
+    api: TestClient, user: dict[str, str], project: str
+) -> None:
+    foreign = new_project(api, user, "Другой")
+    group = new_group(api, user, foreign)
+    subgroup = new_subgroup(api, user, foreign, group["id"], "301-1", 12)
+
+    assert api.patch(
+        f"/projects/{project}/groups/{group['id']}",
+        json={"availability": [ODD_MONDAY]}, headers=user,
+    ).status_code == 404
+    assert api.patch(
+        f"/projects/{project}/subgroups/{subgroup['id']}",
+        json={"availability": [ODD_MONDAY]}, headers=user,
+    ).status_code == 404

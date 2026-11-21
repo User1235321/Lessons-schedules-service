@@ -7,6 +7,7 @@ from sqlalchemy import Connection, Engine, delete, func, select
 from sqlalchemy.orm import sessionmaker
 
 from app.application.academic.changes import project_data_changed
+from app.application.scheduling.validation_data import load_validation_data
 from app.domain.academic.capability import Capability
 from app.domain.academic.errors import (
     GroupInUse,
@@ -42,11 +43,13 @@ from app.domain.shared.ids import (
 )
 from app.domain.shared.week import Week, Weekday, WeeklyInterval
 from app.infrastructure.persistence.models import (
+    GroupAvailabilityRow,
     RoomCapabilityRow,
     RoomRow,
     StreamGroupRow,
     StreamRow,
     StudentGroupRow,
+    SubgroupAvailabilityRow,
     SubgroupRow,
     SubjectRow,
     TeacherAvailabilityRow,
@@ -776,3 +779,60 @@ def test_stream_with_workload_is_not_deleted(uow: SqlUnitOfWork) -> None:
         uow.commit()
     with uow:
         assert uow.streams.list_in_project(project) == []
+
+
+
+def test_group_availability_persists_and_reaches_schedule_snapshot(
+    migrated_engine: Engine,
+) -> None:
+    sessions = sessionmaker(bind=migrated_engine, expire_on_commit=False)
+    uow = SqlUnitOfWork(sessions)
+    project = stored_project(uow)
+    subgroup = Subgroup(
+        id=SubgroupId(uuid4()),
+        name="301-1",
+        student_count=12,
+        availability=(ANY_TUESDAY,),
+    )
+    group = StudentGroup(
+        id=GroupId(uuid4()),
+        project_id=project.id,
+        name="301",
+        student_count=24,
+        subgroups=(subgroup,),
+        availability=(MONDAY_MORNING,),
+    )
+    stored_group(uow, group)
+
+    with uow:
+        loaded = uow.groups.get(project.id, group.id)
+        assert loaded is not None
+        assert loaded.availability == (MONDAY_MORNING,)
+        assert loaded.subgroups[0].availability == (ANY_TUESDAY,)
+        problem = load_validation_data(uow, project)
+        assert problem.groups[0].availability[0].start == time(9)
+        assert problem.groups[0].availability[0].end == time(13)
+        assert problem.subgroups[0].availability[0].day == Weekday.TUESDAY
+
+    with migrated_engine.connect() as connection:
+        assert count(connection, GroupAvailabilityRow) == 1
+        assert count(connection, SubgroupAvailabilityRow) == 1
+
+    with uow:
+        changed = uow.groups.get_for_update(project.id, group.id)
+        assert changed is not None
+        changed.change_availability(())
+        changed.change_subgroup(
+            Subgroup(
+                id=subgroup.id,
+                name=subgroup.name,
+                student_count=subgroup.student_count,
+                availability=(),
+            )
+        )
+        uow.groups.save(changed)
+        uow.commit()
+
+    with migrated_engine.connect() as connection:
+        assert count(connection, GroupAvailabilityRow) == 0
+        assert count(connection, SubgroupAvailabilityRow) == 0

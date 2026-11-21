@@ -346,6 +346,27 @@ def test_shared_room_cannot_be_used_for_two_simultaneous_lessons() -> None:
     assert solve(source).status is SolverStatus.INFEASIBLE
 
 
+def test_backtracking_finds_solution_after_rejecting_first_assignment() -> None:
+    source = problem(
+        workloads=(
+            workload(WORKLOAD, lesson_type="LECTURE"),
+            workload(SECOND_WORKLOAD, lesson_type="PRACTICE"),
+        ),
+        teachers=(
+            teacher(TEACHER, "LECTURE", (window(time(9), time(11)),)),
+            teacher(SECOND_TEACHER, "PRACTICE", (window(),)),
+        ),
+    )
+
+    result = solve(source)
+
+    assert result.status is SolverStatus.SOLVED
+    starts = {
+        entry.workload_id: entry.start_time for entry in result.variants[0].entries
+    }
+    assert starts == {WORKLOAD: time(10), SECOND_WORKLOAD: time(9)}
+
+
 def test_top_n_contains_distinct_feasible_arrangements() -> None:
     availability = (window(time(9), time(12)),)
     source = problem(teachers=(teacher(availability=availability),))

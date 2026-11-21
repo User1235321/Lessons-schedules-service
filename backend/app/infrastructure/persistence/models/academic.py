@@ -144,6 +144,7 @@ class StudentGroupRow(Base):
     student_count: Mapped[int]
 
     subgroups: Mapped[list["SubgroupRow"]] = relationship(viewonly=True, lazy="raise")
+    availability: Mapped[list["GroupAvailabilityRow"]] = relationship(viewonly=True, lazy="raise")
 
 
 class SubgroupRow(Base):
@@ -175,6 +176,35 @@ class SubgroupRow(Base):
     name: Mapped[str] = mapped_column(String(MAX_NAME_LENGTH))
     name_key: Mapped[str] = mapped_column(Text, default=_name_key_default)
     student_count: Mapped[int]
+    availability: Mapped[list["SubgroupAvailabilityRow"]] = relationship(
+        viewonly=True, lazy="raise"
+    )
+
+
+class GroupAvailabilityRow(Base):
+    __tablename__ = "group_availability"
+    __table_args__ = _interval_checks()
+
+    group_id: Mapped[UUID] = mapped_column(
+        ForeignKey("student_groups.id", ondelete="CASCADE"), primary_key=True
+    )
+    week: Mapped[str] = mapped_column(String(WEEK_LENGTH), primary_key=True)
+    day: Mapped[str] = mapped_column(String(WEEKDAY_LENGTH), primary_key=True)
+    start_time: Mapped[time] = mapped_column(primary_key=True)
+    end_time: Mapped[time] = mapped_column(primary_key=True)
+
+
+class SubgroupAvailabilityRow(Base):
+    __tablename__ = "subgroup_availability"
+    __table_args__ = _interval_checks()
+
+    subgroup_id: Mapped[UUID] = mapped_column(
+        ForeignKey("subgroups.id", ondelete="CASCADE"), primary_key=True
+    )
+    week: Mapped[str] = mapped_column(String(WEEK_LENGTH), primary_key=True)
+    day: Mapped[str] = mapped_column(String(WEEKDAY_LENGTH), primary_key=True)
+    start_time: Mapped[time] = mapped_column(primary_key=True)
+    end_time: Mapped[time] = mapped_column(primary_key=True)
 
 
 def _in_project(columns: list[str], table: str, name: str) -> ForeignKeyConstraint:

@@ -49,12 +49,14 @@ from app.infrastructure.persistence.mappers.academic import (
     workload_values,
 )
 from app.infrastructure.persistence.models import (
+    GroupAvailabilityRow,
     RoomAvailabilityRow,
     RoomCapabilityRow,
     RoomRow,
     StreamGroupRow,
     StreamRow,
     StudentGroupRow,
+    SubgroupAvailabilityRow,
     SubgroupRow,
     SubjectRow,
     TeacherAvailabilityRow,
@@ -336,10 +338,21 @@ class SqlGroupRepository:
                     student_count=group.student_count,
                 )
             )
+            if group.availability:
+                self._session.execute(
+                    insert(GroupAvailabilityRow),
+                    interval_rows({"group_id": group.id}, group.availability),
+                )
             if group.subgroups:
                 self._session.execute(
                     insert(SubgroupRow), [subgroup_row(group, sub) for sub in group.subgroups]
                 )
+                for subgroup in group.subgroups:
+                    if subgroup.availability:
+                        self._session.execute(
+                            insert(SubgroupAvailabilityRow),
+                            interval_rows({"subgroup_id": subgroup.id}, subgroup.availability),
+                        )
 
     def get(self, project_id: ProjectId, group_id: GroupId) -> StudentGroup | None:
         row = self._session.scalar(self._query(project_id).where(StudentGroupRow.id == group_id))
@@ -385,6 +398,14 @@ class SqlGroupRepository:
             )
             if updated is None:
                 raise NotFound("Группа не найдена", group_id=str(group.id))
+            self._session.execute(
+                delete(GroupAvailabilityRow).where(GroupAvailabilityRow.group_id == group.id)
+            )
+            if group.availability:
+                self._session.execute(
+                    insert(GroupAvailabilityRow),
+                    interval_rows({"group_id": group.id}, group.availability),
+                )
             self._save_subgroups(group)
 
     def delete(self, project_id: ProjectId, group_id: GroupId) -> None:
@@ -427,7 +448,10 @@ class SqlGroupRepository:
         return (
             select(StudentGroupRow)
             .where(StudentGroupRow.project_id == project_id)
-            .options(selectinload(StudentGroupRow.subgroups))
+            .options(
+                selectinload(StudentGroupRow.availability),
+                selectinload(StudentGroupRow.subgroups).selectinload(SubgroupRow.availability),
+            )
             .execution_options(populate_existing=True)
         )
 
@@ -476,6 +500,16 @@ class SqlGroupRepository:
                 )
             else:
                 self._session.execute(insert(SubgroupRow).values(subgroup_row(group, subgroup)))
+            self._session.execute(
+                delete(SubgroupAvailabilityRow).where(
+                    SubgroupAvailabilityRow.subgroup_id == subgroup.id
+                )
+            )
+            if subgroup.availability:
+                self._session.execute(
+                    insert(SubgroupAvailabilityRow),
+                    interval_rows({"subgroup_id": subgroup.id}, subgroup.availability),
+                )
         self._session.execute(text("SET CONSTRAINTS uq_subgroups_group_id_name IMMEDIATE"))
 
 

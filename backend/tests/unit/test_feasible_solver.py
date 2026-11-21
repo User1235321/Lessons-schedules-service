@@ -182,6 +182,20 @@ def test_repeated_lessons_can_share_one_week_and_follow_each_other() -> None:
     assert all(entry.workload_id == WORKLOAD for entry in entries)
 
 
+def test_same_hour_is_independent_between_odd_and_even_weeks() -> None:
+    source = problem(
+        workloads=(workload(occurrences=2),),
+        project_settings=settings(even=(MONDAY,)),
+    )
+
+    result = solve(source)
+
+    assert result.status is SolverStatus.SOLVED
+    assert {
+        (entry.week, entry.start_time) for entry in result.variants[0].entries
+    } == {("ODD", time(9)), ("EVEN", time(9))}
+
+
 def test_even_week_and_individual_duration_follow_project_time_model() -> None:
     availability = (window(time(9, 30), time(10, 45), "EVEN"),)
     project_settings = ProjectSettings(
@@ -220,6 +234,22 @@ def test_onsite_room_is_selected_by_type_capacity_and_availability() -> None:
 
     assert entry.room_id == ROOM
     assert entry.room_name == "Лекционная"
+
+
+def test_onsite_room_must_be_available_for_the_whole_lesson() -> None:
+    room = RoomSnapshot(
+        ROOM,
+        "Лекционная",
+        30,
+        RoomType.LECTURE,
+        (window(time(9), time(10), "EVEN"),),
+    )
+    source = problem(
+        workloads=(workload(lesson_format=LessonFormat.ONSITE),),
+        rooms=(room,),
+    )
+
+    assert solve(source).status is SolverStatus.INFEASIBLE
 
 
 def test_room_specialization_is_required() -> None:

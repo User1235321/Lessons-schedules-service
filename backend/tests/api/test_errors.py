@@ -80,3 +80,4 @@ def test_unexpected_error_hides_details() -> None:
         "message": "Внутренняя ошибка сервера",
         "details": {},
     }
+    assert response.headers["X-Request-ID"]

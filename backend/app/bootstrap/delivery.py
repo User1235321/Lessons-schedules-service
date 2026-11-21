@@ -7,23 +7,28 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.application.scheduling.ports import JobPublishError
 from app.bootstrap.container import build_container
 from app.bootstrap.settings import Settings
+from app.infrastructure.logging import configure_logging
 
 logger = logging.getLogger(__name__)
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.INFO)
+    settings = Settings()
+    configure_logging(settings.log_level)
     stopping = Event()
     signal(SIGINT, lambda *_: stopping.set())
     signal(SIGTERM, lambda *_: stopping.set())
-    container = build_container(Settings())
+    container = build_container(settings)
     delivery = container.deliver_pending_job()
     try:
         while not stopping.is_set():
             try:
                 delivered = delivery.execute()
-            except (JobPublishError, SQLAlchemyError):
-                logger.exception("Не удалось доставить задание из Outbox")
+            except (JobPublishError, SQLAlchemyError) as error:
+                logger.exception(
+                    "Outbox delivery failed",
+                    extra={"event": "outbox.delivery.failed", "exception_type": type(error).__name__},
+                )
                 delivered = False
             if not delivered:
                 stopping.wait(1)

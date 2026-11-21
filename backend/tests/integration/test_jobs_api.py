@@ -1,3 +1,4 @@
+import json
 from unittest.mock import Mock
 from uuid import UUID, uuid4
 
@@ -39,6 +40,29 @@ def test_api_creates_reads_and_requests_cancellation(scheduling_context: tuple) 
         job = uow.jobs.get(project.id, message.job_id)
         assert job.result_options.top_n == 3
     assert container.job_state().is_cancel_requested(message.job_id)
+
+
+def test_job_queued_log_contains_job_id(scheduling_context: tuple, capsys) -> None:
+    container, owner, project = scheduling_context
+    client = TestClient(create_app(container))
+    capsys.readouterr()
+
+    response = client.post(
+        f"/projects/{project.id}/generation-jobs",
+        headers=headers(container, owner.id),
+        json={"result_mode": "SINGLE"},
+    )
+    events = [
+        json.loads(line)
+        for line in capsys.readouterr().out.splitlines()
+        if line.startswith("{")
+    ]
+    queued = [event for event in events if event.get("event") == "generation_job.queued"]
+
+    assert response.status_code == 202
+    assert len(queued) == 1
+    assert queued[0]["job_id"] == response.json()["job_id"]
+    assert queued[0]["request_id"] == response.headers["X-Request-ID"]
 
 
 def test_api_hides_foreign_jobs_and_projects(scheduling_context: tuple) -> None:

@@ -1,8 +1,12 @@
+import logging
+
 from confluent_kafka import KafkaError, KafkaException, Message, Producer
 
 from app.application.scheduling.ports import JobPublishError
 from app.domain.scheduling.job import JobMessage
 from app.infrastructure.messaging.job_messages import JOBS_TOPIC, encode_job_message
+
+logger = logging.getLogger(__name__)
 
 
 class KafkaJobPublisher:
@@ -28,8 +32,28 @@ class KafkaJobPublisher:
             )
             pending = self._producer.flush(self._timeout)
         except (BufferError, KafkaException) as error:
+            logger.error(
+                "Job publication failed",
+                extra={
+                    "event": "outbox.job.publish_failed",
+                    "job_id": str(message.job_id),
+                    "exception_type": type(error).__name__,
+                },
+            )
             raise JobPublishError("Не удалось опубликовать задание") from error
         if pending or not acknowledged:
+            logger.error(
+                "Job publication was not acknowledged",
+                extra={
+                    "event": "outbox.job.publish_failed",
+                    "job_id": str(message.job_id),
+                    "exception_type": type(delivery_error).__name__ if delivery_error else "TimeoutError",
+                },
+            )
             raise JobPublishError(
                 f"Публикация задания не подтверждена: {delivery_error or 'timeout'}"
             )
+        logger.info(
+            "Job message published",
+            extra={"event": "outbox.job.published", "job_id": str(message.job_id)},
+        )

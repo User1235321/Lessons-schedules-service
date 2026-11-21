@@ -9,9 +9,9 @@ from datetime import UTC, datetime
 _SENSITIVE_VALUES = re.compile(
     r"""\b(authorization|password|passwd|secret|access_token|refresh_token|token|api_key)"""
     r"""\b["']?\s*(?::|=|\bis\b)\s*(?:bearer\s+)?(?:"[^"]*"|'[^']*'|[^\s,;]+)""",
-    re.I,
+    re.IGNORECASE,
 )
-_EMAIL_ADDRESSES = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.I)
+_EMAIL_ADDRESSES = re.compile(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", re.IGNORECASE)
 _SENSITIVE_EXCEPTION_MODULES = {"sqlalchemy", "psycopg", "smtplib"}
 
 

@@ -28,7 +28,12 @@ def create_subgroup(
     project_id: UUID, body: SubgroupRequest, user_id: CurrentUserDep, use_cases: UseCasesDep
 ) -> SubgroupResponse:
     subgroup = use_cases.create_subgroup().execute(
-        user_id, ProjectId(project_id), GroupId(body.group_id), body.name, body.student_count
+        user_id,
+        ProjectId(project_id),
+        GroupId(body.group_id),
+        body.name,
+        body.student_count,
+        body.to_availability(),
     )
     return SubgroupResponse.of(subgroup)
 
@@ -52,7 +57,12 @@ def update_subgroup(
     use_cases: UseCasesDep,
 ) -> SubgroupResponse:
     subgroup = use_cases.update_subgroup().execute(
-        user_id, ProjectId(project_id), SubgroupId(subgroup_id), body.name, body.student_count
+        user_id,
+        ProjectId(project_id),
+        SubgroupId(subgroup_id),
+        body.name,
+        body.student_count,
+        body.to_availability(),
     )
     return SubgroupResponse.of(subgroup)
 

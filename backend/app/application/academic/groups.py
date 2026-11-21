@@ -8,6 +8,7 @@ from app.application.shared.uow import UnitOfWork
 from app.domain.academic.group import StudentGroup, Subgroup
 from app.domain.shared.errors import InvalidValue, NotFound
 from app.domain.shared.ids import GroupId, ProjectId, SubgroupId, UserId
+from app.domain.shared.week import WeeklyInterval
 
 
 @dataclass(frozen=True)
@@ -35,7 +36,12 @@ class CreateGroup:
     ids: IdGenerator
 
     def execute(
-        self, user_id: UserId, project_id: ProjectId, name: str, student_count: int
+        self,
+        user_id: UserId,
+        project_id: ProjectId,
+        name: str,
+        student_count: int,
+        availability: tuple[WeeklyInterval, ...] = (),
     ) -> StudentGroup:
         with self.uow:
             project = owned_project(self.uow, project_id, user_id)
@@ -44,6 +50,7 @@ class CreateGroup:
                 project_id=project.id,
                 name=name,
                 student_count=student_count,
+                availability=availability,
             )
             self.uow.groups.add(group)
             project_data_changed(self.uow, project, self.clock.now())
@@ -86,18 +93,21 @@ class UpdateGroup:
         group_id: GroupId,
         name: str | None,
         student_count: int | None,
+        availability: tuple[WeeklyInterval, ...] | None = None,
     ) -> StudentGroup:
         with self.uow:
             project = owned_project(self.uow, project_id, user_id)
             group = self.uow.groups.get_for_update(project_id, group_id)
             if group is None:
                 raise _group_not_found(group_id)
-            if name is None and student_count is None:
+            if name is None and student_count is None and availability is None:
                 return group
             if name is not None:
                 group.rename(name)
             if student_count is not None:
                 group.change_student_count(student_count)  # F_Data_12
+            if availability is not None:
+                group.change_availability(availability)
             self.uow.groups.save(group)
             project_data_changed(self.uow, project, self.clock.now())
             self.uow.commit()
@@ -141,6 +151,7 @@ class CreateSubgroup:
         group_id: GroupId,
         name: str,
         student_count: int,
+        availability: tuple[WeeklyInterval, ...] = (),
     ) -> SubgroupInGroup:
         with self.uow:
             project = owned_project(self.uow, project_id, user_id)
@@ -149,7 +160,10 @@ class CreateSubgroup:
                 # Группа пришла в теле запроса, а не в адресе: это ошибка ввода
                 raise InvalidValue("Такой группы нет в проекте", field="group_id")
             subgroup = Subgroup(
-                id=SubgroupId(self.ids.new_id()), name=name, student_count=student_count
+                id=SubgroupId(self.ids.new_id()),
+                name=name,
+                student_count=student_count,
+                availability=availability,
             )
             group.add_subgroup(subgroup)
             self.uow.groups.save(group)
@@ -208,6 +222,7 @@ class UpdateSubgroup:
         subgroup_id: SubgroupId,
         name: str | None,
         student_count: int | None,
+        availability: tuple[WeeklyInterval, ...] | None = None,
     ) -> SubgroupInGroup:
         with self.uow:
             project = owned_project(self.uow, project_id, user_id)
@@ -215,12 +230,13 @@ class UpdateSubgroup:
             if group is None:
                 raise _subgroup_not_found(subgroup_id)
             current = group.subgroup(subgroup_id)
-            if name is None and student_count is None:
+            if name is None and student_count is None and availability is None:
                 return SubgroupInGroup(group.id, current)
             changed = Subgroup(
                 id=subgroup_id,
                 name=current.name if name is None else name,
                 student_count=current.student_count if student_count is None else student_count,
+                availability=current.availability if availability is None else availability,
             )
             group.change_subgroup(changed)  # F_Data_12
             self.uow.groups.save(group)

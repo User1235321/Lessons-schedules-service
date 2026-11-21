@@ -22,7 +22,7 @@ def create_group(
     project_id: UUID, body: GroupRequest, user_id: CurrentUserDep, use_cases: UseCasesDep
 ) -> GroupResponse:
     group = use_cases.create_group().execute(
-        user_id, ProjectId(project_id), body.name, body.student_count
+        user_id, ProjectId(project_id), body.name, body.student_count, body.to_availability()
     )
     return GroupResponse.of(group)
 
@@ -44,7 +44,12 @@ def update_group(
     use_cases: UseCasesDep,
 ) -> GroupResponse:
     group = use_cases.update_group().execute(
-        user_id, ProjectId(project_id), GroupId(group_id), body.name, body.student_count
+        user_id,
+        ProjectId(project_id),
+        GroupId(group_id),
+        body.name,
+        body.student_count,
+        body.to_availability(),
     )
     return GroupResponse.of(group)
 

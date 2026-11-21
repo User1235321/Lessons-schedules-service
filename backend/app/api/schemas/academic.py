@@ -154,25 +154,35 @@ class GroupRequest(BaseModel):
 
     name: str
     student_count: StudentCount
+    availability: list[IntervalSchema] = Field(default_factory=list)
+
+    def to_availability(self) -> tuple[WeeklyInterval, ...]:
+        return _intervals("availability", self.availability)
 
 
 class GroupUpdateRequest(BaseModel):
     name: str | None = None
     student_count: StudentCount | None = None
+    availability: list[IntervalSchema] | None = None
+
+    def to_availability(self) -> tuple[WeeklyInterval, ...] | None:
+        return None if self.availability is None else _intervals("availability", self.availability)
 
 
 class SubgroupItem(BaseModel):
-    """Подгруппа внутри ответа группы, как в test-data."""
+    """Подгруппа внутри ответа группы."""
 
     id: UUID
     name: str
     student_count: int
+    availability: list[IntervalSchema]
 
 
 class GroupResponse(BaseModel):
     id: UUID
     name: str
     student_count: int
+    availability: list[IntervalSchema]
     subgroups: list[SubgroupItem]
 
     @classmethod
@@ -181,8 +191,14 @@ class GroupResponse(BaseModel):
             id=group.id,
             name=group.name,
             student_count=group.student_count,
+            availability=[IntervalSchema.of(interval) for interval in group.availability],
             subgroups=[
-                SubgroupItem(id=sub.id, name=sub.name, student_count=sub.student_count)
+                SubgroupItem(
+                    id=sub.id,
+                    name=sub.name,
+                    student_count=sub.student_count,
+                    availability=[IntervalSchema.of(interval) for interval in sub.availability],
+                )
                 for sub in group.subgroups
             ],
         )
@@ -192,6 +208,10 @@ class SubgroupRequest(BaseModel):
     group_id: UUID
     name: str
     student_count: StudentCount
+    availability: list[IntervalSchema] = Field(default_factory=list)
+
+    def to_availability(self) -> tuple[WeeklyInterval, ...]:
+        return _intervals("availability", self.availability)
 
 
 class SubgroupUpdateRequest(BaseModel):
@@ -199,6 +219,10 @@ class SubgroupUpdateRequest(BaseModel):
 
     name: str | None = None
     student_count: StudentCount | None = None
+    availability: list[IntervalSchema] | None = None
+
+    def to_availability(self) -> tuple[WeeklyInterval, ...] | None:
+        return None if self.availability is None else _intervals("availability", self.availability)
 
 
 class SubgroupResponse(BaseModel):
@@ -206,6 +230,7 @@ class SubgroupResponse(BaseModel):
     group_id: UUID
     name: str
     student_count: int
+    availability: list[IntervalSchema]
 
     @classmethod
     def of(cls, placed: SubgroupInGroup) -> "SubgroupResponse":
@@ -214,4 +239,5 @@ class SubgroupResponse(BaseModel):
             group_id=placed.group_id,
             name=placed.subgroup.name,
             student_count=placed.subgroup.student_count,
+            availability=[IntervalSchema.of(interval) for interval in placed.subgroup.availability],
         )

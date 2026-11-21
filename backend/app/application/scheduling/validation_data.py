@@ -38,9 +38,18 @@ def load_validation_data(uow: UnitOfWork, project: Project) -> ScheduleProblem:
     groups = uow.groups.list_in_project(project_id)
     return ScheduleProblem(
         settings=project.settings,
-        groups=tuple(GroupSnapshot(group.id, group.name, group.student_count) for group in groups),
+        groups=tuple(
+            GroupSnapshot(group.id, group.name, group.student_count, _windows(group.availability))
+            for group in groups
+        ),
         subgroups=tuple(
-            SubgroupSnapshot(subgroup.id, group.id, subgroup.name, subgroup.student_count)
+            SubgroupSnapshot(
+                subgroup.id,
+                group.id,
+                subgroup.name,
+                subgroup.student_count,
+                _windows(subgroup.availability),
+            )
             for group in groups
             for subgroup in group.subgroups
         ),

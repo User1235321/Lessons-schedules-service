@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from app.api.cookies import RefreshCookie
 from app.api.errors import install_error_handlers
+from app.api.request_context import RequestContextMiddleware, get_request_id
 from app.api.routers import (
     auth,
     constraints,
@@ -23,10 +24,12 @@ from app.api.routers import (
 )
 from app.bootstrap.container import Container, build_container
 from app.bootstrap.settings import Settings
+from app.infrastructure.logging import configure_logging
 
 
 def create_app(container: Container | None = None) -> FastAPI:
     container = container or build_container(Settings())
+    configure_logging(container.settings.log_level, get_request_id)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -36,6 +39,7 @@ def create_app(container: Container | None = None) -> FastAPI:
             container.close()
 
     app = FastAPI(title="Lessons Schedules Service", lifespan=lifespan)
+    app.add_middleware(RequestContextMiddleware)
     app.state.container = container
     app.state.refresh_cookie = RefreshCookie(secure=container.settings.refresh_cookie_secure)
     install_error_handlers(app)

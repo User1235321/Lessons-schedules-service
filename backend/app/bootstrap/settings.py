@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     )
 
     app_env: Literal["development", "production"] = "production"
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     database_url: str = "postgresql+psycopg://schedules:schedules@localhost:5432/schedules"
     database_echo: bool = False

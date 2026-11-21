@@ -1,3 +1,4 @@
+import logging
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -12,6 +13,7 @@ from app.api.schemas.jobs import (
 from app.domain.shared.ids import JobId, ProjectId
 
 router = APIRouter(tags=["generation-jobs"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/projects/{project_id}/generation-jobs", status_code=202)
@@ -23,6 +25,14 @@ def create_generation_job(
 ) -> QueuedJobResponse:
     job = use_cases.create_generation_job().execute(
         user_id, ProjectId(project_id), body.to_options()
+    )
+    logger.info(
+        "Generation job queued",
+        extra={
+            "event": "generation_job.queued",
+            "job_id": str(job.id),
+            "job_status": job.status.value,
+        },
     )
     return QueuedJobResponse.of(job)
 
@@ -46,4 +56,9 @@ def get_generation_schedules(
 def cancel_generation_job(
     job_id: UUID, user_id: CurrentUserDep, use_cases: UseCasesDep
 ) -> JobResponse:
-    return JobResponse.of(use_cases.cancel_generation_job().execute(user_id, JobId(job_id)))
+    result = use_cases.cancel_generation_job().execute(user_id, JobId(job_id))
+    logger.info(
+        "Generation job cancellation requested",
+        extra={"event": "generation_job.cancel_requested", "job_id": str(job_id)},
+    )
+    return JobResponse.of(result)

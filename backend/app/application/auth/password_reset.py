@@ -33,7 +33,10 @@ class RequestPasswordReset:
             if user is None:
                 return
             if self.base_url is None:
-                logger.warning("Password reset URL is not configured")
+                logger.warning(
+                    "Password reset URL is not configured",
+                    extra={"event": "auth.password_reset.url_missing"},
+                )
                 return
             token = secrets.token_urlsafe(32)
             self.uow.password_resets.replace(
@@ -54,7 +57,13 @@ class RequestPasswordReset:
         try:
             self.mail.send(email, "Восстановление пароля", body)
         except MailDeliveryError as error:
-            logger.warning("Password reset email delivery failed: %s", error)
+            logger.warning(
+                "Password reset email delivery failed: %s", error,
+                extra={
+                    "event": "auth.password_reset.delivery_failed",
+                    "exception_type": type(error).__name__,
+                },
+            )
 
 
 @dataclass(frozen=True)

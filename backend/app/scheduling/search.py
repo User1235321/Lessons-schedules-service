@@ -47,9 +47,12 @@ class ResourceOccupancy:
             key = (group_id, placement.week, placement.weekday)
             for existing in self.groups.get(key, ()):
                 other_subgroup = existing.requirements.participants.subgroup_id
-                if subgroup is not None and other_subgroup is not None:
-                    if subgroup != other_subgroup:
-                        continue
+                if (
+                    subgroup is not None
+                    and other_subgroup is not None
+                    and subgroup != other_subgroup
+                ):
+                    continue
                 if _overlaps(placement, existing):
                     return False
         for teacher in placement.teachers:

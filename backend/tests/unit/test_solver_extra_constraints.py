@@ -4,6 +4,7 @@ from uuid import UUID
 import pytest
 
 from app.domain.projects.settings import DurationMode, ProjectSettings, StudyCycle, TimeMode
+from app.domain.scheduling.constraint_validation import constraint_conflicts
 from app.domain.scheduling.constraints import (
     AllowedDaysParameters,
     ClockTimeParameters,
@@ -32,8 +33,9 @@ from app.domain.scheduling.resources import (
     TeachingCapability,
     WeeklyWindow,
 )
-from app.domain.scheduling.schedule import LessonFormat
+from app.domain.scheduling.schedule import LessonFormat, ScheduleEntry
 from app.domain.scheduling.solver import SolverStatus
+from app.domain.shared.ids import ScheduleEntryId
 from app.domain.shared.week import Weekday
 from app.scheduling.solver import FeasibleScheduleSolver
 
@@ -357,3 +359,147 @@ def test_every_week_requires_at_least_two_occurrences() -> None:
 
     assert result.status is SolverStatus.INFEASIBLE
     assert result.diagnostics[0].workload_ids == (FIRST,)
+
+def entry(
+    identifier: int,
+    workload_id: UUID,
+    start: int,
+    week: str = "ODD",
+) -> ScheduleEntry:
+    return ScheduleEntry(
+        id=ScheduleEntryId(UUID(int=identifier)),
+        workload_id=workload_id,
+        week=week,
+        weekday=MONDAY,
+        start_time=time(start),
+        end_time=time(start + 1),
+    )
+
+
+@pytest.mark.parametrize(
+    ("first_count", "second_count"),
+    [(2, 1), (1, 2), (3, 1)],
+)
+def test_before_supports_different_occurrence_counts(
+    first_count: int, second_count: int
+) -> None:
+    source = problem(
+        workloads=(workload(FIRST, first_count), workload(SECOND, second_count)),
+        constraints=(constraint(
+            ConstraintKind.BEFORE, RelatedWorkloadParameters(SECOND)
+        ),),
+    )
+    result = solve(source)
+
+    assert result.status is SolverStatus.SOLVED
+    first = [item for item in result.variants[0].entries if item.workload_id == FIRST]
+    second = [item for item in result.variants[0].entries if item.workload_id == SECOND]
+    assert len(first) == first_count
+    assert len(second) == second_count
+    assert max(item.end_time for item in first) <= min(
+        item.start_time for item in second
+    ) or (
+        max((item.week, item.weekday.value, item.end_time) for item in first)
+        < min((item.week, item.weekday.value, item.start_time) for item in second)
+    )
+
+
+def test_before_validator_requires_all_source_occurrences_before_first_target() -> None:
+    rule = constraint(ConstraintKind.BEFORE, RelatedWorkloadParameters(SECOND))
+    first = [entry(1, FIRST, 8), entry(2, FIRST, 9)]
+    second = [entry(3, SECOND, 10)]
+
+    assert not list(constraint_conflicts(rule, first, second, True))
+    assert list(constraint_conflicts(rule, first + [entry(4, FIRST, 11)], second, True))
+    assert list(constraint_conflicts(rule, [entry(5, FIRST, 8, "EVEN")], second, True))
+
+
+def test_before_with_reversed_fixed_days_identifies_all_constraints() -> None:
+    source = problem(
+        workloads=(workload(FIRST), workload(SECOND)),
+        constraints=(
+            constraint(ConstraintKind.BEFORE, RelatedWorkloadParameters(SECOND)),
+            constraint(
+                ConstraintKind.FIXED_DAY, FixedDayParameters(TUESDAY), identifier=101
+            ),
+            constraint(
+                ConstraintKind.FIXED_DAY, FixedDayParameters(MONDAY),
+                source=SECOND, identifier=102,
+            ),
+        ),
+    )
+    result = solve(source)
+
+    assert result.status is SolverStatus.INFEASIBLE
+    assert set(result.diagnostics[0].workload_ids) == {FIRST, SECOND}
+    assert set(result.diagnostics[0].constraint_ids) == {
+        UUID(int=100), UUID(int=101), UUID(int=102)
+    }
+
+
+def test_consecutive_with_different_fixed_days_identifies_all_constraints() -> None:
+    source = problem(
+        workloads=(workload(FIRST), workload(SECOND)),
+        constraints=(
+            constraint(ConstraintKind.CONSECUTIVE, RelatedWorkloadParameters(SECOND)),
+            constraint(
+                ConstraintKind.FIXED_DAY, FixedDayParameters(MONDAY), identifier=101
+            ),
+            constraint(
+                ConstraintKind.FIXED_DAY, FixedDayParameters(TUESDAY),
+                source=SECOND, identifier=102,
+            ),
+        ),
+    )
+    result = solve(source)
+
+    assert result.status is SolverStatus.INFEASIBLE
+    assert set(result.diagnostics[0].workload_ids) == {FIRST, SECOND}
+    assert set(result.diagnostics[0].constraint_ids) == {
+        UUID(int=100), UUID(int=101), UUID(int=102)
+    }
+
+
+def test_consecutive_with_compatible_fixed_days_can_be_solved() -> None:
+    source = problem(
+        workloads=(workload(FIRST), workload(SECOND)),
+        constraints=(
+            constraint(ConstraintKind.CONSECUTIVE, RelatedWorkloadParameters(SECOND)),
+            constraint(
+                ConstraintKind.FIXED_DAY, FixedDayParameters(MONDAY), identifier=101
+            ),
+            constraint(
+                ConstraintKind.FIXED_DAY, FixedDayParameters(MONDAY),
+                source=SECOND, identifier=102,
+            ),
+        ),
+    )
+    result = solve(source)
+
+    assert result.status is SolverStatus.SOLVED
+    assert {item.weekday for item in result.variants[0].entries} == {MONDAY}
+
+
+def test_consecutive_with_disjoint_time_windows_reports_identified_constraints() -> None:
+    source = problem(
+        workloads=(workload(FIRST), workload(SECOND)),
+        constraints=(
+            constraint(ConstraintKind.CONSECUTIVE, RelatedWorkloadParameters(SECOND)),
+            constraint(
+                ConstraintKind.TIME_RANGE,
+                TimeRangeParameters((WeeklyWindow("ANY", MONDAY, time(8), time(9)),)),
+                identifier=101,
+            ),
+            constraint(
+                ConstraintKind.TIME_RANGE,
+                TimeRangeParameters((WeeklyWindow("ANY", MONDAY, time(11), time(12)),)),
+                source=SECOND, identifier=102,
+            ),
+        ),
+    )
+    result = solve(source)
+
+    assert result.status is SolverStatus.INFEASIBLE
+    assert set(result.diagnostics[0].constraint_ids) == {
+        UUID(int=100), UUID(int=101), UUID(int=102)
+    }

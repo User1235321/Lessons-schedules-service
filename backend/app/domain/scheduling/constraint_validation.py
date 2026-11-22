@@ -3,11 +3,11 @@ from datetime import time
 from uuid import UUID
 
 from app.domain.scheduling.constraints import (
-    ConstraintScope,
-    ConstraintScopeKind,
     AllowedDaysParameters,
     ClockTimeParameters,
     ConstraintKind,
+    ConstraintScope,
+    ConstraintScopeKind,
     EveryWeekParameters,
     ExtraConstraintSnapshot,
     FixedDayParameters,

@@ -18,6 +18,7 @@ from app.domain.scheduling.resources import (
     RoomType,
     SubgroupSnapshot,
     TeacherSnapshot,
+    room_allows_lesson,
 )
 from app.domain.scheduling.schedule import (
     LessonFormat,
@@ -221,14 +222,9 @@ def _room_conflicts(
             "ROOM_TYPE", "Тип аудитории не подходит для занятия", entry, room_id=str(room.id)
         )
     if (
-        room.capabilities
-        and placement.workload
+        placement.workload
         and placement.lesson_type
-        and not any(
-            capability.subject_id == placement.workload.subject_id
-            and capability.lesson_type == placement.lesson_type
-            for capability in room.capabilities
-        )
+        and not room_allows_lesson(room, placement.workload.subject_id, placement.lesson_type)
     ):
         yield _conflict(
             "ROOM_SPECIALIZATION",

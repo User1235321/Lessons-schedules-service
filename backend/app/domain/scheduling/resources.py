@@ -71,6 +71,15 @@ class RoomSnapshot:
             raise InvalidValue("Вместимость должна быть положительной", field="capacity")
 
 
+def room_allows_lesson(room: RoomSnapshot, subject_id: UUID, lesson_type: str) -> bool:
+    if room.room_type not in (RoomType.PRACTICE_SPECIALIZED, RoomType.LABORATORY):
+        return True
+    return any(
+        capability.subject_id == subject_id and capability.lesson_type == lesson_type
+        for capability in room.capabilities
+    )
+
+
 @dataclass(frozen=True)
 class GroupSnapshot:
     id: UUID

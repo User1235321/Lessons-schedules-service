@@ -422,10 +422,10 @@ def test_before_with_reversed_fixed_days_identifies_all_constraints() -> None:
         constraints=(
             constraint(ConstraintKind.BEFORE, RelatedWorkloadParameters(SECOND)),
             constraint(
-                ConstraintKind.FIXED_DAY, FixedDayParameters(TUESDAY), identifier=101
+                ConstraintKind.FIXED_DAY, FixedDayParameters(TUESDAY, "ODD"), identifier=101
             ),
             constraint(
-                ConstraintKind.FIXED_DAY, FixedDayParameters(MONDAY),
+                ConstraintKind.FIXED_DAY, FixedDayParameters(MONDAY, "ODD"),
                 source=SECOND, identifier=102,
             ),
         ),

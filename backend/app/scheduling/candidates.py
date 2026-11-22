@@ -280,10 +280,15 @@ def _time_slots(
 
 
 def iter_placements(
-    requirements: LessonRequirements, settings: ProjectSettings, control: SolverControl
+    requirements: LessonRequirements,
+    settings: ProjectSettings,
+    control: SolverControl,
+    week_filter: Literal["ODD", "EVEN"] | None = None,
 ) -> Iterator[Placement]:
     for week, day, start, end in _time_slots(settings, requirements.duration_minutes):
         check_cancelled(control)
+        if week_filter is not None and week != week_filter:
+            continue
         probe = ScheduleEntry(
             id=_PROBE_ID,
             week=week,

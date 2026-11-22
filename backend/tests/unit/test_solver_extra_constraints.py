@@ -308,6 +308,7 @@ def test_unconstrained_repeated_lessons_still_share_one_week() -> None:
     assert result.status is SolverStatus.SOLVED
     assert {entry.week for entry in result.variants[0].entries} == {"ODD"}
 
+
 @pytest.mark.parametrize(
     ("kind", "parameters", "expected"),
     [

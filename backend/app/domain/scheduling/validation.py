@@ -59,7 +59,7 @@ class _Placement:
 
     def matches(self, scope: ConstraintScope, subgroups: dict[UUID, SubgroupSnapshot]) -> bool:
         return applies_to_workload(
-            scope, self.workload, self.groups, self.subgroup, subgroups
+            scope, self.workload, self.groups, self.subgroup, subgroups, self.entry.workload_id
         )
 
 

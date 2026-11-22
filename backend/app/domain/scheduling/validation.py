@@ -12,6 +12,7 @@ from app.domain.scheduling.constraint_validation import (
 )
 from app.domain.scheduling.constraints import (
     ConstraintScope,
+    ConstraintScopeKind,
     MinimumGapParameters,
     RelatedWorkloadParameters,
 )

@@ -396,11 +396,13 @@ def test_before_supports_different_occurrence_counts(
     second = [item for item in result.variants[0].entries if item.workload_id == SECOND]
     assert len(first) == first_count
     assert len(second) == second_count
-    assert max(item.end_time for item in first) <= min(
-        item.start_time for item in second
-    ) or (
-        max((item.week, item.weekday.value, item.end_time) for item in first)
-        < min((item.week, item.weekday.value, item.start_time) for item in second)
+    weekdays = {day: index for index, day in enumerate(Weekday)}
+    assert max(
+        (int(item.week == "EVEN"), weekdays[item.weekday], item.end_time)
+        for item in first
+    ) <= min(
+        (int(item.week == "EVEN"), weekdays[item.weekday], item.start_time)
+        for item in second
     )
 
 

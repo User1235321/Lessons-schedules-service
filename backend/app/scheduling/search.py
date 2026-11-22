@@ -175,9 +175,13 @@ def find_placements(
         return
 
     occupied = ResourceOccupancy()
-    constrained = ConstraintOccupancy(
-        constraints,
-        {item.workload.id: item.workload.occurrences_per_cycle for item in requirements},
+    constrained = (
+        ConstraintOccupancy(
+            constraints,
+            {item.workload.id: item.workload.occurrences_per_cycle for item in requirements},
+        )
+        if constraints
+        else None
     )
     selected: list[Placement] = []
     iterators: list[Iterator[Placement]] = []
@@ -190,7 +194,9 @@ def find_placements(
             yield tuple(selected)
             previous = selected.pop()
             occupied.remove(previous)
-            constrained.remove(previous)
+            if constrained is not None:
+                if constrained is not None:
+                constrained.remove(previous)
             continue
         if len(iterators) == depth:
             iterators.append(iter_placements(tasks[depth], settings, control))
@@ -210,10 +216,13 @@ def find_placements(
             and placement.order_key <= selected[-1].order_key
         ):
             continue
-        if not occupied.can_place(placement) or not constrained.can_place(placement, depth):
+        if not occupied.can_place(placement):
+            continue
+        if constrained is not None and not constrained.can_place(placement, depth):
             continue
         occupied.add(placement)
-        constrained.add(placement, depth)
+        if constrained is not None:
+            constrained.add(placement, depth)
         selected.append(placement)
         if len(selected) > deepest:
             deepest = len(selected)

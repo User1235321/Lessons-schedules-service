@@ -1,4 +1,5 @@
 from collections import defaultdict
+from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -214,6 +215,17 @@ def _candidate_diagnostics(
         for constraint in problem.constraints
         if constraint.kind is ConstraintKind.EVERY_WEEK
     }
+
+    def restricting_ids(requirement: LessonRequirements, week: str | None = None) -> tuple[UUID, ...]:
+        if not requirement.constraints:
+            return ()
+        without_constraints = replace(requirement, constraints=())
+        if next(
+            iter_placements(without_constraints, problem.settings, control, week), None
+        ) is None:
+            return ()
+        return tuple(item.id for item in requirement.constraints)
+
     for requirement in requirements:
         check_cancelled(control)
         workload_id = requirement.workload.id
@@ -227,15 +239,13 @@ def _candidate_diagnostics(
                     errors.append(SolverDiagnostic(
                         f"Для обязательного проведения отсутствует размещение на неделе {week}",
                         (workload_id,),
-                        (week_constraint,) + tuple(
-                            item.id for item in requirement.constraints
-                        ),
+                        (week_constraint,) + restricting_ids(requirement, week),
                     ))
         elif next(iter_placements(requirement, problem.settings, control), None) is None:
             errors.append(SolverDiagnostic(
                 "Для учебной нагрузки отсутствуют допустимые размещения",
                 (workload_id,),
-                tuple(item.id for item in requirement.constraints),
+                restricting_ids(requirement),
             ))
     return tuple(errors)
 

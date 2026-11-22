@@ -131,9 +131,11 @@ class ConstraintOccupancy:
                 len(selected) == self.occurrences[source]
                 and len(related) == self.occurrences[related_id]
             )
-            if constraint.kind in (ConstraintKind.CONSECUTIVE, ConstraintKind.BEFORE):
-                if not complete:
-                    continue
+            if (
+                constraint.kind in (ConstraintKind.CONSECUTIVE, ConstraintKind.BEFORE)
+                and not complete
+            ):
+                continue
             if any(constraint_conflicts(constraint, selected, related, complete)):
                 return False
         return True

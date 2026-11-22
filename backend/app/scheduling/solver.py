@@ -79,7 +79,9 @@ _WORKLOAD_ONLY = {
 }
 
 
-def _reference_diagnostics(problem: ScheduleProblem) -> tuple[SolverDiagnostic, ...]:
+def _reference_diagnostics(
+    problem: ScheduleProblem, control: SolverControl
+) -> tuple[SolverDiagnostic, ...]:
     resources = {
         ConstraintScopeKind.GROUP: {item.id for item in problem.groups},
         ConstraintScopeKind.SUBGROUP: {item.id for item in problem.subgroups},
@@ -88,6 +90,7 @@ def _reference_diagnostics(problem: ScheduleProblem) -> tuple[SolverDiagnostic, 
     }
     errors: list[SolverDiagnostic] = []
     for constraint in problem.constraints:
+        check_cancelled(control)
         scope = constraint.scope
         if constraint.kind in _WORKLOAD_ONLY and scope.kind is not ConstraintScopeKind.WORKLOAD:
             errors.append(SolverDiagnostic(
@@ -122,10 +125,13 @@ def _reference_diagnostics(problem: ScheduleProblem) -> tuple[SolverDiagnostic, 
 
 
 def _combination_diagnostics(
-    problem: ScheduleProblem, requirements: tuple[LessonRequirements, ...]
+    problem: ScheduleProblem,
+    requirements: tuple[LessonRequirements, ...],
+    control: SolverControl,
 ) -> tuple[SolverDiagnostic, ...]:
     errors: list[SolverDiagnostic] = []
     for requirement in requirements:
+        check_cancelled(control)
         workload = requirement.workload
         weekly = [
             constraint
@@ -175,6 +181,7 @@ def _combination_diagnostics(
     pairs: dict[tuple[UUID, UUID], dict[ConstraintKind, list[ExtraConstraintSnapshot]]] = {}
     before: dict[tuple[UUID, UUID], ExtraConstraintSnapshot] = {}
     for constraint in problem.constraints:
+        check_cancelled(control)
         if not isinstance(constraint.parameters, (RelatedWorkloadParameters, MinimumGapParameters)):
             continue
         source = constraint.scope.resource_id
@@ -184,6 +191,7 @@ def _combination_diagnostics(
         if constraint.kind is ConstraintKind.BEFORE:
             before[(source, target)] = constraint
     for (source, target), kinds in pairs.items():
+        check_cancelled(control)
         required = kinds.get(ConstraintKind.CONSECUTIVE, ())
         forbidden = (
             *kinds.get(ConstraintKind.NOT_CONSECUTIVE, ()),
@@ -196,6 +204,7 @@ def _combination_diagnostics(
                 (required[0].id, forbidden[0].id),
             ))
     for (source, target), constraint in before.items():
+        check_cancelled(control)
         if source < target and (target, source) in before:
             errors.append(SolverDiagnostic(
                 "Взаимно противоположные требования порядка занятий",
@@ -275,8 +284,8 @@ class FeasibleScheduleSolver:
 
         try:
             rule_diagnostics = (
-                _reference_diagnostics(problem)
-                or _combination_diagnostics(problem, requirements)
+                _reference_diagnostics(problem, control)
+                or _combination_diagnostics(problem, requirements, control)
                 or _candidate_diagnostics(problem, requirements, control)
                 if problem.constraints
                 else ()

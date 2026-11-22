@@ -4,8 +4,9 @@ from enum import StrEnum
 from typing import Self
 from uuid import UUID
 
+from app.domain.scheduling.schedule import Schedule
 from app.domain.shared.errors import InvalidValue
-from app.domain.shared.ids import JobId, ProjectId
+from app.domain.shared.ids import JobId, ProjectId, ScheduleEntryId
 
 
 class JobType(StrEnum):
@@ -52,6 +53,12 @@ class ResultOptions:
         return self.top_n if self.top_n is not None else 1
 
 
+@dataclass(frozen=True, kw_only=True)
+class ExistingScheduleInput:
+    schedule: Schedule
+    fixed_entry_ids: tuple[ScheduleEntryId, ...] = ()
+
+
 @dataclass(frozen=True)
 class SolverDiagnostic:
     message: str
@@ -70,6 +77,7 @@ class Job:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     error_message: str | None = None
+    existing: ExistingScheduleInput | None = None
     diagnostics: tuple[SolverDiagnostic, ...] = ()
 
     def __post_init__(self) -> None:

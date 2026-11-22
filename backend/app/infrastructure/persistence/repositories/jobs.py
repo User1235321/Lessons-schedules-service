@@ -1,6 +1,6 @@
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from app.domain.scheduling.job import Job
 from app.domain.scheduling.problem import ScheduleProblem
@@ -58,13 +58,14 @@ class SqlJobRepository:
     def _get_owned(self, job_id: JobId, owner_id: UserId, *, for_update: bool) -> Job | None:
         query = (
             select(JobRow)
+            .options(defer(JobRow.existing_input))
             .join(ProjectRow, JobRow.project_id == ProjectRow.id)
             .where(JobRow.id == job_id, ProjectRow.owner_id == owner_id)
         )
         if for_update:
             query = query.with_for_update(of=JobRow)
         row = self._session.scalar(query)
-        return job_to_domain(row) if row else None
+        return job_to_domain(row, include_input=False) if row else None
 
     def save(self, job: Job) -> None:
         updated = self._session.scalar(

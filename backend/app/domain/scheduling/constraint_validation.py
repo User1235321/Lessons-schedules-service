@@ -118,18 +118,15 @@ def _violations(
             yield tuple(entries), {"missing_weeks": missing}
         return
     if kind is ConstraintKind.BEFORE:
-        if not complete:
-            return
         if not entries or not related:
-            yield tuple(entries + related), {}
+            if complete:
+                yield tuple(entries + related), {}
             return
         last_source = max(entries, key=lambda entry: _cycle_seconds(entry, entry.end_time))
         first_related = min(related, key=lambda entry: _cycle_seconds(entry, entry.start_time))
-        if (
-            last_source.id == first_related.id
-            or _cycle_seconds(last_source, last_source.end_time)
-            > _cycle_seconds(first_related, first_related.start_time)
-        ):
+        if last_source.id == first_related.id or _cycle_seconds(
+            last_source, last_source.end_time
+        ) > _cycle_seconds(first_related, first_related.start_time):
             yield (last_source, first_related), {}
         return
     for entry in entries:

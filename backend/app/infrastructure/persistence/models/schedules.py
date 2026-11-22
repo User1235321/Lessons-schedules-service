@@ -1,7 +1,14 @@
 from datetime import datetime, time
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, ForeignKey, ForeignKeyConstraint, String, UniqueConstraint
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    ForeignKeyConstraint,
+    String,
+    UniqueConstraint,
+    false,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -38,6 +45,7 @@ class ScheduleRow(Base):
         JSONB(none_as_null=True)
     )
     created_at: Mapped[datetime]
+    from_import: Mapped[bool] = mapped_column(server_default=false())
 
 
 class ScheduleEntryRow(Base):

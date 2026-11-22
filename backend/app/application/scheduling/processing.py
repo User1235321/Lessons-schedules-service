@@ -8,10 +8,11 @@ from app.application.scheduling.ports import (
     JobStateStore,
     JobStateStoreError,
     ScheduleProblemSolver,
+    ScheduleReprocessor,
 )
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
-from app.domain.scheduling.job import Job, JobMessage, JobProgress, JobStatus
+from app.domain.scheduling.job import Job, JobMessage, JobProgress, JobStatus, JobType
 from app.domain.scheduling.schedule import Schedule, ScheduleSource
 from app.domain.scheduling.solver import SolverDiagnostic, SolverResult, SolverStatus
 from app.domain.shared.ids import JobId, ScheduleEntryId, ScheduleId
@@ -39,6 +40,7 @@ class ProcessJob:
     state: JobStateStore
     problems: JobProblemSource
     solver: ScheduleProblemSolver
+    reprocessor: ScheduleReprocessor
     clock: Clock
     ids: IdGenerator
 
@@ -82,7 +84,12 @@ class ProcessJob:
                 control.report_progress(JobProgress(0))
                 problem = self.problems.load(job)
                 problem.check_size_limits()
-                result = self.solver.solve(problem, job.result_options, control)
+                if job.job_type is JobType.GENERATE:
+                    result = self.solver.solve(problem, job.result_options, control)
+                elif job.existing is None:
+                    raise ValueError("Отсутствует снимок исходного расписания")
+                else:
+                    result = self.reprocessor.solve(job.existing, job.job_type, problem, control)
                 if control.is_cancel_requested():
                     result = SolverResult(SolverStatus.CANCELLED)
             if len(result.variants) > job.result_options.limit:
@@ -143,6 +150,7 @@ class ProcessJob:
                         for entry in variant.entries
                     ),
                     criterion_scores=variant.criterion_scores,
+                    from_import=bool(job.existing and job.existing.schedule.allows_partial_data),
                     created_at=job.finished_at,
                 )
             )

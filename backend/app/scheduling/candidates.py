@@ -256,7 +256,7 @@ def prepare_requirements(
     return tuple(requirements), tuple(diagnostics)
 
 
-def _time_slots(
+def time_slots(
     settings: ProjectSettings, duration: int
 ) -> Iterator[tuple[Literal["ODD", "EVEN"], Weekday, time, time]]:
     step = (
@@ -285,7 +285,7 @@ def iter_placements(
     control: SolverControl,
     week_filter: Literal["ODD", "EVEN"] | None = None,
 ) -> Iterator[Placement]:
-    for week, day, start, end in _time_slots(settings, requirements.duration_minutes):
+    for week, day, start, end in time_slots(settings, requirements.duration_minutes):
         check_cancelled(control)
         if week_filter is not None and week != week_filter:
             continue

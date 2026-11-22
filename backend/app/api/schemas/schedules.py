@@ -85,3 +85,13 @@ class ScheduleValidationResponse(BaseModel):
             status="invalid" if conflicts else "valid",
             conflicts=[ScheduleConflictResponse.model_validate(conflict) for conflict in conflicts],
         )
+
+
+class AutoRepairRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    fixed_entry_ids: list[UUID]
+
+
+class ReoptimizeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["FULL", "MIN_CHANGES"]

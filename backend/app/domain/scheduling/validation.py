@@ -30,7 +30,6 @@ from app.domain.scheduling.schedule import (
     Schedule,
     ScheduleConflict,
     ScheduleEntry,
-    ScheduleSource,
 )
 from app.domain.shared.week import Weekday
 
@@ -324,10 +323,12 @@ def _extra_conflicts(
         yield from constraint_conflicts(constraint, selected, related, complete)
 
 
-def validate_schedule(schedule: Schedule, problem: ScheduleProblem) -> list[ScheduleConflict]:
+def validate_schedule(
+    schedule: Schedule, problem: ScheduleProblem, *, partial_assignment: bool = False
+) -> list[ScheduleConflict]:
     placements = list(_placements(schedule, problem))
-    generated = schedule.source is ScheduleSource.GENERATED
-    complete = generated or bool(placements and all(item.workload for item in placements))
+    generated = not schedule.allows_partial_data
+    complete = not partial_assignment and generated
     teachers = {teacher.id: teacher for teacher in problem.teachers}
     rooms = {room.id: room for room in problem.rooms}
     groups = {group.id: group for group in problem.groups}
@@ -336,9 +337,9 @@ def validate_schedule(schedule: Schedule, problem: ScheduleProblem) -> list[Sche
     conflicts: list[ScheduleConflict] = []
     for placement in placements:
         entry = placement.entry
-        if placement.workload:
-            by_workload[placement.workload.id].append(entry)
-        elif generated:
+        if entry.workload_id is not None:
+            by_workload[entry.workload_id].append(entry)
+        if placement.workload is None and generated:
             conflicts.append(
                 _conflict(
                     "WORKLOAD_NOT_FOUND",

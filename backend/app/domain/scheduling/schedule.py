@@ -77,6 +77,12 @@ class Schedule:
     job_id: JobId | None = None
     result_index: int | None = None
     criterion_scores: tuple[CriterionScore, ...] | None = None
+    # Результат повторного расчёта может происходить от неполного импорта.
+    from_import: bool = False
+
+    @property
+    def allows_partial_data(self) -> bool:
+        return self.source is ScheduleSource.IMPORTED or self.from_import
 
     def __post_init__(self) -> None:
         if self.source is ScheduleSource.GENERATED:
@@ -86,7 +92,7 @@ class Schedule:
                 raise InvalidValue("Номер варианта должен быть положительным", field="result_index")
             if self.criterion_scores is None:
                 raise InvalidValue("Нужны оценки критериев", field="criterion_scores")
-            if any(entry.workload_id is None for entry in self.entries):
+            if not self.from_import and any(entry.workload_id is None for entry in self.entries):
                 raise InvalidValue("Занятия должны ссылаться на нагрузку", field="entries")
         elif self.job_id is not None:
             raise InvalidValue("Импортированное расписание не связано с заданием", field="job_id")

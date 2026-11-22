@@ -4,8 +4,10 @@ from typing import Literal, TypedDict
 from uuid import UUID
 
 from app.application.auth.access import owned_project
-from app.application.scheduling.validation_data import load_validation_data
+from app.application.scheduling.validation_data import enqueue_with_snapshot, load_validation_data
+from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
+from app.domain.scheduling.job import ExistingScheduleInput, Job, JobStatus, JobType, ResultOptions
 from app.domain.scheduling.problem import ScheduleProblem
 from app.domain.scheduling.resources import LessonType
 from app.domain.scheduling.schedule import (
@@ -17,7 +19,7 @@ from app.domain.scheduling.schedule import (
 )
 from app.domain.scheduling.validation import validate_schedule
 from app.domain.shared.errors import InvalidValue, NotFound
-from app.domain.shared.ids import ScheduleEntryId, ScheduleId, UserId
+from app.domain.shared.ids import JobId, ScheduleEntryId, ScheduleId, UserId
 from app.domain.shared.week import Weekday
 
 
@@ -87,6 +89,43 @@ class GetSchedule:
     def execute(self, user_id: UserId, schedule_id: ScheduleId) -> Schedule:
         with self.uow:
             return _owned_schedule(self.uow, schedule_id, user_id)
+
+
+@dataclass(frozen=True)
+class QueueScheduleProcessing:
+    uow: UnitOfWork
+    clock: Clock
+    ids: IdGenerator
+
+    def execute(
+        self,
+        user_id: UserId,
+        schedule_id: ScheduleId,
+        job_type: JobType,
+        fixed_entry_ids: tuple[ScheduleEntryId, ...] = (),
+    ) -> Job:
+        with self.uow:
+            project_id = self.uow.schedules.owned_project_id(schedule_id, user_id)
+            if project_id is None:
+                raise NotFound("Расписание не найдено", schedule_id=str(schedule_id))
+            project = owned_project(self.uow, project_id, user_id, for_update=True)
+            schedule = _owned_schedule(self.uow, schedule_id, user_id, for_update=True)
+            if len(set(fixed_entry_ids)) != len(fixed_entry_ids):
+                raise InvalidValue("Занятие указано повторно", field="fixed_entry_ids")
+            if set(fixed_entry_ids).difference(entry.id for entry in schedule.entries):
+                raise InvalidValue("Занятие отсутствует в расписании", field="fixed_entry_ids")
+            job = Job(
+                id=JobId(self.ids.new_id()),
+                project_id=schedule.project_id,
+                job_type=job_type,
+                status=JobStatus.QUEUED,
+                result_options=ResultOptions(),
+                existing=ExistingScheduleInput(schedule=schedule, fixed_entry_ids=fixed_entry_ids),
+                created_at=self.clock.now(),
+            )
+            enqueue_with_snapshot(self.uow, job, project)
+            self.uow.commit()
+        return job
 
 
 @dataclass(frozen=True)

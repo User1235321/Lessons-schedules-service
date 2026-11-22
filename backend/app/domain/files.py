@@ -2,13 +2,21 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
-from app.domain.shared.errors import InvalidValue
+from app.domain.shared.errors import DomainError, InvalidValue
 from app.domain.shared.ids import JobId, ProjectId, ScheduleId, StoredFileId, UserId
 
 
 class StoredFileCategory(StrEnum):
     UPLOAD = "UPLOAD"
     EXPORT = "EXPORT"
+
+
+class FileTooLarge(DomainError):
+    code = "FILE_TOO_LARGE"
+
+
+class UnsupportedFileFormat(DomainError):
+    code = "UNSUPPORTED_FILE_FORMAT"
 
 
 @dataclass(frozen=True, kw_only=True)

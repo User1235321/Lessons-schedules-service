@@ -3,9 +3,11 @@ from datetime import datetime
 from typing import Protocol
 
 from app.domain.scheduling.job import (
+    ExistingScheduleInput,
     Job,
     JobMessage,
     JobProgress,
+    JobType,
     ResultOptions,
 )
 from app.domain.scheduling.problem import ScheduleProblem
@@ -34,6 +36,8 @@ class ScheduleRepository(Protocol):
     def add(self, schedule: Schedule) -> None: ...
 
     def get(self, project_id: ProjectId, schedule_id: ScheduleId) -> Schedule | None: ...
+
+    def owned_project_id(self, schedule_id: ScheduleId, owner_id: UserId) -> ProjectId | None: ...
 
     def get_for_update(self, project_id: ProjectId, schedule_id: ScheduleId) -> Schedule | None: ...
 
@@ -97,3 +101,13 @@ class ScheduleSolver[InputT](Protocol):
 
 
 type ScheduleProblemSolver = ScheduleSolver[ScheduleProblem]
+
+
+class ScheduleReprocessor(Protocol):
+    def solve(
+        self,
+        source: ExistingScheduleInput,
+        job_type: JobType,
+        problem: ScheduleProblem,
+        control: SolverControl,
+    ) -> SolverResult: ...

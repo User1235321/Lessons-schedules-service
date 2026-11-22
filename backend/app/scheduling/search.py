@@ -13,7 +13,7 @@ from app.domain.scheduling.constraints import (
 )
 from app.domain.scheduling.job import JobProgress
 from app.domain.scheduling.schedule import ScheduleEntry
-from app.domain.scheduling.solver import SolverControl
+from app.domain.scheduling.solver import SolverControl, SolverDiagnostic
 from app.domain.shared.ids import ScheduleEntryId
 from app.domain.shared.week import Weekday
 from app.scheduling.candidates import (
@@ -84,6 +84,28 @@ class ResourceOccupancy:
 
 
 @dataclass
+class SearchRejections:
+    constraints: dict[UUID, tuple[UUID, ...]] = field(default_factory=dict)
+
+    def record(self, constraint: ExtraConstraintSnapshot) -> None:
+        workloads = (constraint.scope.resource_id,)
+        if isinstance(
+            constraint.parameters, (RelatedWorkloadParameters, MinimumGapParameters)
+        ):
+            workloads += (constraint.parameters.workload_id,)
+        self.constraints[constraint.id] = workloads
+
+    def diagnostic(self) -> SolverDiagnostic | None:
+        if not self.constraints:
+            return None
+        return SolverDiagnostic(
+            "При поиске отклонялись размещения из-за указанных ограничений",
+            tuple(sorted({item for values in self.constraints.values() for item in values})),
+            tuple(sorted(self.constraints)),
+        )
+
+
+@dataclass
 class ConstraintOccupancy:
     constraints: tuple[ExtraConstraintSnapshot, ...]
     occurrences: dict[UUID, int]
@@ -106,7 +128,7 @@ class ConstraintOccupancy:
                 if target != source:
                     self.relevant[target].append(constraint)
 
-    def can_place(self, placement: Placement, depth: int) -> bool:
+    def rejection(self, placement: Placement, depth: int) -> ExtraConstraintSnapshot | None:
         workload_id = placement.requirements.workload.id
         candidate = placement.to_entry(ScheduleEntryId(UUID(int=depth + 1)))
         for constraint in self.relevant.get(workload_id, ()):
@@ -118,7 +140,7 @@ class ConstraintOccupancy:
                 if len(selected) == self.occurrences[source] and any(
                     constraint_conflicts(constraint, selected, [], True)
                 ):
-                    return False
+                    return constraint
                 continue
             related_id = constraint.parameters.workload_id
             if related_id == source:
@@ -137,8 +159,8 @@ class ConstraintOccupancy:
             ):
                 continue
             if any(constraint_conflicts(constraint, selected, related, complete)):
-                return False
-        return True
+                return constraint
+        return None
 
     def add(self, placement: Placement, depth: int) -> None:
         workload_id = placement.requirements.workload.id
@@ -166,6 +188,7 @@ def find_placements(
     settings: ProjectSettings,
     control: SolverControl,
     constraints: tuple[ExtraConstraintSnapshot, ...] = (),
+    rejections: SearchRejections | None = None,
 ) -> Iterator[tuple[Placement, ...]]:
     tasks = tuple(
         requirement
@@ -220,8 +243,12 @@ def find_placements(
             continue
         if not occupied.can_place(placement):
             continue
-        if constrained is not None and not constrained.can_place(placement, depth):
-            continue
+        if constrained is not None:
+            rejected_by = constrained.rejection(placement, depth)
+            if rejected_by is not None:
+                if rejections is not None:
+                    rejections.record(rejected_by)
+                continue
         occupied.add(placement)
         if constrained is not None:
             constrained.add(placement, depth)

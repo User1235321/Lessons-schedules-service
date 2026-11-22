@@ -1,7 +1,10 @@
 from collections.abc import Iterator
 from datetime import time
+from uuid import UUID
 
 from app.domain.scheduling.constraints import (
+    ConstraintScope,
+    ConstraintScopeKind,
     AllowedDaysParameters,
     ClockTimeParameters,
     ConstraintKind,
@@ -12,7 +15,8 @@ from app.domain.scheduling.constraints import (
     RelatedWorkloadParameters,
     TimeRangeParameters,
 )
-from app.domain.scheduling.resources import WeeklyWindow
+from app.domain.scheduling.problem import WorkloadSnapshot, WorkloadTargetKind
+from app.domain.scheduling.resources import SubgroupSnapshot, WeeklyWindow
 from app.domain.scheduling.schedule import ScheduleConflict, ScheduleEntry
 from app.domain.shared.week import Weekday
 
@@ -29,6 +33,31 @@ _REASONS = {
     ConstraintKind.FIXED_DAY: "Занятие назначено вне зафиксированного дня или недели",
     ConstraintKind.TIME_RANGE: "Занятие выходит за разрешённые временные интервалы",
 }
+
+
+def applies_to_workload(
+    scope: ConstraintScope,
+    workload: WorkloadSnapshot | None,
+    group_ids: tuple[UUID, ...],
+    subgroup_id: UUID | None,
+    subgroups: dict[UUID, SubgroupSnapshot],
+) -> bool:
+    if scope.kind is ConstraintScopeKind.PROJECT:
+        return True
+    if scope.kind is ConstraintScopeKind.WORKLOAD:
+        return workload is not None and scope.resource_id == workload.id
+    if scope.kind is ConstraintScopeKind.GROUP:
+        return scope.resource_id in group_ids
+    if scope.kind is ConstraintScopeKind.SUBGROUP:
+        subgroup = subgroups.get(scope.resource_id)
+        return scope.resource_id == subgroup_id or (
+            subgroup_id is None and subgroup is not None and subgroup.group_id in group_ids
+        )
+    return bool(
+        workload is not None
+        and workload.target.kind is WorkloadTargetKind.STREAM
+        and workload.target.resource_id == scope.resource_id
+    )
 
 
 def covered_by(windows: tuple[WeeklyWindow, ...], entry: ScheduleEntry) -> bool:

@@ -244,7 +244,7 @@ class FeasibleScheduleSolver:
     ) -> SolverResult:
         if control.is_cancel_requested():
             return SolverResult(SolverStatus.CANCELLED)
-         if any(criterion.is_active for criterion in problem.optimization_criteria):
+        if any(criterion.is_active for criterion in problem.optimization_criteria):
             raise NotImplementedError("Оптимизация расписания реализуется в задаче #68")
 
         try:

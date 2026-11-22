@@ -505,3 +505,20 @@ def test_consecutive_with_disjoint_time_windows_reports_identified_constraints()
     assert set(result.diagnostics[0].constraint_ids) == {
         UUID(int=100), UUID(int=101), UUID(int=102)
     }
+
+def test_exhausted_search_retains_related_constraint_rejections() -> None:
+    source = problem(
+        workloads=(workload(FIRST), workload(SECOND)),
+        constraints=(
+            constraint(
+                ConstraintKind.MIN_GAP,
+                MinimumGapParameters(SECOND, 14 * 24 * 60),
+            ),
+        ),
+    )
+    result = solve(source)
+
+    assert result.status is SolverStatus.INFEASIBLE
+    assert result.diagnostics[0].constraint_ids == (UUID(int=100),)
+    assert set(result.diagnostics[0].workload_ids) == {FIRST, SECOND}
+    assert "отклонялись" in result.diagnostics[0].message

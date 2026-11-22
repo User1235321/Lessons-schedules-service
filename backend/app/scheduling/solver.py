@@ -33,7 +33,8 @@ from app.scheduling.candidates import (
     iter_placements,
     prepare_requirements,
 )
-from app.scheduling.search import find_placements
+from app.scheduling.constraint_diagnostics import diagnose_incompatible_pairs
+from app.scheduling.search import SearchRejections, find_placements
 
 _VALIDATION_ID = UUID(int=0)
 _VALIDATION_DATE = datetime(2000, 1, 1, tzinfo=UTC)
@@ -299,9 +300,10 @@ class FeasibleScheduleSolver:
             return SolverResult(SolverStatus.INFEASIBLE, diagnostics=rule_diagnostics)
 
         variants: list[ScheduleVariant] = []
+        rejections = SearchRejections() if problem.constraints else None
         try:
             for placements in find_placements(
-                requirements, problem.settings, control, problem.constraints
+                requirements, problem.settings, control, problem.constraints, rejections
             ):
                 check_cancelled(control)
                 variants.append(_validated_variant(problem, placements))
@@ -311,10 +313,29 @@ class FeasibleScheduleSolver:
         except SearchCancelled:
             return SolverResult(SolverStatus.CANCELLED)
 
-        control.report_progress(JobProgress(100))
         if variants:
+            control.report_progress(JobProgress(100))
             return SolverResult(SolverStatus.SOLVED, variants=tuple(variants))
+
+        try:
+            diagnosed = (
+                diagnose_incompatible_pairs(problem, requirements, control)
+                if problem.constraints
+                else ()
+            )
+            check_cancelled(control)
+        except SearchCancelled:
+            return SolverResult(SolverStatus.CANCELLED)
+
+        if not diagnosed and rejections is not None:
+            observed = rejections.diagnostic()
+            if observed is not None:
+                diagnosed = (observed,)
+
+        control.report_progress(JobProgress(100))
         return SolverResult(
             SolverStatus.INFEASIBLE,
-            diagnostics=(SolverDiagnostic("Полное допустимое расписание не найдено"),),
+            diagnostics=diagnosed or (
+                SolverDiagnostic("Полное допустимое расписание не найдено"),
+            ),
         )

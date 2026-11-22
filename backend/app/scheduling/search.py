@@ -128,9 +128,10 @@ class ConstraintOccupancy:
                 if target != source:
                     self.relevant[target].append(constraint)
 
-    def rejection(self, placement: Placement, depth: int) -> ExtraConstraintSnapshot | None:
+    def rejections(self, placement: Placement, depth: int) -> tuple[ExtraConstraintSnapshot, ...]:
         workload_id = placement.requirements.workload.id
         candidate = placement.to_entry(ScheduleEntryId(UUID(int=depth + 1)))
+        rejected: list[ExtraConstraintSnapshot] = []
         for constraint in self.relevant.get(workload_id, ()):
             source = constraint.scope.resource_id
             selected = list(self.entries[source])
@@ -140,7 +141,7 @@ class ConstraintOccupancy:
                 if len(selected) == self.occurrences[source] and any(
                     constraint_conflicts(constraint, selected, [], True)
                 ):
-                    return constraint
+                    rejected.append(constraint)
                 continue
             related_id = constraint.parameters.workload_id
             if related_id == source:
@@ -159,8 +160,8 @@ class ConstraintOccupancy:
             ):
                 continue
             if any(constraint_conflicts(constraint, selected, related, complete)):
-                return constraint
-        return None
+                rejected.append(constraint)
+        return tuple(rejected)
 
     def add(self, placement: Placement, depth: int) -> None:
         workload_id = placement.requirements.workload.id
@@ -244,10 +245,11 @@ def find_placements(
         if not occupied.can_place(placement):
             continue
         if constrained is not None:
-            rejected_by = constrained.rejection(placement, depth)
-            if rejected_by is not None:
+            rejected_by = constrained.rejections(placement, depth)
+            if rejected_by:
                 if rejections is not None:
-                    rejections.record(rejected_by)
+                    for constraint in rejected_by:
+                        rejections.record(constraint)
                 continue
         occupied.add(placement)
         if constrained is not None:

@@ -195,7 +195,6 @@ def find_placements(
             previous = selected.pop()
             occupied.remove(previous)
             if constrained is not None:
-                if constrained is not None:
                 constrained.remove(previous)
             continue
         if len(iterators) == depth:
@@ -208,7 +207,8 @@ def find_placements(
                 return
             previous = selected.pop()
             occupied.remove(previous)
-            constrained.remove(previous)
+            if constrained is not None:
+                constrained.remove(previous)
             continue
         if (
             depth

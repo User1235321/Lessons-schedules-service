@@ -41,11 +41,12 @@ def applies_to_workload(
     group_ids: tuple[UUID, ...],
     subgroup_id: UUID | None,
     subgroups: dict[UUID, SubgroupSnapshot],
+    workload_id: UUID | None = None,
 ) -> bool:
     if scope.kind is ConstraintScopeKind.PROJECT:
         return True
     if scope.kind is ConstraintScopeKind.WORKLOAD:
-        return workload is not None and scope.resource_id == workload.id
+        return scope.resource_id == (workload.id if workload is not None else workload_id)
     if scope.kind is ConstraintScopeKind.GROUP:
         return scope.resource_id in group_ids
     if scope.kind is ConstraintScopeKind.SUBGROUP:

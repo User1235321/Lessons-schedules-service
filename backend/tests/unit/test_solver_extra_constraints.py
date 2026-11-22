@@ -1,4 +1,3 @@
-from dataclasses import replace
 from datetime import time
 from uuid import UUID
 
@@ -86,7 +85,8 @@ def constraint(
     scope_kind: ConstraintScopeKind | None = None,
 ) -> ExtraConstraintSnapshot:
     scope = ConstraintScope(
-        scope_kind or (ConstraintScopeKind.PROJECT if source is None else ConstraintScopeKind.WORKLOAD),
+        scope_kind
+        or (ConstraintScopeKind.PROJECT if source is None else ConstraintScopeKind.WORKLOAD),
         source,
     )
     return ExtraConstraintSnapshot(UUID(int=identifier), kind, scope, parameters)

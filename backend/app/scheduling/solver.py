@@ -15,7 +15,7 @@ from app.domain.scheduling.constraints import (
 )
 from app.domain.scheduling.job import JobProgress, ResultOptions
 from app.domain.scheduling.problem import ScheduleProblem
-from app.domain.scheduling.schedule import Schedule, ScheduleSource
+from app.domain.scheduling.schedule import CriterionScore, Schedule, ScheduleSource
 from app.domain.scheduling.solver import (
     ScheduleVariant,
     SolverControl,
@@ -34,6 +34,7 @@ from app.scheduling.candidates import (
     prepare_requirements,
 )
 from app.scheduling.constraint_diagnostics import diagnose_incompatible_pairs
+from app.scheduling.optimization import select_placements
 from app.scheduling.search import SearchRejections, find_placements
 
 _VALIDATION_ID = UUID(int=0)
@@ -41,7 +42,7 @@ _VALIDATION_DATE = datetime(2000, 1, 1, tzinfo=UTC)
 
 
 def _validated_variant(
-    problem: ScheduleProblem, placements: tuple[Placement, ...]
+    problem: ScheduleProblem, placements: tuple[Placement, ...], scores: tuple[CriterionScore, ...]
 ) -> ScheduleVariant:
     counts: dict[UUID, int] = defaultdict(int)
     entries = []
@@ -59,7 +60,7 @@ def _validated_variant(
         source=ScheduleSource.GENERATED,
         job_id=JobId(_VALIDATION_ID),
         result_index=1,
-        criterion_scores=(),
+        criterion_scores=scores,
         created_at=_VALIDATION_DATE,
         entries=tuple(entries),
     )
@@ -67,7 +68,7 @@ def _validated_variant(
     if conflicts:
         codes = ", ".join(sorted({conflict.code for conflict in conflicts}))
         raise ValueError(f"Планировщик сформировал недопустимое расписание: {codes}")
-    return ScheduleVariant(schedule.entries, ())
+    return ScheduleVariant(schedule.entries, scores)
 
 
 _WORKLOAD_ONLY = {
@@ -270,8 +271,6 @@ class FeasibleScheduleSolver:
     ) -> SolverResult:
         if control.is_cancel_requested():
             return SolverResult(SolverStatus.CANCELLED)
-        if any(criterion.is_active for criterion in problem.optimization_criteria):
-            raise NotImplementedError("Оптимизация расписания реализуется в задаче #68")
 
         try:
             requirements, diagnostics = prepare_requirements(problem, control)
@@ -302,13 +301,14 @@ class FeasibleScheduleSolver:
         variants: list[ScheduleVariant] = []
         rejections = SearchRejections() if problem.constraints else None
         try:
-            for placements in find_placements(
+            candidates = find_placements(
                 requirements, problem.settings, control, problem.constraints, rejections
+            )
+            for placements, scores in select_placements(
+                candidates, problem, requirements, options.limit, control
             ):
                 check_cancelled(control)
-                variants.append(_validated_variant(problem, placements))
-                if len(variants) >= options.limit:
-                    break
+                variants.append(_validated_variant(problem, placements, scores))
             check_cancelled(control)
         except SearchCancelled:
             return SolverResult(SolverStatus.CANCELLED)

@@ -4,7 +4,6 @@ from uuid import NAMESPACE_URL, UUID, uuid5
 
 from app.domain.scheduling.constraint_validation import seconds
 from app.domain.scheduling.constraints import (
-    ClockTimeParameters,
     ConstraintKind,
     ConstraintScopeKind,
     ExtraConstraintSnapshot,
@@ -93,7 +92,10 @@ def _reference_diagnostics(problem: ScheduleProblem) -> tuple[SolverDiagnostic, 
                 "Для ограничения требуется область WORKLOAD",
                 constraint_ids=(constraint.id,),
             ))
-        if scope.kind is not ConstraintScopeKind.PROJECT and scope.resource_id not in resources[scope.kind]:
+        if (
+            scope.kind is not ConstraintScopeKind.PROJECT
+            and scope.resource_id not in resources[scope.kind]
+        ):
             errors.append(SolverDiagnostic(
                 "Область ограничения ссылается на отсутствующий ресурс",
                 constraint_ids=(constraint.id,),

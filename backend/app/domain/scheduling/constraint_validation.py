@@ -120,20 +120,17 @@ def _violations(
     if kind is ConstraintKind.BEFORE:
         if not complete:
             return
-        # При повторениях сравниваются соответствующие проведения в порядке цикла.
-        ordered = sorted(
-            entries, key=lambda entry: (_cycle_seconds(entry, entry.start_time), entry.id)
-        )
-        later = sorted(
-            related, key=lambda entry: (_cycle_seconds(entry, entry.start_time), entry.id)
-        )
-        for entry in ordered[len(later) :]:
-            yield (entry,), {}
-        for entry, other in zip(ordered, later):
-            if entry.id == other.id or _cycle_seconds(entry, entry.end_time) > _cycle_seconds(
-                other, other.start_time
-            ):
-                yield (entry, other), {}
+        if not entries or not related:
+            yield tuple(entries + related), {}
+            return
+        last_source = max(entries, key=lambda entry: _cycle_seconds(entry, entry.end_time))
+        first_related = min(related, key=lambda entry: _cycle_seconds(entry, entry.start_time))
+        if (
+            last_source.id == first_related.id
+            or _cycle_seconds(last_source, last_source.end_time)
+            > _cycle_seconds(first_related, first_related.start_time)
+        ):
+            yield (last_source, first_related), {}
         return
     for entry in entries:
         if isinstance(params, ClockTimeParameters):

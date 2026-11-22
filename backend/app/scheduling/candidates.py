@@ -6,7 +6,12 @@ from typing import Literal
 from uuid import UUID
 
 from app.domain.projects.settings import DurationModeKind, ProjectSettings, TimeModeKind
-from app.domain.scheduling.constraint_validation import covered_by
+from app.domain.scheduling.constraint_validation import (
+    applies_to_workload,
+    constraint_conflicts,
+    covered_by,
+)
+from app.domain.scheduling.constraints import ConstraintKind, ExtraConstraintSnapshot
 from app.domain.scheduling.problem import ScheduleProblem, WorkloadSnapshot, WorkloadTargetKind
 from app.domain.scheduling.resources import (
     GroupSnapshot,
@@ -58,6 +63,7 @@ class LessonRequirements:
     teachers: tuple[TeacherSnapshot, ...]
     rooms: tuple[RoomSnapshot, ...]
     duration_minutes: int
+    constraints: tuple[ExtraConstraintSnapshot, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -190,6 +196,13 @@ def prepare_requirements(
     streams = {stream.id: (stream.name, stream.group_ids) for stream in problem.streams}
     requirements: list[LessonRequirements] = []
     diagnostics: list[SolverDiagnostic] = []
+    unary_kinds = {
+        ConstraintKind.MIN_START_TIME,
+        ConstraintKind.MAX_END_TIME,
+        ConstraintKind.ALLOWED_DAYS,
+        ConstraintKind.TIME_RANGE,
+        ConstraintKind.FIXED_DAY,
+    }
 
     for workload in sorted(problem.workloads, key=lambda item: item.id):
         check_cancelled(control)
@@ -226,6 +239,18 @@ def prepare_requirements(
                 teachers,
                 rooms,
                 duration,
+                tuple(
+                    constraint
+                    for constraint in problem.constraints
+                    if constraint.kind in unary_kinds
+                    and applies_to_workload(
+                        constraint.scope,
+                        workload,
+                        participants.group_ids,
+                        participants.subgroup_id,
+                        subgroups,
+                    )
+                ),
             )
         )
     return tuple(requirements), tuple(diagnostics)
@@ -269,6 +294,11 @@ def iter_placements(
         if any(
             windows and not covered_by(windows, probe)
             for windows in requirements.participants.availability
+        ):
+            continue
+        if any(
+            any(constraint_conflicts(constraint, [probe], [], False))
+            for constraint in requirements.constraints
         ):
             continue
         teachers = tuple(

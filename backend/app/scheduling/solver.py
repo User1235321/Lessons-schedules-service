@@ -1,6 +1,7 @@
 from collections import defaultdict
 from dataclasses import replace
 from datetime import UTC, datetime
+from typing import Literal
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from app.domain.scheduling.constraint_validation import seconds
@@ -216,7 +217,10 @@ def _candidate_diagnostics(
         if constraint.kind is ConstraintKind.EVERY_WEEK
     }
 
-    def restricting_ids(requirement: LessonRequirements, week: str | None = None) -> tuple[UUID, ...]:
+    def restricting_ids(
+        requirement: LessonRequirements,
+        week: Literal["ODD", "EVEN"] | None = None,
+    ) -> tuple[UUID, ...]:
         if not requirement.constraints:
             return ()
         without_constraints = replace(requirement, constraints=())

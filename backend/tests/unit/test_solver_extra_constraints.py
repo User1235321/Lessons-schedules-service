@@ -307,3 +307,52 @@ def test_unconstrained_repeated_lessons_still_share_one_week() -> None:
 
     assert result.status is SolverStatus.SOLVED
     assert {entry.week for entry in result.variants[0].entries} == {"ODD"}
+
+@pytest.mark.parametrize(
+    ("kind", "parameters", "expected"),
+    [
+        (ConstraintKind.CONSECUTIVE, RelatedWorkloadParameters(FIRST), time(9)),
+        (ConstraintKind.NOT_CONSECUTIVE, RelatedWorkloadParameters(FIRST), time(10)),
+        (ConstraintKind.MIN_GAP, MinimumGapParameters(FIRST, 60), time(10)),
+    ],
+)
+def test_related_constraint_can_target_the_same_repeated_workload(
+    kind, parameters, expected
+) -> None:
+    source = problem(
+        workloads=(workload(occurrences=2),),
+        constraints=(constraint(kind, parameters),),
+    )
+    result = solve(source)
+
+    assert result.status is SolverStatus.SOLVED
+    assert [entry.start_time for entry in result.variants[0].entries] == [
+        time(8), expected
+    ]
+
+
+def test_mutually_opposite_before_constraints_are_infeasible() -> None:
+    source = problem(
+        workloads=(workload(FIRST), workload(SECOND)),
+        constraints=(
+            constraint(ConstraintKind.BEFORE, RelatedWorkloadParameters(SECOND)),
+            constraint(
+                ConstraintKind.BEFORE, RelatedWorkloadParameters(FIRST),
+                source=SECOND, identifier=101,
+            ),
+        ),
+    )
+    result = solve(source)
+
+    assert result.status is SolverStatus.INFEASIBLE
+    assert set(result.diagnostics[0].constraint_ids) == {UUID(int=100), UUID(int=101)}
+
+
+def test_every_week_requires_at_least_two_occurrences() -> None:
+    source = problem(
+        constraints=(constraint(ConstraintKind.EVERY_WEEK, EveryWeekParameters()),),
+    )
+    result = solve(source)
+
+    assert result.status is SolverStatus.INFEASIBLE
+    assert result.diagnostics[0].workload_ids == (FIRST,)

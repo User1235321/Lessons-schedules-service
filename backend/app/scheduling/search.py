@@ -4,8 +4,17 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 from app.domain.projects.settings import ProjectSettings
+from app.domain.scheduling.constraint_validation import constraint_conflicts
+from app.domain.scheduling.constraints import (
+    ConstraintKind,
+    ExtraConstraintSnapshot,
+    MinimumGapParameters,
+    RelatedWorkloadParameters,
+)
 from app.domain.scheduling.job import JobProgress
-from app.domain.scheduling.solver import SolverControl
+from app.domain.scheduling.schedule import ScheduleEntry
+from app.domain.scheduling.solver import SolverControl, SolverDiagnostic
+from app.domain.shared.ids import ScheduleEntryId
 from app.domain.shared.week import Weekday
 from app.scheduling.candidates import (
     LessonRequirements,
@@ -74,6 +83,96 @@ class ResourceOccupancy:
             mapping[key].pop()
 
 
+@dataclass
+class SearchRejections:
+    constraints: dict[UUID, tuple[UUID, ...]] = field(default_factory=dict)
+
+    def record(self, constraint: ExtraConstraintSnapshot) -> None:
+        workloads = (constraint.scope.resource_id,)
+        if isinstance(
+            constraint.parameters, (RelatedWorkloadParameters, MinimumGapParameters)
+        ):
+            workloads += (constraint.parameters.workload_id,)
+        self.constraints[constraint.id] = workloads
+
+    def diagnostic(self) -> SolverDiagnostic | None:
+        if not self.constraints:
+            return None
+        return SolverDiagnostic(
+            "При поиске отклонялись размещения из-за указанных ограничений",
+            tuple(sorted({item for values in self.constraints.values() for item in values})),
+            tuple(sorted(self.constraints)),
+        )
+
+
+@dataclass
+class ConstraintOccupancy:
+    constraints: tuple[ExtraConstraintSnapshot, ...]
+    occurrences: dict[UUID, int]
+    entries: dict[UUID, list[ScheduleEntry]] = field(
+        default_factory=lambda: defaultdict(list)
+    )
+    relevant: dict[UUID, list[ExtraConstraintSnapshot]] = field(init=False)
+
+    def __post_init__(self) -> None:
+        self.relevant = defaultdict(list)
+        for constraint in self.constraints:
+            if constraint.kind is ConstraintKind.EVERY_WEEK:
+                self.relevant[constraint.scope.resource_id].append(constraint)
+            elif isinstance(
+                constraint.parameters, (RelatedWorkloadParameters, MinimumGapParameters)
+            ):
+                source = constraint.scope.resource_id
+                target = constraint.parameters.workload_id
+                self.relevant[source].append(constraint)
+                if target != source:
+                    self.relevant[target].append(constraint)
+
+    def rejections(self, placement: Placement, depth: int) -> tuple[ExtraConstraintSnapshot, ...]:
+        workload_id = placement.requirements.workload.id
+        candidate = placement.to_entry(ScheduleEntryId(UUID(int=depth + 1)))
+        rejected: list[ExtraConstraintSnapshot] = []
+        for constraint in self.relevant.get(workload_id, ()):
+            source = constraint.scope.resource_id
+            selected = list(self.entries[source])
+            if source == workload_id:
+                selected.append(candidate)
+            if constraint.kind is ConstraintKind.EVERY_WEEK:
+                if len(selected) == self.occurrences[source] and any(
+                    constraint_conflicts(constraint, selected, [], True)
+                ):
+                    rejected.append(constraint)
+                continue
+            related_id = constraint.parameters.workload_id
+            if related_id == source:
+                related = selected
+            else:
+                related = list(self.entries[related_id])
+                if related_id == workload_id:
+                    related.append(candidate)
+            complete = (
+                len(selected) == self.occurrences[source]
+                and len(related) == self.occurrences[related_id]
+            )
+            if (
+                constraint.kind in (ConstraintKind.CONSECUTIVE, ConstraintKind.BEFORE)
+                and not complete
+            ):
+                continue
+            if any(constraint_conflicts(constraint, selected, related, complete)):
+                rejected.append(constraint)
+        return tuple(rejected)
+
+    def add(self, placement: Placement, depth: int) -> None:
+        workload_id = placement.requirements.workload.id
+        self.entries[workload_id].append(
+            placement.to_entry(ScheduleEntryId(UUID(int=depth + 1)))
+        )
+
+    def remove(self, placement: Placement) -> None:
+        self.entries[placement.requirements.workload.id].pop()
+
+
 def _difficulty(requirements: LessonRequirements) -> tuple[int, int, int, UUID]:
     teacher_choices = len(requirements.teachers) - requirements.workload.required_teacher_count + 1
     room_choices = max(1, len(requirements.rooms))
@@ -89,6 +188,8 @@ def find_placements(
     requirements: tuple[LessonRequirements, ...],
     settings: ProjectSettings,
     control: SolverControl,
+    constraints: tuple[ExtraConstraintSnapshot, ...] = (),
+    rejections: SearchRejections | None = None,
 ) -> Iterator[tuple[Placement, ...]]:
     tasks = tuple(
         requirement
@@ -100,6 +201,14 @@ def find_placements(
         return
 
     occupied = ResourceOccupancy()
+    constrained = (
+        ConstraintOccupancy(
+            constraints,
+            {item.workload.id: item.workload.occurrences_per_cycle for item in requirements},
+        )
+        if constraints
+        else None
+    )
     selected: list[Placement] = []
     iterators: list[Iterator[Placement]] = []
     deepest = 0
@@ -109,7 +218,10 @@ def find_placements(
         depth = len(selected)
         if depth == len(tasks):
             yield tuple(selected)
-            occupied.remove(selected.pop())
+            previous = selected.pop()
+            occupied.remove(previous)
+            if constrained is not None:
+                constrained.remove(previous)
             continue
         if len(iterators) == depth:
             iterators.append(iter_placements(tasks[depth], settings, control))
@@ -119,7 +231,10 @@ def find_placements(
             iterators.pop()
             if not selected:
                 return
-            occupied.remove(selected.pop())
+            previous = selected.pop()
+            occupied.remove(previous)
+            if constrained is not None:
+                constrained.remove(previous)
             continue
         if (
             depth
@@ -129,7 +244,16 @@ def find_placements(
             continue
         if not occupied.can_place(placement):
             continue
+        if constrained is not None:
+            rejected_by = constrained.rejections(placement, depth)
+            if rejected_by:
+                if rejections is not None:
+                    for constraint in rejected_by:
+                        rejections.record(constraint)
+                continue
         occupied.add(placement)
+        if constrained is not None:
+            constrained.add(placement, depth)
         selected.append(placement)
         if len(selected) > deepest:
             deepest = len(selected)

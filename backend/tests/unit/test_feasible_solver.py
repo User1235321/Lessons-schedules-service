@@ -513,7 +513,7 @@ def test_cancellation_is_checked_inside_candidate_generation() -> None:
     assert result.variants == ()
 
 
-def test_unsupported_extra_constraints_and_optimization_are_not_ignored() -> None:
+def test_extra_constraints_are_supported_without_enabling_optimization() -> None:
     source = problem()
     constraint = ExtraConstraintSnapshot(
         UUID(int=100),
@@ -521,8 +521,7 @@ def test_unsupported_extra_constraints_and_optimization_are_not_ignored() -> Non
         ConstraintScope(ConstraintScopeKind.PROJECT),
         ClockTimeParameters(time(9)),
     )
-    with pytest.raises(NotImplementedError, match="#67"):
-        solve(replace(source, constraints=(constraint,)))
+    assert solve(replace(source, constraints=(constraint,))).status is SolverStatus.SOLVED
     with pytest.raises(NotImplementedError, match="#68"):
         solve(replace(
             source,

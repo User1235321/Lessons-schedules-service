@@ -1,10 +1,13 @@
 from collections.abc import Iterator
 from datetime import time
+from uuid import UUID
 
 from app.domain.scheduling.constraints import (
     AllowedDaysParameters,
     ClockTimeParameters,
     ConstraintKind,
+    ConstraintScope,
+    ConstraintScopeKind,
     EveryWeekParameters,
     ExtraConstraintSnapshot,
     FixedDayParameters,
@@ -12,7 +15,8 @@ from app.domain.scheduling.constraints import (
     RelatedWorkloadParameters,
     TimeRangeParameters,
 )
-from app.domain.scheduling.resources import WeeklyWindow
+from app.domain.scheduling.problem import WorkloadSnapshot, WorkloadTargetKind
+from app.domain.scheduling.resources import SubgroupSnapshot, WeeklyWindow
 from app.domain.scheduling.schedule import ScheduleConflict, ScheduleEntry
 from app.domain.shared.week import Weekday
 
@@ -29,6 +33,32 @@ _REASONS = {
     ConstraintKind.FIXED_DAY: "Занятие назначено вне зафиксированного дня или недели",
     ConstraintKind.TIME_RANGE: "Занятие выходит за разрешённые временные интервалы",
 }
+
+
+def applies_to_workload(
+    scope: ConstraintScope,
+    workload: WorkloadSnapshot | None,
+    group_ids: tuple[UUID, ...],
+    subgroup_id: UUID | None,
+    subgroups: dict[UUID, SubgroupSnapshot],
+    workload_id: UUID | None = None,
+) -> bool:
+    if scope.kind is ConstraintScopeKind.PROJECT:
+        return True
+    if scope.kind is ConstraintScopeKind.WORKLOAD:
+        return scope.resource_id == (workload.id if workload is not None else workload_id)
+    if scope.kind is ConstraintScopeKind.GROUP:
+        return scope.resource_id in group_ids
+    if scope.kind is ConstraintScopeKind.SUBGROUP:
+        subgroup = subgroups.get(scope.resource_id)
+        return scope.resource_id == subgroup_id or (
+            subgroup_id is None and subgroup is not None and subgroup.group_id in group_ids
+        )
+    return bool(
+        workload is not None
+        and workload.target.kind is WorkloadTargetKind.STREAM
+        and workload.target.resource_id == scope.resource_id
+    )
 
 
 def covered_by(windows: tuple[WeeklyWindow, ...], entry: ScheduleEntry) -> bool:
@@ -90,20 +120,17 @@ def _violations(
     if kind is ConstraintKind.BEFORE:
         if not complete:
             return
-        # При повторениях сравниваются соответствующие проведения в порядке цикла.
-        ordered = sorted(
-            entries, key=lambda entry: (_cycle_seconds(entry, entry.start_time), entry.id)
-        )
-        later = sorted(
-            related, key=lambda entry: (_cycle_seconds(entry, entry.start_time), entry.id)
-        )
-        for entry in ordered[len(later) :]:
-            yield (entry,), {}
-        for entry, other in zip(ordered, later):
-            if entry.id == other.id or _cycle_seconds(entry, entry.end_time) > _cycle_seconds(
-                other, other.start_time
-            ):
-                yield (entry, other), {}
+        if not entries or not related:
+            yield tuple(entries + related), {}
+            return
+        last_source = max(entries, key=lambda entry: _cycle_seconds(entry, entry.end_time))
+        first_related = min(related, key=lambda entry: _cycle_seconds(entry, entry.start_time))
+        if (
+            last_source.id == first_related.id
+            or _cycle_seconds(last_source, last_source.end_time)
+            > _cycle_seconds(first_related, first_related.start_time)
+        ):
+            yield (last_source, first_related), {}
         return
     for entry in entries:
         if isinstance(params, ClockTimeParameters):

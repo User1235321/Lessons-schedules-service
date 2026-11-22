@@ -4,7 +4,12 @@ from dataclasses import dataclass
 from uuid import UUID
 
 from app.domain.projects.settings import DurationModeKind, ProjectSettings, TimeModeKind
-from app.domain.scheduling.constraint_validation import constraint_conflicts, covered_by, seconds
+from app.domain.scheduling.constraint_validation import (
+    applies_to_workload,
+    constraint_conflicts,
+    covered_by,
+    seconds,
+)
 from app.domain.scheduling.constraints import (
     ConstraintScope,
     ConstraintScopeKind,
@@ -53,21 +58,8 @@ class _Placement:
         return self.entry.lesson_format or (self.workload.lesson_format if self.workload else None)
 
     def matches(self, scope: ConstraintScope, subgroups: dict[UUID, SubgroupSnapshot]) -> bool:
-        if scope.kind is ConstraintScopeKind.PROJECT:
-            return True
-        if scope.kind is ConstraintScopeKind.WORKLOAD:
-            return scope.resource_id == self.entry.workload_id
-        if scope.kind is ConstraintScopeKind.GROUP:
-            return scope.resource_id in self.groups
-        if scope.kind is ConstraintScopeKind.SUBGROUP:
-            subgroup = subgroups.get(scope.resource_id)
-            return scope.resource_id == self.subgroup or (
-                self.subgroup is None and subgroup is not None and subgroup.group_id in self.groups
-            )
-        return bool(
-            self.workload
-            and self.workload.target.kind is WorkloadTargetKind.STREAM
-            and self.workload.target.resource_id == scope.resource_id
+        return applies_to_workload(
+            scope, self.workload, self.groups, self.subgroup, subgroups, self.entry.workload_id
         )
 
 

@@ -1,8 +1,21 @@
 from typing import Any
 
-from app.domain.scheduling.job import Job, JobStatus, JobType, ResultMode, ResultOptions
+from pydantic import TypeAdapter
+
+from app.domain.scheduling.job import (
+    Job,
+    JobStatus,
+    JobType,
+    ResultMode,
+    ResultOptions,
+    SolverDiagnostic,
+)
+from app.domain.scheduling.problem import ScheduleProblem
 from app.domain.shared.ids import JobId, ProjectId
 from app.infrastructure.persistence.models.jobs import JobRow
+
+problem_codec = TypeAdapter(ScheduleProblem)
+_DIAGNOSTICS = TypeAdapter(tuple[SolverDiagnostic, ...])
 
 
 def job_to_row(job: Job) -> JobRow:
@@ -23,6 +36,7 @@ def job_update_values(job: Job) -> dict[str, Any]:
         "started_at": job.started_at,
         "finished_at": job.finished_at,
         "error_message": job.error_message,
+        "diagnostics": _DIAGNOSTICS.dump_python(job.diagnostics, mode="json"),
     }
 
 
@@ -37,4 +51,5 @@ def job_to_domain(row: JobRow) -> Job:
         started_at=row.started_at,
         finished_at=row.finished_at,
         error_message=row.error_message,
+        diagnostics=_DIAGNOSTICS.validate_python(row.diagnostics),
     )

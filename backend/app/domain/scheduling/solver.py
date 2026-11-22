@@ -1,9 +1,8 @@
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
-from uuid import UUID
 
-from app.domain.scheduling.job import JobProgress
+from app.domain.scheduling.job import JobProgress, SolverDiagnostic
 from app.domain.scheduling.schedule import CriterionScore, ScheduleEntry
 from app.domain.shared.errors import InvalidValue
 
@@ -27,13 +26,6 @@ class ScheduleVariant:
 
 
 @dataclass(frozen=True)
-class SolverDiagnostic:
-    message: str
-    workload_ids: tuple[UUID, ...] = ()
-    constraint_ids: tuple[UUID, ...] = ()
-
-
-@dataclass(frozen=True)
 class SolverResult:
     status: SolverStatus
     variants: tuple[ScheduleVariant, ...] = ()
@@ -41,4 +33,6 @@ class SolverResult:
 
     def __post_init__(self) -> None:
         if (self.status is SolverStatus.SOLVED) != bool(self.variants):
-            raise InvalidValue("Варианты допустимы и обязательны только для SOLVED", field="variants")
+            raise InvalidValue(
+                "Варианты допустимы и обязательны только для SOLVED", field="variants"
+            )

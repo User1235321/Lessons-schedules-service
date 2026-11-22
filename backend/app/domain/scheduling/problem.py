@@ -1,3 +1,4 @@
+from collections import Counter
 from dataclasses import dataclass
 from enum import StrEnum
 from uuid import UUID
@@ -14,7 +15,7 @@ from app.domain.scheduling.resources import (
     TeacherSnapshot,
 )
 from app.domain.scheduling.schedule import LessonFormat
-from app.domain.shared.errors import InvalidValue
+from app.domain.shared.errors import Conflict, InvalidValue
 
 
 class WorkloadTargetKind(StrEnum):
@@ -74,9 +75,8 @@ class OptimizationCriterionSnapshot:
     is_active: bool = True
 
     def __post_init__(self) -> None:
-        if (
-            not isinstance(self.criterion_type, str)
-            or self.criterion_type not in tuple(CriterionType)
+        if not isinstance(self.criterion_type, str) or self.criterion_type not in tuple(
+            CriterionType
         ):
             raise InvalidValue("Неизвестный критерий оптимизации", field="criterion_type")
         if self.priority <= 0:
@@ -95,6 +95,20 @@ class ScheduleProblem:
     workloads: tuple[WorkloadSnapshot, ...] = ()
     constraints: tuple[ExtraConstraintSnapshot, ...] = ()
     optimization_criteria: tuple[OptimizationCriterionSnapshot, ...] = ()
+
+    def check_size_limits(self) -> None:
+        for field, actual, limit in (
+            ("students", sum(group.student_count for group in self.groups), 52_646),
+            ("teachers", len(self.teachers), 3_122),
+            ("rooms", len(self.rooms), 15_000),
+        ):
+            if actual > limit:
+                raise Conflict(
+                    "Превышен предел размера проекта для расчёта",
+                    field=field,
+                    actual=actual,
+                    limit=limit,
+                )
 
     def __post_init__(self) -> None:
         for collection in (
@@ -119,13 +133,11 @@ class ScheduleProblem:
         if len(types) != len(set(types)):
             raise InvalidValue("Критерий оптимизации задан повторно", field="criterion_type")
 
+        subgroup_counts = Counter()
+        for subgroup in self.subgroups:
+            subgroup_counts[subgroup.group_id] += subgroup.student_count
         for group in self.groups:
-            students = sum(
-                subgroup.student_count
-                for subgroup in self.subgroups
-                if subgroup.group_id == group.id
-            )
-            if students > group.student_count:
+            if subgroup_counts[group.id] > group.student_count:
                 raise InvalidValue(
                     "Число студентов в подгруппах превышает численность группы",
                     field="student_count",

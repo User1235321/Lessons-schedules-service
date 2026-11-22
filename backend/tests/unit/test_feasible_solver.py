@@ -513,7 +513,7 @@ def test_cancellation_is_checked_inside_candidate_generation() -> None:
     assert result.variants == ()
 
 
-def test_extra_constraints_are_supported_without_enabling_optimization() -> None:
+def test_extra_constraints_and_optimization_return_scored_variants() -> None:
     source = problem()
     constraint = ExtraConstraintSnapshot(
         UUID(int=100),
@@ -522,8 +522,10 @@ def test_extra_constraints_are_supported_without_enabling_optimization() -> None
         ClockTimeParameters(time(9)),
     )
     assert solve(replace(source, constraints=(constraint,))).status is SolverStatus.SOLVED
-    with pytest.raises(NotImplementedError, match="#68"):
-        solve(replace(
-            source,
-            optimization_criteria=(OptimizationCriterionSnapshot("STUDENT_GAPS", 1),),
-        ))
+    result = solve(replace(
+        source,
+        constraints=(constraint,),
+        optimization_criteria=(OptimizationCriterionSnapshot("STUDENT_GAPS", 1),),
+    ))
+    score, = result.variants[0].criterion_scores
+    assert (score.criterion, score.value) == ("STUDENT_GAPS", 0)

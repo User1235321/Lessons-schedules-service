@@ -3,6 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.domain.scheduling.job import Job
+from app.domain.scheduling.problem import ScheduleProblem
 from app.domain.shared.errors import AlreadyExists, NotFound
 from app.domain.shared.ids import JobId, ProjectId, UserId
 from app.infrastructure.persistence.errors import violated_constraint
@@ -10,9 +11,10 @@ from app.infrastructure.persistence.mappers.jobs import (
     job_to_domain,
     job_to_row,
     job_update_values,
+    problem_codec,
 )
 from app.infrastructure.persistence.models import ProjectRow
-from app.infrastructure.persistence.models.jobs import JobRow
+from app.infrastructure.persistence.models.jobs import JobProblemRow, JobRow
 
 
 class SqlJobRepository:
@@ -33,6 +35,11 @@ class SqlJobRepository:
             select(JobRow).where(JobRow.id == job_id, JobRow.project_id == project_id)
         )
         return job_to_domain(row) if row else None
+
+    def add_problem(self, job_id: JobId, problem: ScheduleProblem) -> None:
+        self._session.add(
+            JobProblemRow(job_id=job_id, problem=problem_codec.dump_python(problem, mode="json"))
+        )
 
     def get_for_update(self, project_id: ProjectId, job_id: JobId) -> Job | None:
         row = self._session.scalar(

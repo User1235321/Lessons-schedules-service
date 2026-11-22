@@ -1,3 +1,4 @@
+from bisect import insort_right
 from collections import defaultdict
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -34,6 +35,7 @@ from app.scheduling.candidates import (
     prepare_requirements,
 )
 from app.scheduling.constraint_diagnostics import diagnose_incompatible_pairs
+from app.scheduling.quality import criterion_scores
 from app.scheduling.search import SearchRejections, find_placements
 
 _VALIDATION_ID = UUID(int=0)
@@ -67,7 +69,7 @@ def _validated_variant(
     if conflicts:
         codes = ", ".join(sorted({conflict.code for conflict in conflicts}))
         raise ValueError(f"Планировщик сформировал недопустимое расписание: {codes}")
-    return ScheduleVariant(schedule.entries, ())
+    return ScheduleVariant(schedule.entries, criterion_scores(schedule.entries, problem))
 
 
 _WORKLOAD_ONLY = {
@@ -270,8 +272,6 @@ class FeasibleScheduleSolver:
     ) -> SolverResult:
         if control.is_cancel_requested():
             return SolverResult(SolverStatus.CANCELLED)
-        if any(criterion.is_active for criterion in problem.optimization_criteria):
-            raise NotImplementedError("Оптимизация расписания реализуется в задаче #68")
 
         try:
             requirements, diagnostics = prepare_requirements(problem, control)
@@ -299,15 +299,20 @@ class FeasibleScheduleSolver:
             control.report_progress(JobProgress(100))
             return SolverResult(SolverStatus.INFEASIBLE, diagnostics=rule_diagnostics)
 
-        variants: list[ScheduleVariant] = []
+        variants: list[tuple[tuple[float, ...], int, ScheduleVariant]] = []
         rejections = SearchRejections() if problem.constraints else None
         try:
-            for placements in find_placements(
+            for sequence, placements in enumerate(find_placements(
                 requirements, problem.settings, control, problem.constraints, rejections
-            ):
+            )):
                 check_cancelled(control)
-                variants.append(_validated_variant(problem, placements))
-                if len(variants) >= options.limit:
+                variant = _validated_variant(problem, placements)
+                rank = tuple(score.value for score in variant.criterion_scores)
+                if len(variants) < options.limit or rank < variants[-1][0]:
+                    insort_right(variants, (rank, sequence, variant))
+                    if len(variants) > options.limit:
+                        variants.pop()
+                if len(variants) == options.limit and not any(variants[-1][0]):
                     break
             check_cancelled(control)
         except SearchCancelled:
@@ -315,7 +320,7 @@ class FeasibleScheduleSolver:
 
         if variants:
             control.report_progress(JobProgress(100))
-            return SolverResult(SolverStatus.SOLVED, variants=tuple(variants))
+            return SolverResult(SolverStatus.SOLVED, variants=tuple(item[2] for item in variants))
 
         try:
             diagnosed = (

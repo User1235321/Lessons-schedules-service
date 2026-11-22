@@ -13,7 +13,7 @@ from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
 from app.domain.scheduling.job import Job, JobMessage, JobProgress, JobStatus
 from app.domain.scheduling.schedule import Schedule, ScheduleSource
-from app.domain.scheduling.solver import SolverResult, SolverStatus
+from app.domain.scheduling.solver import SolverDiagnostic, SolverResult, SolverStatus
 from app.domain.shared.ids import JobId, ScheduleEntryId, ScheduleId
 
 logger = logging.getLogger(__name__)
@@ -81,6 +81,7 @@ class ProcessJob:
             else:
                 control.report_progress(JobProgress(0))
                 problem = self.problems.load(job)
+                problem.check_size_limits()
                 result = self.solver.solve(problem, job.result_options, control)
                 if control.is_cancel_requested():
                     result = SolverResult(SolverStatus.CANCELLED)
@@ -118,6 +119,11 @@ class ProcessJob:
                     error_message = "Не удалось проверить отмену перед сохранением результата"
             finished = current.finish(status, self.clock.now(), error_message)
             if result is not None:
+                if result.status is SolverStatus.INFEASIBLE:
+                    diagnostics = result.diagnostics or (
+                        SolverDiagnostic("Допустимое размещение занятий не найдено"),
+                    )
+                    finished = replace(finished, diagnostics=diagnostics)
                 self._save_variants(finished, result)
             self.uow.jobs.save(finished)
             self.uow.commit()

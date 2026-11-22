@@ -5,7 +5,14 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from app.application.scheduling.use_cases import JobView
-from app.domain.scheduling.job import Job, JobStatus, JobType, ResultMode, ResultOptions
+from app.domain.scheduling.job import (
+    Job,
+    JobStatus,
+    JobType,
+    ResultMode,
+    ResultOptions,
+    SolverDiagnostic,
+)
 from app.domain.scheduling.schedule import LessonFormat, Schedule, ScheduleSource
 from app.domain.shared.week import Weekday
 
@@ -61,9 +68,7 @@ class ScheduleResponse(BaseModel):
                 if schedule.criterion_scores is not None
                 else None
             ),
-            entries=[
-                ScheduleEntryResponse.model_validate(entry) for entry in schedule.entries
-            ],
+            entries=[ScheduleEntryResponse.model_validate(entry) for entry in schedule.entries],
         )
 
 
@@ -93,6 +98,7 @@ class JobResponse(BaseModel):
     status: JobStatus
     progress: float | None
     error_message: str | None
+    diagnostics: list[SolverDiagnostic]
 
     @classmethod
     def of(cls, view: JobView) -> Self:
@@ -103,4 +109,5 @@ class JobResponse(BaseModel):
             status=view.job.status,
             progress=view.progress.percent if view.progress else None,
             error_message=view.job.error_message,
+            diagnostics=list(view.job.diagnostics),
         )

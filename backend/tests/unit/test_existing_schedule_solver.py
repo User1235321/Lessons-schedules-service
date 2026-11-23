@@ -3,10 +3,10 @@ from datetime import UTC, datetime, time
 from uuid import uuid4
 
 from app.domain.scheduling.constraints import (
+    ClockTimeParameters,
     ConstraintKind,
     ConstraintScope,
     ConstraintScopeKind,
-    ClockTimeParameters,
     EveryWeekParameters,
     ExtraConstraintSnapshot,
 )

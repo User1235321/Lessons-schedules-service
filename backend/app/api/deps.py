@@ -60,6 +60,7 @@ from app.application.auth.use_cases import (
     Refresh,
     Register,
 )
+from app.application.import_export.schedules import ImportSchedule
 from app.application.projects.use_cases import (
     CreateProject,
     DeleteProject,
@@ -67,7 +68,12 @@ from app.application.projects.use_cases import (
     ListProjects,
     UpdateProject,
 )
-from app.application.scheduling.schedules import GetSchedule, UpdateScheduleEntry, ValidateSchedule
+from app.application.scheduling.schedules import (
+    GetSchedule,
+    QueueScheduleProcessing,
+    UpdateScheduleEntry,
+    ValidateSchedule,
+)
 from app.application.scheduling.use_cases import (
     CancelGenerationJob,
     CreateGenerationJob,
@@ -184,6 +190,10 @@ class UseCases(Protocol):
     def get_generation_schedules(self) -> GetGenerationSchedules: ...
 
     def get_schedule(self) -> GetSchedule: ...
+
+    def import_schedule(self) -> ImportSchedule: ...
+
+    def queue_schedule_processing(self) -> QueueScheduleProcessing: ...
 
     def update_schedule_entry(self) -> UpdateScheduleEntry: ...
 

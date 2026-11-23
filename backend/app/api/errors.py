@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.domain.files import FileTooLarge, UnsupportedFileFormat
 from app.domain.scheduling.errors import JobNotCancellable, JobResultsUnavailable
 from app.domain.shared.errors import (
     AlreadyExists,
@@ -18,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 # Порядок важен: подкласс с другим кодом ответа должен стоять выше своего родителя.
 HTTP_STATUS: dict[type[DomainError], int] = {
+    FileTooLarge: 413,
+    UnsupportedFileFormat: 415,
     JobNotCancellable: 409,
     JobResultsUnavailable: 409,
     NotAuthenticated: 401,

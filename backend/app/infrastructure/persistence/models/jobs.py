@@ -45,6 +45,7 @@ class JobRow(Base):
     status: Mapped[str] = mapped_column(String(16))
     result_mode: Mapped[str] = mapped_column(String(8))
     top_n: Mapped[int | None]
+    existing_input: Mapped[dict | None] = mapped_column(JSONB(none_as_null=True))
     diagnostics: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     created_at: Mapped[datetime]
     started_at: Mapped[datetime | None]

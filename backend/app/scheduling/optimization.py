@@ -144,6 +144,53 @@ def _scores(
     return tuple(CriterionScore(kind.value, values[kind]) for kind in criteria)
 
 
+class PlacementScorer:
+    def __init__(
+        self,
+        problem: ScheduleProblem,
+        requirements: tuple[LessonRequirements, ...],
+    ) -> None:
+        self.problem = problem
+        self.criteria = tuple(
+            CriterionType(criterion.criterion_type)
+            for criterion in sorted(problem.optimization_criteria, key=lambda c: c.priority)
+            if criterion.is_active
+        )
+        self.cohorts = (
+            _student_cohorts(problem, requirements)
+            if CriterionType.STUDENT_GAPS in self.criteria
+            or CriterionType.BALANCED_STUDENT_LOAD in self.criteria
+            else {}
+        )
+        max_preferences = (
+            sum(
+                item.workload.occurrences_per_cycle
+                * min(
+                    item.workload.required_teacher_count,
+                    sum(bool(teacher.preferences) for teacher in item.teachers),
+                )
+                for item in requirements
+            )
+            if CriterionType.TEACHER_PREFERENCES in self.criteria
+            else 0
+        )
+        self.best_possible = tuple(
+            -max_preferences if kind is CriterionType.TEACHER_PREFERENCES else 0
+            for kind in self.criteria
+        )
+
+    def score(
+        self, placements: tuple[Placement, ...], control: SolverControl
+    ) -> tuple[CriterionScore, ...]:
+        return _scores(placements, self.criteria, self.cohorts, self.problem, control)
+
+    def rank(self, scores: tuple[CriterionScore, ...]) -> tuple[float, ...]:
+        return tuple(
+            -score.value if kind is CriterionType.TEACHER_PREFERENCES else score.value
+            for kind, score in zip(self.criteria, scores, strict=True)
+        )
+
+
 def select_placements(
     candidates: Iterable[tuple[Placement, ...]],
     problem: ScheduleProblem,
@@ -151,49 +198,19 @@ def select_placements(
     limit: int,
     control: SolverControl,
 ) -> Iterator[tuple[tuple[Placement, ...], tuple[CriterionScore, ...]]]:
-    criteria = tuple(
-        CriterionType(criterion.criterion_type)
-        for criterion in sorted(problem.optimization_criteria, key=lambda c: c.priority)
-        if criterion.is_active
-    )
-    if not criteria:
+    scorer = PlacementScorer(problem, requirements)
+    if not scorer.criteria:
         for candidate in islice(candidates, limit):
             yield candidate, ()
         return
 
-    cohorts = (
-        _student_cohorts(problem, requirements)
-        if CriterionType.STUDENT_GAPS in criteria or CriterionType.BALANCED_STUDENT_LOAD in criteria
-        else {}
-    )
-    # Даже при полной доступности совпадений не может быть больше числа назначений
-    # преподавателей с предпочтениями. Остальные критерии ограничены снизу нулём.
-    max_preferences = (
-        sum(
-            item.workload.occurrences_per_cycle
-            * min(
-                item.workload.required_teacher_count,
-                sum(bool(teacher.preferences) for teacher in item.teachers),
-            )
-            for item in requirements
-        )
-        if CriterionType.TEACHER_PREFERENCES in criteria
-        else 0
-    )
-    best_possible = tuple(
-        -max_preferences if kind is CriterionType.TEACHER_PREFERENCES else 0 for kind in criteria
-    )
-
     def scored_candidates():
         optimal_count = 0
         for candidate in candidates:
-            scores = _scores(candidate, criteria, cohorts, problem, control)
-            rank = tuple(
-                -score.value if kind is CriterionType.TEACHER_PREFERENCES else score.value
-                for kind, score in zip(criteria, scores, strict=True)
-            )
+            scores = scorer.score(candidate, control)
+            rank = scorer.rank(scores)
             yield rank, candidate, scores
-            if rank == best_possible:
+            if rank == scorer.best_possible:
                 optimal_count += 1
                 if optimal_count == limit:
                     return

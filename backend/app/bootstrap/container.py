@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from confluent_kafka import Producer
+from minio import Minio
 from redis import Redis
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -72,6 +73,8 @@ from app.application.constraints.use_cases import (
     ReplaceCriteria,
     UpdateConstraint,
 )
+from app.application.import_export.ports import ObjectStorage
+from app.application.import_export.schedules import ImportSchedule
 from app.application.projects.use_cases import (
     CreateProject,
     DeleteProject,
@@ -84,6 +87,7 @@ from app.application.scheduling.ports import JobProblemSource, JobStateStore, Sc
 from app.application.scheduling.processing import ProcessJob
 from app.application.scheduling.schedules import (
     GetSchedule,
+    QueueScheduleProcessing,
     UpdateScheduleEntry,
     ValidateSchedule,
 )
@@ -99,6 +103,7 @@ from app.bootstrap.settings import Settings
 from app.infrastructure.job_state import RedisJobStateStore
 from app.infrastructure.mail import SMTPMailSender
 from app.infrastructure.messaging.kafka import KafkaJobPublisher
+from app.infrastructure.object_storage import MinioObjectStorage
 from app.infrastructure.persistence.database import create_database_engine, create_session_factory
 from app.infrastructure.persistence.job_lock import PostgresJobExecutionLock
 from app.infrastructure.persistence.job_problem import SqlJobProblemSource
@@ -106,6 +111,7 @@ from app.infrastructure.persistence.uow import SqlUnitOfWork
 from app.infrastructure.security import Argon2PasswordHasher, JwtTokenService
 from app.infrastructure.solver_process import SupervisedSolver
 from app.infrastructure.system import SystemClock, UuidGenerator
+from app.scheduling.reprocessing import ExistingScheduleSolver
 from app.scheduling.solver import FeasibleScheduleSolver
 
 
@@ -126,6 +132,17 @@ class Container:
     tokens: TokenService
     redis: Redis
     mail_sender: MailSender
+
+    def object_storage(self) -> ObjectStorage:
+        endpoint = self.settings.minio_endpoint
+        return MinioObjectStorage(Minio(
+            endpoint.removeprefix("https://").removeprefix("http://"),
+            access_key=self.settings.minio_access_key, secret_key=self.settings.minio_secret_key,
+            secure=endpoint.startswith("https://"),
+        ), self.settings.minio_bucket)
+
+    def import_schedule(self) -> ImportSchedule:
+        return ImportSchedule(self.uow(), self.object_storage(), self.ids, self.clock)
 
     def uow(self) -> UnitOfWork:
         # Новая транзакция на каждый вызов: сценарии не делят сессию между запросами
@@ -330,6 +347,9 @@ class Container:
     def get_schedule(self) -> GetSchedule:
         return GetSchedule(uow=self.uow())
 
+    def queue_schedule_processing(self) -> QueueScheduleProcessing:
+        return QueueScheduleProcessing(self.uow(), self.clock, self.ids)
+
     def update_schedule_entry(self) -> UpdateScheduleEntry:
         return UpdateScheduleEntry(uow=self.uow())
 
@@ -364,6 +384,7 @@ class Container:
             state=self.job_state(),
             problems=problems if problems is not None else SqlJobProblemSource(self.session_factory),
             solver=solver if solver is not None else SupervisedSolver(FeasibleScheduleSolver()),
+            reprocessor=SupervisedSolver(ExistingScheduleSolver()),
             clock=self.clock,
             ids=self.ids,
         )

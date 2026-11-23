@@ -42,6 +42,13 @@ class SqlScheduleRepository:
     def get(self, project_id: ProjectId, schedule_id: ScheduleId) -> Schedule | None:
         return self._get(project_id, schedule_id, for_update=False)
 
+    def owned_project_id(self, schedule_id: ScheduleId, owner_id: UserId) -> ProjectId | None:
+        return self._session.scalar(
+            select(ScheduleRow.project_id)
+            .join(ProjectRow, ProjectRow.id == ScheduleRow.project_id)
+            .where(ScheduleRow.id == schedule_id, ProjectRow.owner_id == owner_id)
+        )
+
     def get_for_update(self, project_id: ProjectId, schedule_id: ScheduleId) -> Schedule | None:
         return self._get(project_id, schedule_id, for_update=True)
 

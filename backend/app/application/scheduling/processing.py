@@ -11,10 +11,11 @@ from app.application.scheduling.ports import (
     JobStateStore,
     JobStateStoreError,
     ScheduleProblemSolver,
+    ScheduleReprocessor,
 )
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
-from app.domain.scheduling.job import Job, JobMessage, JobProgress, JobStatus
+from app.domain.scheduling.job import Job, JobMessage, JobProgress, JobStatus, JobType
 from app.domain.scheduling.schedule import Schedule, ScheduleSource
 from app.domain.scheduling.solver import SolverDiagnostic, SolverResult, SolverStatus
 from app.domain.shared.ids import JobId, ScheduleEntryId, ScheduleId
@@ -56,6 +57,7 @@ class ProcessJob:
     solver: ScheduleProblemSolver
     clock: Clock
     ids: IdGenerator
+    reprocessor: ScheduleReprocessor | None = None
 
     def execute(self, message: JobMessage) -> bool:
         with self.lock.acquire(message.job_id) as acquired:
@@ -121,7 +123,11 @@ class ProcessJob:
         problem.check_size_limits()
         if control.is_cancel_requested():
             return SolverResult(SolverStatus.CANCELLED)
-        return self.solver.solve(problem, job.result_options, control)
+        if job.job_type is JobType.GENERATE:
+            return self.solver.solve(problem, job.result_options, control)
+        if job.existing is None or self.reprocessor is None:
+            raise ValueError("Отсутствует снимок расписания или обработчик задания")
+        return self.reprocessor.solve(job.existing, job.job_type, problem, control)
 
     def _await_result(
         self, future: Future[SolverResult], control: JobSolverControl

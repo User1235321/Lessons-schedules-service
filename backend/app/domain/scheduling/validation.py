@@ -116,6 +116,36 @@ def _participant_targets(problem: ScheduleProblem):
     return targets
 
 
+def resolve_workload(entry: ScheduleEntry, problem: ScheduleProblem) -> WorkloadSnapshot | None:
+    if entry.workload_id is not None:
+        return next(
+            (workload for workload in problem.workloads if workload.id == entry.workload_id),
+            None,
+        )
+    if not (entry.subject_name and entry.participant_label and entry.lesson_type):
+        return None
+    subjects = {subject.id: subject.name for subject in problem.subjects}
+    groups = {group.id: group.name for group in problem.groups}
+    participants = {
+        WorkloadTargetKind.GROUP: groups,
+        WorkloadTargetKind.SUBGROUP: {
+            subgroup.id: f"{groups[subgroup.group_id]} / {subgroup.name}"
+            for subgroup in problem.subgroups
+            if subgroup.group_id in groups
+        },
+        WorkloadTargetKind.STREAM: {stream.id: stream.name for stream in problem.streams},
+    }
+    matches = [
+        workload
+        for workload in problem.workloads
+        if workload.lesson_type == entry.lesson_type
+        and _label(subjects.get(workload.subject_id)) == _label(entry.subject_name)
+        and _label(participants[workload.target.kind].get(workload.target.resource_id))
+        == _label(entry.participant_label)
+    ]
+    return matches[0] if len(matches) == 1 else None
+
+
 def _placements(schedule: Schedule, problem: ScheduleProblem) -> Iterator[_Placement]:
     workloads = {workload.id: workload for workload in problem.workloads}
     groups = {group.id: group for group in problem.groups}
@@ -124,6 +154,8 @@ def _placements(schedule: Schedule, problem: ScheduleProblem) -> Iterator[_Place
     targets = _participant_targets(problem)
     for entry in schedule.entries:
         workload = workloads.get(entry.workload_id)
+        if entry.workload_id is None and schedule.source is ScheduleSource.IMPORTED:
+            workload = resolve_workload(entry, problem)
         if workload is None:
             matches = targets.get(_label(entry.participant_label), ())
             if len(matches) == 1:
@@ -186,6 +218,7 @@ def _time_conflicts(placement: _Placement, settings: ProjectSettings) -> Iterato
 def _teacher_conflicts(
     placement: _Placement,
     teachers: dict[UUID, TeacherSnapshot],
+    teacher_names: dict[str, set[UUID]],
     generated: bool,
 ) -> Iterator[ScheduleConflict]:
     entry = placement.entry
@@ -207,7 +240,10 @@ def _teacher_conflicts(
             actual=len(entry.teachers),
         )
     for assignment in entry.teachers:
-        teacher = teachers.get(assignment.teacher_id)
+        teacher_id = assignment.teacher_id
+        if not generated and teacher_id is None:
+            teacher_id = _identity(None, assignment.display_name, teacher_names)
+        teacher = teachers.get(teacher_id)
         if teacher is None:
             if generated:
                 yield _conflict(
@@ -245,6 +281,7 @@ def _teacher_conflicts(
 def _room_conflicts(
     placement: _Placement,
     rooms: dict[UUID, RoomSnapshot],
+    room_names: dict[str, set[UUID]],
     generated: bool,
 ) -> Iterator[ScheduleConflict]:
     entry = placement.entry
@@ -252,7 +289,10 @@ def _room_conflicts(
         if entry.room_id is not None or entry.room_name is not None:
             yield _conflict("REMOTE_ROOM", "Дистанционное занятие не занимает аудиторию", entry)
         return
-    room = rooms.get(entry.room_id)
+    room_id = entry.room_id
+    if not generated and room_id is None:
+        room_id = _identity(None, entry.room_name, room_names)
+    room = rooms.get(room_id)
     if room is None:
         if generated and placement.lesson_format is LessonFormat.ONSITE:
             yield _conflict("ROOM_REQUIRED", "Очному занятию нужна аудитория из справочника", entry)
@@ -425,14 +465,16 @@ def validate_schedule(
     )
     teachers = {teacher.id: teacher for teacher in problem.teachers}
     rooms = {room.id: room for room in problem.rooms}
+    teacher_names = _identities((teacher.id, teacher.full_name) for teacher in problem.teachers)
+    room_names = _identities((room.id, room.name) for room in problem.rooms)
     groups = {group.id: group for group in problem.groups}
     subgroups = {subgroup.id: subgroup for subgroup in problem.subgroups}
     by_workload: dict[UUID, list[ScheduleEntry]] = defaultdict(list)
     conflicts: list[ScheduleConflict] = []
     for placement in placements:
         entry = placement.entry
-        if entry.workload_id is not None:
-            by_workload[entry.workload_id].append(entry)
+        if placement.workload is not None:
+            by_workload[placement.workload.id].append(entry)
         if placement.workload is None and generated:
             conflicts.append(
                 _conflict(
@@ -443,8 +485,8 @@ def validate_schedule(
                 )
             )
         conflicts.extend(_time_conflicts(placement, problem.settings))
-        conflicts.extend(_teacher_conflicts(placement, teachers, generated))
-        conflicts.extend(_room_conflicts(placement, rooms, generated))
+        conflicts.extend(_teacher_conflicts(placement, teachers, teacher_names, generated))
+        conflicts.extend(_room_conflicts(placement, rooms, room_names, generated))
         conflicts.extend(_group_conflicts(placement, groups, subgroups.get(placement.subgroup)))
     for workload in problem.workloads:
         entries = by_workload[workload.id]

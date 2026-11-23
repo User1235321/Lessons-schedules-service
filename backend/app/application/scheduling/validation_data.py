@@ -53,9 +53,7 @@ def load_validation_data(
         subjects=tuple(
             SubjectSnapshot(subject.id, subject.name)
             for subject in uow.subjects.list_in_project(project_id)
-        )
-        if for_processing
-        else (),
+        ),
         optimization_criteria=tuple(uow.criteria.list_in_project(project_id))
         if for_processing
         else (),

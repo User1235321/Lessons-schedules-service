@@ -8,7 +8,7 @@ from app.domain.scheduling.problem import ScheduleProblem
 from app.domain.scheduling.schedule import LessonFormat, Schedule, ScheduleEntry, ScheduleSource
 from app.domain.scheduling.solver import ScheduleVariant, SolverControl, SolverDiagnostic
 from app.domain.scheduling.solver import SolverResult, SolverStatus
-from app.domain.scheduling.validation import validate_schedule
+from app.domain.scheduling.validation import resolve_workload, validate_schedule
 from app.domain.shared.ids import JobId
 from app.scheduling.candidates import (
     LessonRequirements,
@@ -62,23 +62,6 @@ def _distance(original: ScheduleEntry, candidate: ScheduleEntry) -> int:
             not _teachers_equal(original, candidate),
         )
     )
-
-
-def _match_workload(
-    entry: ScheduleEntry, requirements: dict[UUID, LessonRequirements]
-) -> UUID | None:
-    if entry.workload_id is not None:
-        return entry.workload_id if entry.workload_id in requirements else None
-    if not (entry.subject_name and entry.participant_label and entry.lesson_type):
-        return None
-    matches = [
-        workload_id
-        for workload_id, requirement in requirements.items()
-        if _label(entry.subject_name) == _label(requirement.subject_name)
-        and _label(entry.participant_label) == _label(requirement.participants.label)
-        and entry.lesson_type == requirement.workload.lesson_type
-    ]
-    return matches[0] if len(matches) == 1 else None
 
 
 def _requirements_by_format(
@@ -168,12 +151,12 @@ class ExistingScheduleSolver:
         linked = []
         for entry in source.schedule.entries:
             check_cancelled(control)
-            workload_id = _match_workload(entry, by_workload)
-            if workload_id is None:
+            workload = resolve_workload(entry, problem)
+            if workload is None:
                 return _infeasible(
                     "Для занятия не найдена однозначная учебная нагрузка с данными для расчёта"
                 )
-            linked.append(workload_id)
+            linked.append(workload.id)
         counts = Counter(linked)
         mismatched = tuple(
             workload.id

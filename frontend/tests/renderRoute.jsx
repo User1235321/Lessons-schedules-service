@@ -101,6 +101,9 @@ export function stubBackend({
     const method = init.method ?? "GET";
     const body = init.body ? JSON.parse(init.body) : null;
 
+    if (url === "/api/auth/password-reset/request" && method === "POST") {
+      return json(202, { message: "Если аккаунт с таким адресом существует, мы отправим письмо для восстановления пароля." });
+    }
     if (url === "/api/auth/login") {
       return body.email === TEST_USER.email && body.password === TEST_PASSWORD
         ? json(200, { access_token: "test-token" })

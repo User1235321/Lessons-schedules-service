@@ -11,8 +11,13 @@ from app.domain.scheduling.constraints import (
 )
 from app.domain.scheduling.job import ExistingScheduleInput, JobType
 from app.domain.scheduling.problem import OptimizationCriterionSnapshot
-from app.domain.scheduling.schedule import LessonFormat, Schedule, ScheduleEntry, ScheduleSource
-from app.domain.scheduling.schedule import TeacherAssignment
+from app.domain.scheduling.schedule import (
+    LessonFormat,
+    Schedule,
+    ScheduleEntry,
+    ScheduleSource,
+    TeacherAssignment,
+)
 from app.domain.scheduling.solver import SolverStatus
 from app.domain.scheduling.validation import validate_schedule
 from app.domain.shared.week import Weekday

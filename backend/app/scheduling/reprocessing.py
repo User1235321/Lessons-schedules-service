@@ -6,8 +6,13 @@ from uuid import UUID
 from app.domain.scheduling.job import ExistingScheduleInput, JobProgress, JobType
 from app.domain.scheduling.problem import ScheduleProblem
 from app.domain.scheduling.schedule import LessonFormat, Schedule, ScheduleEntry, ScheduleSource
-from app.domain.scheduling.solver import ScheduleVariant, SolverControl, SolverDiagnostic
-from app.domain.scheduling.solver import SolverResult, SolverStatus
+from app.domain.scheduling.solver import (
+    ScheduleVariant,
+    SolverControl,
+    SolverDiagnostic,
+    SolverResult,
+    SolverStatus,
+)
 from app.domain.scheduling.validation import resolve_workload, validate_schedule
 from app.domain.shared.ids import JobId
 from app.scheduling.candidates import (

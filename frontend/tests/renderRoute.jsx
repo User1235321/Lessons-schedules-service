@@ -101,6 +101,14 @@ export function stubBackend({
     const method = init.method ?? "GET";
     const body = init.body ? JSON.parse(init.body) : null;
 
+    if (url === "/api/auth/password-reset/request" && method === "POST") {
+      return json(202, { message: "Если аккаунт с таким адресом существует, мы отправим письмо для восстановления пароля." });
+    }
+    if (url === "/api/auth/password-reset/confirm" && method === "POST") {
+      return body.token === "from-email"
+        ? json(204)
+        : json(401, { code: "INVALID_PASSWORD_RESET_TOKEN", message: "Ссылка восстановления недействительна", details: {} });
+    }
     if (url === "/api/auth/login") {
       return body.email === TEST_USER.email && body.password === TEST_PASSWORD
         ? json(200, { access_token: "test-token" })

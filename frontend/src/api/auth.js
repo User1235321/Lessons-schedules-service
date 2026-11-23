@@ -10,6 +10,9 @@ async function authenticate(path, credentials) {
 export const authApi = {
   register: (credentials) => authenticate("/auth/register", credentials),
   login: (credentials) => authenticate("/auth/login", credentials),
+  requestPasswordReset: (email) => api.post("/auth/password-reset/request", { email }, { auth: false }),
+  confirmPasswordReset: (token, password) =>
+    api.post("/auth/password-reset/confirm", { token, password }, { auth: false }),
   refresh: refreshAccessToken,
   me: () => api.get("/auth/me"),
 

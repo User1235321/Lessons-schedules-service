@@ -140,6 +140,13 @@ export function stubBackend({
       job.status = "QUEUED";
       return json(202, { job_id: "job-1", status: "QUEUED" });
     }
+    const scheduleUrl = url.match(/^\/api\/schedules\/([^/]+)$/);
+    if (scheduleUrl && method === "GET") {
+      const schedule = schedules.find((item) => item.id === decodeURIComponent(scheduleUrl[1]));
+      return schedule
+        ? json(200, { project_id: "42", source: "GENERATED", job_id: "job-1", entries: [], ...schedule })
+        : json(404, { code: "NOT_FOUND", message: "Расписание не найдено", details: {} });
+    }
     const schedulesUrl = url.match(/^\/api\/generation-jobs\/([^/]+)\/schedules$/);
     if (schedulesUrl && method === "GET") {
       if (schedulesUrl[1] !== "job-1") {

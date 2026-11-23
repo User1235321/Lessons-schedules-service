@@ -2,6 +2,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, UniqueConstraint, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.domain.scheduling.job import JobStatus, JobType, ResultMode
@@ -44,6 +45,7 @@ class JobRow(Base):
     status: Mapped[str] = mapped_column(String(16))
     result_mode: Mapped[str] = mapped_column(String(8))
     top_n: Mapped[int | None]
+    diagnostics: Mapped[list] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
     created_at: Mapped[datetime]
     started_at: Mapped[datetime | None]
     finished_at: Mapped[datetime | None]
@@ -67,3 +69,12 @@ class JobOutboxRow(Base):
     )
     created_at: Mapped[datetime]
     published_at: Mapped[datetime | None]
+
+
+class JobProblemRow(Base):
+    __tablename__ = "schedule_job_inputs"
+
+    job_id: Mapped[UUID] = mapped_column(
+        ForeignKey("schedule_jobs.id", ondelete="CASCADE"), primary_key=True
+    )
+    problem: Mapped[dict] = mapped_column(JSONB)

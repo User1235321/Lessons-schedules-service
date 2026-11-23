@@ -2,6 +2,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from typing import Self
+from uuid import UUID
 
 from app.domain.shared.errors import InvalidValue
 from app.domain.shared.ids import JobId, ProjectId
@@ -40,13 +41,22 @@ class ResultOptions:
             if self.top_n is None or self.top_n <= 0:
                 raise InvalidValue("Для TOP_N нужно положительное число вариантов", field="top_n")
             if self.top_n > MAX_TOP_N:
-                raise InvalidValue(f"Число вариантов не должно превышать {MAX_TOP_N}", field="top_n")
+                raise InvalidValue(
+                    f"Число вариантов не должно превышать {MAX_TOP_N}", field="top_n"
+                )
         elif self.top_n is not None:
             raise InvalidValue("Число вариантов задаётся только для TOP_N", field="top_n")
 
     @property
     def limit(self) -> int:
         return self.top_n if self.top_n is not None else 1
+
+
+@dataclass(frozen=True)
+class SolverDiagnostic:
+    message: str
+    workload_ids: tuple[UUID, ...] = ()
+    constraint_ids: tuple[UUID, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -60,6 +70,7 @@ class Job:
     started_at: datetime | None = None
     finished_at: datetime | None = None
     error_message: str | None = None
+    diagnostics: tuple[SolverDiagnostic, ...] = ()
 
     def __post_init__(self) -> None:
         if self.status is JobStatus.QUEUED and (

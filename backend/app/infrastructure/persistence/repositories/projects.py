@@ -23,10 +23,13 @@ class SqlProjectRepository:
     def add(self, project: Project) -> None:
         self._session.add(project_to_row(project))
 
-    def get_owned(self, project_id: ProjectId, owner_id: UserId) -> Project | None:
-        row = self._session.scalar(
-            select(ProjectRow).where(ProjectRow.id == project_id, ProjectRow.owner_id == owner_id)
+    def get_owned(
+        self, project_id: ProjectId, owner_id: UserId, *, for_update: bool = False
+    ) -> Project | None:
+        query = select(ProjectRow).where(
+            ProjectRow.id == project_id, ProjectRow.owner_id == owner_id
         )
+        row = self._session.scalar(query.with_for_update() if for_update else query)
         return project_to_domain(row) if row else None
 
     def list_owned(self, owner_id: UserId) -> list[Project]:

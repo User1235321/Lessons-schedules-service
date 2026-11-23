@@ -2,7 +2,12 @@ from contextlib import AbstractContextManager
 from datetime import datetime
 from typing import Protocol
 
-from app.domain.scheduling.job import Job, JobMessage, JobProgress, ResultOptions
+from app.domain.scheduling.job import (
+    Job,
+    JobMessage,
+    JobProgress,
+    ResultOptions,
+)
 from app.domain.scheduling.problem import ScheduleProblem
 from app.domain.scheduling.schedule import Schedule
 from app.domain.scheduling.solver import SolverControl, SolverResult
@@ -11,6 +16,8 @@ from app.domain.shared.ids import JobId, ProjectId, ScheduleId, UserId
 
 class JobRepository(Protocol):
     def add(self, job: Job) -> None: ...
+
+    def add_problem(self, job_id: JobId, problem: ScheduleProblem) -> None: ...
 
     def get(self, project_id: ProjectId, job_id: JobId) -> Job | None: ...
 

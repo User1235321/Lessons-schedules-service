@@ -1,12 +1,14 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import time, timedelta
 from threading import Event
+from time import monotonic
 from unittest.mock import Mock
 from uuid import uuid4
 
 import pytest
 
 from app.application.scheduling.ports import JobStateStoreError
+from app.application.scheduling.processing import JobSolverControl
 from app.domain.scheduling.job import JobMessage, JobProgress, JobStatus, ResultOptions
 from app.domain.scheduling.problem import ScheduleProblem
 from app.domain.scheduling.schedule import ScheduleEntry, TeacherAssignment
@@ -45,13 +47,25 @@ def current_job(container, job):
         return uow.jobs.get(job.project_id, job.id)
 
 
-def test_success_and_redelivery_persist_exactly_one_result(scheduling_context: tuple) -> None:
+def test_success_and_redelivery_persist_exactly_one_result(
+    scheduling_context: tuple, monkeypatch
+) -> None:
     container, owner, project = scheduling_context
     job, process, message = prepare(scheduling_context)
+    progress_reported = Event()
+    set_progress = process.state.set_progress
+
+    def report(job_id, progress):
+        set_progress(job_id, progress)
+        if progress == JobProgress(42):
+            progress_reported.set()
+
+    monkeypatch.setattr(process.state, "set_progress", report)
 
     def solve(problem, options, control):
         assert current_job(container, job).status is JobStatus.RUNNING
         control.report_progress(JobProgress(42))
+        assert progress_reported.wait(2)
         assert container.get_generation_job().execute(owner.id, job.id).progress == JobProgress(42)
         return solved_result()
 
@@ -249,3 +263,47 @@ def test_redelivery_does_not_extend_progress_retention(scheduling_context: tuple
     assert process.execute(message)
     assert container.redis.pexpiretime(key) == expiry
     process.solver.solve.assert_called_once()
+
+
+def test_progress_and_cancel_during_snapshot_load(scheduling_context: tuple, monkeypatch) -> None:
+    container, owner, project = scheduling_context
+    job, process, message = prepare(scheduling_context)
+    loading, release, heartbeat, cancel_observed = Event(), Event(), Event(), Event()
+    reports = []
+    set_progress = process.state.set_progress
+    stop = JobSolverControl.stop
+
+    def load(job):
+        loading.set()
+        assert release.wait(10)
+        return ScheduleProblem(project.settings)
+
+    def report(job_id, progress):
+        set_progress(job_id, progress)
+        reports.append(monotonic())
+        if len(reports) >= 2:
+            heartbeat.set()
+
+    def stop_control(control):
+        stop(control)
+        cancel_observed.set()
+
+    process.problems.load.side_effect = load
+    monkeypatch.setattr(process.state, "set_progress", report)
+    monkeypatch.setattr(JobSolverControl, "stop", stop_control)
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(process.execute, message)
+        try:
+            assert loading.wait(10)
+            assert heartbeat.wait(2)
+            assert reports[1] - reports[0] <= 2
+            container.cancel_generation_job().execute(owner.id, job.id)
+            assert cancel_observed.wait(2)
+        finally:
+            release.set()
+        assert future.result(timeout=10)
+
+    assert current_job(container, job).status is JobStatus.CANCELLED
+    process.solver.solve.assert_not_called()
+    with container.uow() as uow:
+        assert uow.schedules.list_for_job(project.id, job.id) == []

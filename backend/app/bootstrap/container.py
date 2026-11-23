@@ -82,7 +82,11 @@ from app.application.projects.use_cases import (
 from app.application.scheduling.delivery import DeliverPendingJob
 from app.application.scheduling.ports import JobProblemSource, JobStateStore, ScheduleProblemSolver
 from app.application.scheduling.processing import ProcessJob
-from app.application.scheduling.schedules import GetSchedule, UpdateScheduleEntry, ValidateSchedule
+from app.application.scheduling.schedules import (
+    GetSchedule,
+    UpdateScheduleEntry,
+    ValidateSchedule,
+)
 from app.application.scheduling.use_cases import (
     CancelGenerationJob,
     CreateGenerationJob,
@@ -100,8 +104,9 @@ from app.infrastructure.persistence.job_lock import PostgresJobExecutionLock
 from app.infrastructure.persistence.job_problem import SqlJobProblemSource
 from app.infrastructure.persistence.uow import SqlUnitOfWork
 from app.infrastructure.security import Argon2PasswordHasher, JwtTokenService
+from app.infrastructure.solver_process import SupervisedSolver
 from app.infrastructure.system import SystemClock, UuidGenerator
-from app.scheduling.preview import PreviewScheduleSolver
+from app.scheduling.solver import FeasibleScheduleSolver
 
 
 @dataclass
@@ -358,7 +363,7 @@ class Container:
             lock=PostgresJobExecutionLock(self.engine),
             state=self.job_state(),
             problems=problems if problems is not None else SqlJobProblemSource(self.session_factory),
-            solver=solver if solver is not None else PreviewScheduleSolver(),
+            solver=solver if solver is not None else SupervisedSolver(FeasibleScheduleSolver()),
             clock=self.clock,
             ids=self.ids,
         )

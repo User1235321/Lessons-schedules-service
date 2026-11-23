@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 
 from app.application.auth.access import owned_project
-from app.application.scheduling.ports import JobStateStore
+from app.application.scheduling.ports import JobStateStore, JobStateStoreError
+from app.application.scheduling.validation_data import enqueue_with_snapshot
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
 from app.domain.scheduling.errors import JobNotCancellable, JobResultsUnavailable
@@ -25,7 +26,7 @@ class CreateGenerationJob:
 
     def execute(self, user_id: UserId, project_id: ProjectId, options: ResultOptions) -> Job:
         with self.uow:
-            owned_project(self.uow, project_id, user_id)
+            project = owned_project(self.uow, project_id, user_id, for_update=True)
             job = Job(
                 id=JobId(self.ids.new_id()),
                 project_id=project_id,
@@ -34,8 +35,7 @@ class CreateGenerationJob:
                 result_options=options,
                 created_at=self.clock.now(),
             )
-            self.uow.jobs.add(job)
-            self.uow.job_outbox.add(job.id, job.created_at)
+            enqueue_with_snapshot(self.uow, job, project)
             self.uow.commit()
         return job
 
@@ -50,7 +50,11 @@ class GetGenerationJob:
             job = self.uow.jobs.get_owned(job_id, user_id)
             if job is None:
                 raise NotFound("Задание не найдено", job_id=str(job_id))
-        return JobView(job, self.state.get_progress(job_id))
+        try:
+            progress = self.state.get_progress(job_id)
+        except JobStateStoreError:
+            progress = None
+        return JobView(job, progress)
 
 
 @dataclass

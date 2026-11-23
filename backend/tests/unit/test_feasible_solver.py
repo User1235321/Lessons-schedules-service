@@ -513,7 +513,7 @@ def test_cancellation_is_checked_inside_candidate_generation() -> None:
     assert result.variants == ()
 
 
-def test_extra_constraints_and_optimization_return_scored_variants() -> None:
+def test_extra_constraints_with_and_without_active_criteria() -> None:
     source = problem()
     constraint = ExtraConstraintSnapshot(
         UUID(int=100),
@@ -522,10 +522,12 @@ def test_extra_constraints_and_optimization_return_scored_variants() -> None:
         ClockTimeParameters(time(9)),
     )
     assert solve(replace(source, constraints=(constraint,))).status is SolverStatus.SOLVED
-    result = solve(replace(
-        source,
-        constraints=(constraint,),
-        optimization_criteria=(OptimizationCriterionSnapshot("STUDENT_GAPS", 1),),
-    ))
-    score, = result.variants[0].criterion_scores
-    assert (score.criterion, score.value) == ("STUDENT_GAPS", 0)
+    result = solve(
+        replace(
+            source,
+            constraints=(constraint,),
+            optimization_criteria=(OptimizationCriterionSnapshot("STUDENT_GAPS", 1),),
+        )
+    )
+    assert result.status is SolverStatus.SOLVED
+    assert result.variants[0].criterion_scores[0].value == 0

@@ -1,4 +1,3 @@
-from bisect import insort_right
 from collections import defaultdict
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -16,7 +15,7 @@ from app.domain.scheduling.constraints import (
 )
 from app.domain.scheduling.job import JobProgress, ResultOptions
 from app.domain.scheduling.problem import ScheduleProblem
-from app.domain.scheduling.schedule import Schedule, ScheduleSource
+from app.domain.scheduling.schedule import CriterionScore, Schedule, ScheduleSource
 from app.domain.scheduling.solver import (
     ScheduleVariant,
     SolverControl,
@@ -35,7 +34,7 @@ from app.scheduling.candidates import (
     prepare_requirements,
 )
 from app.scheduling.constraint_diagnostics import diagnose_incompatible_pairs
-from app.scheduling.quality import criterion_scores
+from app.scheduling.optimization import select_placements
 from app.scheduling.search import SearchRejections, find_placements
 
 _VALIDATION_ID = UUID(int=0)
@@ -43,7 +42,7 @@ _VALIDATION_DATE = datetime(2000, 1, 1, tzinfo=UTC)
 
 
 def _validated_variant(
-    problem: ScheduleProblem, placements: tuple[Placement, ...]
+    problem: ScheduleProblem, placements: tuple[Placement, ...], scores: tuple[CriterionScore, ...]
 ) -> ScheduleVariant:
     counts: dict[UUID, int] = defaultdict(int)
     entries = []
@@ -61,7 +60,7 @@ def _validated_variant(
         source=ScheduleSource.GENERATED,
         job_id=JobId(_VALIDATION_ID),
         result_index=1,
-        criterion_scores=(),
+        criterion_scores=scores,
         created_at=_VALIDATION_DATE,
         entries=tuple(entries),
     )
@@ -69,7 +68,7 @@ def _validated_variant(
     if conflicts:
         codes = ", ".join(sorted({conflict.code for conflict in conflicts}))
         raise ValueError(f"Планировщик сформировал недопустимое расписание: {codes}")
-    return ScheduleVariant(schedule.entries, criterion_scores(schedule.entries, problem))
+    return ScheduleVariant(schedule.entries, scores)
 
 
 _WORKLOAD_ONLY = {
@@ -299,28 +298,24 @@ class FeasibleScheduleSolver:
             control.report_progress(JobProgress(100))
             return SolverResult(SolverStatus.INFEASIBLE, diagnostics=rule_diagnostics)
 
-        variants: list[tuple[tuple[float, ...], int, ScheduleVariant]] = []
+        variants: list[ScheduleVariant] = []
         rejections = SearchRejections() if problem.constraints else None
         try:
-            for sequence, placements in enumerate(find_placements(
+            candidates = find_placements(
                 requirements, problem.settings, control, problem.constraints, rejections
-            )):
+            )
+            for placements, scores in select_placements(
+                candidates, problem, requirements, options.limit, control
+            ):
                 check_cancelled(control)
-                variant = _validated_variant(problem, placements)
-                rank = tuple(score.value for score in variant.criterion_scores)
-                if len(variants) < options.limit or rank < variants[-1][0]:
-                    insort_right(variants, (rank, sequence, variant))
-                    if len(variants) > options.limit:
-                        variants.pop()
-                if len(variants) == options.limit and not any(variants[-1][0]):
-                    break
+                variants.append(_validated_variant(problem, placements, scores))
             check_cancelled(control)
         except SearchCancelled:
             return SolverResult(SolverStatus.CANCELLED)
 
         if variants:
             control.report_progress(JobProgress(100))
-            return SolverResult(SolverStatus.SOLVED, variants=tuple(item[2] for item in variants))
+            return SolverResult(SolverStatus.SOLVED, variants=tuple(variants))
 
         try:
             diagnosed = (

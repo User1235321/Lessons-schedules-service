@@ -1,6 +1,9 @@
 import logging
-from dataclasses import dataclass, replace
+from concurrent.futures import Future, ThreadPoolExecutor, wait
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
+from threading import Event, Lock
+from time import monotonic
 
 from app.application.scheduling.ports import (
     JobExecutionLock,
@@ -18,18 +21,30 @@ from app.domain.shared.ids import JobId, ScheduleEntryId, ScheduleId
 
 logger = logging.getLogger(__name__)
 FINAL_PROGRESS_RETENTION = timedelta(hours=24)
+POLL_SECONDS = 0.25
+HEARTBEAT_SECONDS = 1.0
 
 
 @dataclass
 class JobSolverControl:
     job_id: JobId
-    state: JobStateStore
+    _progress: JobProgress = field(default_factory=lambda: JobProgress(0), init=False)
+    _stopped: Event = field(default_factory=Event, init=False)
+    _guard: Lock = field(default_factory=Lock, init=False)
 
     def report_progress(self, progress: JobProgress) -> None:
-        self.state.set_progress(self.job_id, progress)
+        with self._guard:
+            self._progress = JobProgress(min(99, progress.percent))
+
+    def get_progress(self) -> JobProgress:
+        with self._guard:
+            return self._progress
+
+    def stop(self) -> None:
+        self._stopped.set()
 
     def is_cancel_requested(self) -> bool:
-        return self.state.is_cancel_requested(self.job_id)
+        return self._stopped.is_set()
 
 
 @dataclass
@@ -74,17 +89,18 @@ class ProcessJob:
         return running
 
     def _calculate(self, job: Job) -> None:
-        control = JobSolverControl(job.id, self.state)
+        control = JobSolverControl(job.id)
         try:
-            if control.is_cancel_requested():
+            if self.state.is_cancel_requested(job.id):
                 result = SolverResult(SolverStatus.CANCELLED)
             else:
-                control.report_progress(JobProgress(0))
-                problem = self.problems.load(job)
-                problem.check_size_limits()
-                result = self.solver.solve(problem, job.result_options, control)
-                if control.is_cancel_requested():
-                    result = SolverResult(SolverStatus.CANCELLED)
+                self.state.set_progress(job.id, JobProgress(0))
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(self._solve, job, control)
+                    try:
+                        result = self._await_result(future, control)
+                    finally:
+                        control.stop()
             if len(result.variants) > job.result_options.limit:
                 raise ValueError("Ядро вернуло слишком много вариантов")
         except Exception as error:
@@ -95,6 +111,33 @@ class ProcessJob:
             JobStatus.CANCELLED if result.status is SolverStatus.CANCELLED else JobStatus.COMPLETED
         )
         self._finish(job, status, result=result)
+
+    def _solve(self, job: Job, control: JobSolverControl) -> SolverResult:
+        if control.is_cancel_requested():
+            return SolverResult(SolverStatus.CANCELLED)
+        problem = self.problems.load(job)
+        if control.is_cancel_requested():
+            return SolverResult(SolverStatus.CANCELLED)
+        problem.check_size_limits()
+        if control.is_cancel_requested():
+            return SolverResult(SolverStatus.CANCELLED)
+        return self.solver.solve(problem, job.result_options, control)
+
+    def _await_result(
+        self, future: Future[SolverResult], control: JobSolverControl
+    ) -> SolverResult:
+        next_heartbeat = monotonic() + HEARTBEAT_SECONDS
+        while True:
+            if self.state.is_cancel_requested(control.job_id):
+                control.stop()
+                return SolverResult(SolverStatus.CANCELLED)
+            if future.done():
+                return future.result()
+            now = monotonic()
+            if now >= next_heartbeat:
+                self.state.set_progress(control.job_id, control.get_progress())
+                next_heartbeat = now + HEARTBEAT_SECONDS
+            wait((future,), timeout=POLL_SECONDS)
 
     def _finish(
         self,

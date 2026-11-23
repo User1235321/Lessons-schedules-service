@@ -14,6 +14,7 @@ import {
 } from "@mui/material";
 import { useParams } from "react-router";
 
+import { useAuth } from "../../auth/AuthProvider.jsx";
 import JobPanel from "../components/JobPanel.jsx";
 import { isFinal } from "../jobStatus.js";
 import { useGenerationJob } from "../useGenerationJob.js";
@@ -38,6 +39,7 @@ export default function GenerationPage() {
 }
 
 function GenerationView({ projectId }) {
+  const { user } = useAuth();
   const {
     job,
     restoring,
@@ -53,7 +55,7 @@ function GenerationView({ projectId }) {
     retryResults,
     start,
     cancel
-  } = useGenerationJob(projectId);
+  } = useGenerationJob(projectId, user.id);
   const running = restoring || (job !== null && !isFinal(job.status));
   const [mode, setMode] = useState("SINGLE");
   const [topN, setTopN] = useState(DEFAULT_TOP_N);

@@ -5,15 +5,17 @@ import { Link as RouterLink, useParams } from "react-router";
 import { paths } from "../../../app/paths.js";
 import ErrorState from "../../../components/ErrorState.jsx";
 import LoadingState from "../../../components/LoadingState.jsx";
+import { useAuth } from "../../auth/AuthProvider.jsx";
 import ScheduleTable from "../components/ScheduleTable.jsx";
 import { useSchedule } from "../useSchedule.js";
 
 export default function ScheduleViewerPage() {
   const { projectId, scheduleId: routeScheduleId } = useParams();
+  const { user } = useAuth();
   const scheduleId = routeScheduleId.toLowerCase();
   const [week, setWeek] = useState("ODD");
   const { schedule, variants, error, variantError, retry, retryVariants } =
-    useSchedule(projectId.toLowerCase(), scheduleId);
+    useSchedule(user.id, projectId.toLowerCase(), scheduleId);
   const position = variants.findIndex(({ id }) => id === scheduleId);
 
   if (!schedule) {

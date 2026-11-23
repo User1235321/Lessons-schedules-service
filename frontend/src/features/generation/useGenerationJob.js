@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
+import { rememberSchedules } from "../schedule-viewer/scheduleHistory.js";
 import { generationApi } from "./api.js";
 import { isFinal } from "./jobStatus.js";
 
@@ -40,7 +41,7 @@ function preferLatestStatus(current, next) {
   return next;
 }
 
-export function useGenerationJob(projectId) {
+export function useGenerationJob(projectId, userId) {
   const [job, setJob] = useState(null);
   const [restoring, setRestoring] = useState(() => readStoredJobId(projectId) !== null);
   const [starting, setStarting] = useState(false);
@@ -206,6 +207,7 @@ export function useGenerationJob(projectId) {
       .schedules(job.id)
       .then((next) => {
         if (active) {
+          rememberSchedules(userId, projectId, next);
           setSchedules(next);
         }
       })
@@ -223,7 +225,7 @@ export function useGenerationJob(projectId) {
     return () => {
       active = false;
     };
-  }, [job?.id, job?.status, resultsAttempt]);
+  }, [job?.id, job?.status, resultsAttempt, userId, projectId]);
 
   return {
     job,

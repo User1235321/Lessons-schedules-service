@@ -79,3 +79,41 @@ describe("Варианты TOP-N", () => {
     expect(await screen.findByText("Вариант 1 из 2")).toBeTruthy();
   });
 });
+
+describe("Сохранённые расписания проекта", () => {
+  const id = "7c6736f2-6393-48fb-bdef-cc91365e3c89";
+
+  it("открывает по ID расписание, которого ещё нет в истории, и сохраняет ссылку", async () => {
+    localStorage.clear();
+    const { user, router } = renderRoute("/projects/42/schedules", undefined, {
+      schedules: [{ ...imported, id }]
+    });
+    const input = await screen.findByLabelText("ID сохранённого расписания");
+    await user.type(input, "123");
+    await user.click(screen.getByRole("button", { name: "Открыть по ID" }));
+    expect(screen.getByText("Введите полный UUID расписания")).toBeTruthy();
+    await user.clear(input);
+    await user.type(input, id.toUpperCase());
+    await user.click(screen.getByRole("button", { name: "Открыть по ID" }));
+    expect(await screen.findByText("Физика")).toBeTruthy();
+    expect(router.state.location.pathname).toBe(`/projects/42/schedules/${id}`);
+    await user.click(screen.getByRole("tab", { name: "Расписания" }));
+    const link = await screen.findByRole("link", { name: new RegExp(id) });
+    await user.click(link);
+    expect(await screen.findByText("Физика")).toBeTruthy();
+  });
+
+  it("перечисляет результаты расчёта ещё до открытия просмотра", async () => {
+    localStorage.clear();
+    sessionStorage.setItem("generation-job:42", "job-1");
+    const { user } = renderRoute("/projects/42/generation", undefined, {
+      job: { status: "COMPLETED" },
+      schedules: [{ id: "result-1", result_index: 1 }, { id: "result-2", result_index: 2 }]
+    });
+    await screen.findByRole("link", { name: "Открыть расписание" });
+    await user.click(screen.getByRole("tab", { name: "Расписания" }));
+    expect(await screen.findByRole("link", { name: /Вариант 1 .*result-1/ })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Вариант 2 .*result-2/ })).toBeTruthy();
+    sessionStorage.removeItem("generation-job:42");
+  });
+});

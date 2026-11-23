@@ -48,6 +48,7 @@ class _Placement:
     groups: tuple[UUID, ...]
     subgroup: UUID | None
     students: int | None
+    stream_id: UUID | None = None
 
     @property
     def lesson_type(self) -> str | None:
@@ -58,6 +59,8 @@ class _Placement:
         return self.entry.lesson_format or (self.workload.lesson_format if self.workload else None)
 
     def matches(self, scope: ConstraintScope, subgroups: dict[UUID, SubgroupSnapshot]) -> bool:
+        if scope.kind is ConstraintScopeKind.STREAM and self.workload is None:
+            return scope.resource_id == self.stream_id
         return applies_to_workload(
             scope, self.workload, self.groups, self.subgroup, subgroups, self.entry.workload_id
         )
@@ -100,18 +103,21 @@ def _participant_targets(problem: ScheduleProblem):
     targets = defaultdict(list)
     groups = {group.id: group for group in problem.groups}
     for group in problem.groups:
-        targets[_label(group.name)].append(((group.id,), None, group.student_count))
+        targets[_label(group.name)].append(((group.id,), None, group.student_count, None))
     for subgroup in problem.subgroups:
         group = groups.get(subgroup.group_id)
         if group is not None:
             targets[_label(f"{group.name} / {subgroup.name}")].append(
-                ((group.id,), subgroup.id, subgroup.student_count)
+                ((group.id,), subgroup.id, subgroup.student_count, None)
             )
     for stream in problem.streams:
         group_ids = tuple(dict.fromkeys(stream.group_ids))
         if group_ids and all(group_id in groups for group_id in group_ids):
             targets[_label(stream.name)].append(
-                (group_ids, None, sum(groups[group_id].student_count for group_id in group_ids))
+                (
+                    group_ids, None,
+                    sum(groups[group_id].student_count for group_id in group_ids), stream.id,
+                )
             )
     return targets
 
@@ -215,10 +221,18 @@ def _time_conflicts(placement: _Placement, settings: ProjectSettings) -> Iterato
         )
 
 
+def _subject_id(placement: _Placement, subjects: dict[str, set[UUID]]) -> UUID | None:
+    if placement.workload is not None:
+        return placement.workload.subject_id
+    identifier = _identity(None, placement.entry.subject_name, subjects)
+    return identifier if isinstance(identifier, UUID) else None
+
+
 def _teacher_conflicts(
     placement: _Placement,
     teachers: dict[UUID, TeacherSnapshot],
     teacher_names: dict[str, set[UUID]],
+    subject_id: UUID | None,
     generated: bool,
 ) -> Iterator[ScheduleConflict]:
     entry = placement.entry
@@ -261,10 +275,10 @@ def _teacher_conflicts(
                 teacher_id=str(teacher.id),
             )
         if (
-            placement.workload
+            subject_id is not None
             and placement.lesson_type
             and not any(
-                capability.subject_id == placement.workload.subject_id
+                capability.subject_id == subject_id
                 and capability.lesson_type == placement.lesson_type
                 for capability in teacher.capabilities
             )
@@ -274,7 +288,7 @@ def _teacher_conflicts(
                 "Преподаватель не ведёт эту дисциплину и тип занятия",
                 entry,
                 teacher_id=str(teacher.id),
-                subject_id=str(placement.workload.subject_id),
+                subject_id=str(subject_id),
             )
 
 
@@ -282,6 +296,7 @@ def _room_conflicts(
     placement: _Placement,
     rooms: dict[UUID, RoomSnapshot],
     room_names: dict[str, set[UUID]],
+    subject_id: UUID | None,
     generated: bool,
 ) -> Iterator[ScheduleConflict]:
     entry = placement.entry
@@ -306,16 +321,16 @@ def _room_conflicts(
             "ROOM_TYPE", "Тип аудитории не подходит для занятия", entry, room_id=str(room.id)
         )
     if (
-        placement.workload
+        subject_id is not None
         and placement.lesson_type
-        and not room_allows_lesson(room, placement.workload.subject_id, placement.lesson_type)
+        and not room_allows_lesson(room, subject_id, placement.lesson_type)
     ):
         yield _conflict(
             "ROOM_SPECIALIZATION",
             "Аудитория не предназначена для этой дисциплины и типа занятия",
             entry,
             room_id=str(room.id),
-            subject_id=str(placement.workload.subject_id),
+            subject_id=str(subject_id),
         )
     if placement.students is not None and room.capacity < placement.students:
         yield _conflict(
@@ -465,6 +480,7 @@ def validate_schedule(
     )
     teachers = {teacher.id: teacher for teacher in problem.teachers}
     rooms = {room.id: room for room in problem.rooms}
+    subjects = _identities((subject.id, subject.name) for subject in problem.subjects)
     teacher_names = _identities((teacher.id, teacher.full_name) for teacher in problem.teachers)
     room_names = _identities((room.id, room.name) for room in problem.rooms)
     groups = {group.id: group for group in problem.groups}
@@ -485,8 +501,11 @@ def validate_schedule(
                 )
             )
         conflicts.extend(_time_conflicts(placement, problem.settings))
-        conflicts.extend(_teacher_conflicts(placement, teachers, teacher_names, generated))
-        conflicts.extend(_room_conflicts(placement, rooms, room_names, generated))
+        subject_id = _subject_id(placement, subjects)
+        conflicts.extend(
+            _teacher_conflicts(placement, teachers, teacher_names, subject_id, generated)
+        )
+        conflicts.extend(_room_conflicts(placement, rooms, room_names, subject_id, generated))
         conflicts.extend(_group_conflicts(placement, groups, subgroups.get(placement.subgroup)))
     for workload in problem.workloads:
         entries = by_workload[workload.id]

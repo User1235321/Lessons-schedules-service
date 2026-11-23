@@ -6,11 +6,19 @@ from app.domain.scheduling.constraints import (
     ConstraintKind,
     ConstraintScope,
     ConstraintScopeKind,
+    ClockTimeParameters,
     EveryWeekParameters,
     ExtraConstraintSnapshot,
 )
 from app.domain.scheduling.job import ExistingScheduleInput, JobType
 from app.domain.scheduling.problem import OptimizationCriterionSnapshot
+from app.domain.scheduling.resources import (
+    RoomSnapshot,
+    RoomType,
+    StreamSnapshot,
+    SubjectSnapshot,
+    TeachingCapability,
+)
 from app.domain.scheduling.schedule import (
     LessonFormat,
     Schedule,
@@ -23,7 +31,10 @@ from app.domain.scheduling.validation import validate_schedule
 from app.domain.shared.week import Weekday
 from app.scheduling.reprocessing import ExistingScheduleSolver
 from tests.unit.test_feasible_solver import (
+    GROUP,
     MONDAY,
+    ROOM,
+    STREAM,
     TEACHER,
     WORKLOAD,
     RecordingControl,
@@ -154,4 +165,45 @@ def test_import_checks_known_workload_occurrences_and_every_week():
         item.code for item in validate_schedule(
             schedule(entry(9)), data, partial_assignment=True
         )
+    }
+
+
+def test_import_checks_capabilities_without_workload():
+    other_subject = uuid4()
+    assigned = replace(
+        teacher(), capabilities=(TeachingCapability(other_subject, "PRACTICE"),)
+    )
+    room = RoomSnapshot(
+        ROOM, "Аудитория", 30, RoomType.PRACTICE_SPECIALIZED, (window(),),
+        (TeachingCapability(other_subject, "PRACTICE"),),
+    )
+    original = replace(
+        entry(9), workload_id=None, lesson_type="PRACTICE", lesson_format=LessonFormat.ONSITE,
+        room_name=room.name, teachers=(TeacherAssignment(assigned.full_name),),
+    )
+    data = problem(workloads=(), teachers=(assigned,), rooms=(room,))
+    data = replace(data, subjects=(*data.subjects, SubjectSnapshot(other_subject, "История")))
+    assert {item.code for item in validate_schedule(schedule(original), data)} == {
+        "TEACHER_NOT_QUALIFIED", "ROOM_SPECIALIZATION",
+    }
+    unknown = replace(original, subject_name="Неизвестная дисциплина")
+    assert not validate_schedule(schedule(unknown), data)
+    ambiguous = replace(
+        data, subjects=(*data.subjects, SubjectSnapshot(uuid4(), "Физика"))
+    )
+    assert not validate_schedule(schedule(original), ambiguous)
+
+
+def test_import_checks_stream_constraints_without_workload():
+    original = replace(entry(9), workload_id=None, participant_label="Поток")
+    data = replace(
+        problem(workloads=(), streams=(StreamSnapshot(STREAM, "Поток", (GROUP,)),)),
+        constraints=(ExtraConstraintSnapshot(
+            uuid4(), ConstraintKind.MIN_START_TIME,
+            ConstraintScope(ConstraintScopeKind.STREAM, STREAM),
+            ClockTimeParameters(time(10)),
+        ),),
+    )
+    assert {item.code for item in validate_schedule(schedule(original), data)} == {
+        "MIN_START_TIME",
     }

@@ -51,6 +51,12 @@ class ImportedEntry(BaseModel):
         )
 
 
+class _CsvRowError(ValueError):
+    def __init__(self, row: int, message: str) -> None:
+        super().__init__(message)
+        self.row = row
+
+
 def _rows(content: bytes, extension: str):
     if extension == "json":
         data = json.loads(content.decode("utf-8-sig"))
@@ -62,10 +68,23 @@ def _rows(content: bytes, extension: str):
     if extension == "csv":
         data = content.decode("utf-8-sig")
         header = data.partition("\n")[0]
-        reader = csv.DictReader(
-            StringIO(data), delimiter=";" if ";" in header else ",", strict=True
+        reader = csv.reader(
+            StringIO(data, newline=""), delimiter=";" if ";" in header else ",", strict=True
         )
-        yield from enumerate(reader, 2)
+        index = 1
+        try:
+            headers = next(reader, [])
+            while True:
+                index = reader.line_num + 1
+                row = next(reader, None)
+                if row is None:
+                    break
+                if len(row) > len(headers):
+                    yield index, ImportIssue(index, None, "Лишние значения в строке")
+                elif row:
+                    yield index, dict(zip(headers, row))
+        except csv.Error as error:
+            raise _CsvRowError(index, str(error)) from error
         return
     with ZipFile(BytesIO(content)) as archive:
         if sum(item.file_size for item in archive.infolist()) > 128 * 1024 * 1024:
@@ -90,6 +109,9 @@ def parse_schedule(
     issues = []
     try:
         for index, raw in _rows(content, extension):
+            if isinstance(raw, ImportIssue):
+                issues.append(raw)
+                continue
             if not isinstance(raw, dict):
                 issues.append(ImportIssue(index, None, "Ожидается строка с полями занятия"))
                 continue
@@ -109,8 +131,10 @@ def parse_schedule(
                 issues.append(
                     ImportIssue(index, "teachers", "Ожидается JSON-массив преподавателей")
                 )
-    except (ValueError, csv.Error, CalamineError, BadZipFile, RecursionError) as error:
-        return [], [ImportIssue(None, "file", str(error))]
+    except _CsvRowError as error:
+        issues.append(ImportIssue(error.row, "file", str(error)))
+    except (ValueError, CalamineError, BadZipFile, RecursionError) as error:
+        issues.append(ImportIssue(None, "file", str(error)))
     if not entries and not issues:
         issues.append(ImportIssue(None, "entries", "В файле нет занятий"))
     return entries, issues

@@ -215,3 +215,86 @@ def test_text_only_resources_report_overlaps(api, storage):
     assert {item["code"] for item in data["validation"]["conflicts"]} == {
         "GROUP_OVERLAP", "ROOM_OVERLAP", "TEACHER_OVERLAP",
     }
+
+
+def test_import_removes_foreign_references_and_preserves_labels(api, storage):
+    owner = sign_in(api)
+    project = new_project(api, owner)
+    outsider = sign_in(api, "foreign-resources@example.org")
+    foreign = new_project(api, outsider)
+    base = f"/projects/{foreign}"
+    subject = created(api, base + "/subjects", outsider, {"name": "Физика"})
+    group = created(api, base + "/groups", outsider, {"name": "Группа", "student_count": 12})
+    capability = {"subject_id": subject["id"], "lesson_type": "LECTURE"}
+    teacher = created(api, base + "/teachers", outsider, {
+        "full_name": "Чужой преподаватель",
+        "capabilities": [capability],
+        "availability": [{"week": "ANY", "day": "MONDAY", "start": "09:00", "end": "14:00"}],
+    })
+    room = created(api, base + "/rooms", outsider, {
+        "name": "Чужая аудитория",
+        "room_type": "LECTURE",
+        "capacity": 30,
+        "availability": [
+            {"week": "ANY", "weekday": "MONDAY", "start_time": "09:00", "end_time": "14:00"}
+        ],
+    })
+    workload = created(api, base + "/workloads", outsider, {
+        **capability,
+        "lesson_format": "ONSITE",
+        "group_id": group["id"],
+        "occurrences_per_cycle": 1,
+        "required_teacher_count": 1,
+    })
+    original = dict(
+        lesson(9),
+        workload_id=workload["id"],
+        lesson_format="ONSITE",
+        room_id=room["id"],
+        room_name="Аудитория из файла",
+        teachers=[{"teacher_id": teacher["id"], "display_name": "Имя из файла"}],
+    )
+    response = upload(api, owner, project, [original])
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["imported_count"] == 1
+    saved = api.get("/schedules/" + data["schedule_ids"][0], headers=owner).json()["entries"][0]
+    assert saved["workload_id"] is None
+    assert saved["room_id"] is None
+    assert saved["room_name"] == original["room_name"]
+    assert saved["teachers"] == [{"teacher_id": None, "display_name": "Имя из файла"}]
+
+    response = upload(api, outsider, foreign, [original])
+    assert response.status_code == 200, response.text
+    data = response.json()
+    saved = api.get("/schedules/" + data["schedule_ids"][0], headers=outsider).json()["entries"][0]
+    assert saved["workload_id"] == workload["id"]
+    assert saved["room_id"] == room["id"]
+    assert saved["room_name"] == room["name"]
+    assert saved["teachers"] == [
+        {"teacher_id": teacher["id"], "display_name": teacher["full_name"]}
+    ]
+
+
+def test_csv_error_preserves_valid_rows_and_original(api, storage):
+    owner = sign_in(api)
+    project = new_project(api, owner)
+    content = (
+        b"week,weekday,start_time,end_time\n"
+        b"ODD,MONDAY,09:00,10:40\n"
+        b"ODD,MONDAY,11:00,invalid\n"
+        b'ODD,MONDAY,12:00,"unterminated\n'
+    )
+    response = api.post(
+        f"/projects/{project}/imports",
+        headers=owner,
+        data={"import_mode": "SCHEDULE"},
+        files={"file": ("schedule.csv", content, "text/csv")},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["imported_count"] == 1
+    assert {issue["row"] for issue in data["errors"]} == {3, 4}
+    saved = api.get("/schedules/" + data["schedule_ids"][0], headers=owner).json()
+    assert len(saved["entries"]) == 1
+    assert storage.put.call_args.args[1] == content

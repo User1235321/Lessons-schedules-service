@@ -1,65 +1,144 @@
+from collections import Counter
 from collections.abc import Iterator
 from dataclasses import replace
-from datetime import time
+from uuid import UUID
 
 from app.domain.scheduling.job import ExistingScheduleInput, JobProgress, JobType
 from app.domain.scheduling.problem import ScheduleProblem
-from app.domain.scheduling.schedule import ScheduleEntry
-from app.domain.scheduling.solver import ScheduleVariant, SolverControl, SolverResult, SolverStatus
+from app.domain.scheduling.schedule import LessonFormat, Schedule, ScheduleEntry, ScheduleSource
+from app.domain.scheduling.solver import ScheduleVariant, SolverControl, SolverDiagnostic
+from app.domain.scheduling.solver import SolverResult, SolverStatus
 from app.domain.scheduling.validation import validate_schedule
+from app.domain.shared.ids import JobId
 from app.scheduling.candidates import (
     LessonRequirements,
+    Placement,
     SearchCancelled,
     check_cancelled,
     iter_placements,
     prepare_requirements,
-    time_slots,
 )
-from app.scheduling.quality import criterion_scores
+from app.scheduling.optimization import PlacementScorer
+
+
+def _label(value: str | None) -> str:
+    return " ".join(value.casefold().split()) if value else ""
+
+
+def _resource_equal(left_id, left_name, right_id, right_name) -> bool:
+    if left_id is not None and right_id is not None:
+        return left_id == right_id
+    return _label(left_name) == _label(right_name)
+
+
+def _teachers_equal(original: ScheduleEntry, candidate: ScheduleEntry) -> bool:
+    remaining = list(candidate.teachers)
+    for teacher in original.teachers:
+        match = next(
+            (
+                item
+                for item in remaining
+                if _resource_equal(
+                    teacher.teacher_id, teacher.display_name, item.teacher_id, item.display_name
+                )
+            ),
+            None,
+        )
+        if match is None:
+            return False
+        remaining.remove(match)
+    return not remaining
 
 
 def _distance(original: ScheduleEntry, candidate: ScheduleEntry) -> int:
-    def teachers(entry):
-        return frozenset(t.teacher_id or t.display_name for t in entry.teachers)
-
     return sum(
         (
             (original.week, original.weekday) != (candidate.week, candidate.weekday),
             (original.start_time, original.end_time) != (candidate.start_time, candidate.end_time),
             original.lesson_format != candidate.lesson_format,
-            (original.room_id or original.room_name) != (candidate.room_id or candidate.room_name),
-            teachers(original) != teachers(candidate),
+            not _resource_equal(
+                original.room_id, original.room_name, candidate.room_id, candidate.room_name
+            ),
+            not _teachers_equal(original, candidate),
         )
     )
 
 
-def _minutes(value: time) -> int:
-    return value.hour * 60 + value.minute
+def _match_workload(
+    entry: ScheduleEntry, requirements: dict[UUID, LessonRequirements]
+) -> UUID | None:
+    if entry.workload_id is not None:
+        return entry.workload_id if entry.workload_id in requirements else None
+    if not (entry.subject_name and entry.participant_label and entry.lesson_type):
+        return None
+    matches = [
+        workload_id
+        for workload_id, requirement in requirements.items()
+        if _label(entry.subject_name) == _label(requirement.subject_name)
+        and _label(entry.participant_label) == _label(requirement.participants.label)
+        and entry.lesson_type == requirement.workload.lesson_type
+    ]
+    return matches[0] if len(matches) == 1 else None
 
 
-def _candidates(
-    original: ScheduleEntry,
-    problem: ScheduleProblem,
-    requirement: LessonRequirements | None,
-    duration: int,
-    fixed: bool,
-    control: SolverControl,
-) -> Iterator[ScheduleEntry]:
-    yield original
-    if fixed:
-        return
-    # Даже без справочников у занятия есть длительность и сетка времени проекта.
-    for week, day, start, end in time_slots(problem.settings, duration):
-        check_cancelled(control)
-        yield replace(original, week=week, weekday=day, start_time=start, end_time=end)
-    if requirement is not None:
-        for placement in iter_placements(requirement, problem.settings, control):
-            candidate = placement.to_entry(original.id)
-            yield replace(
-                candidate,
-                subject_name=original.subject_name,
-                participant_label=original.participant_label,
+def _requirements_by_format(
+    problem: ScheduleProblem, control: SolverControl
+) -> dict[tuple[UUID, LessonFormat], LessonRequirements]:
+    result = {}
+    for lesson_format in LessonFormat:
+        formatted = replace(
+            problem,
+            workloads=tuple(
+                replace(workload, lesson_format=lesson_format) for workload in problem.workloads
+            ),
+        )
+        requirements, _ = prepare_requirements(formatted, control)
+        result.update(((item.workload.id, lesson_format), item) for item in requirements)
+    return result
+
+
+def _fixed_placement(original: ScheduleEntry, candidate: ScheduleEntry) -> bool:
+    return (
+        (original.week, original.weekday, original.start_time, original.end_time)
+        == (candidate.week, candidate.weekday, candidate.start_time, candidate.end_time)
+        and (original.lesson_format is None or original.lesson_format == candidate.lesson_format)
+        and (
+            not (original.room_id or original.room_name)
+            or _resource_equal(
+                original.room_id, original.room_name, candidate.room_id, candidate.room_name
             )
+        )
+        and (not original.teachers or _teachers_equal(original, candidate))
+    )
+
+
+def _options(
+    original: ScheduleEntry,
+    workload_id: UUID,
+    default_format: LessonFormat,
+    requirements: dict[tuple[UUID, LessonFormat], LessonRequirements],
+    problem: ScheduleProblem,
+    fixed: bool,
+    preserve: bool,
+    control: SolverControl,
+) -> list[tuple[int, Placement, ScheduleEntry]]:
+    result = []
+    formats = tuple(dict.fromkeys((original.lesson_format or default_format, default_format)))
+    for lesson_format in formats:
+        requirement = requirements.get((workload_id, lesson_format))
+        if requirement is None:
+            continue
+        for placement in iter_placements(requirement, problem.settings, control):
+            entry = placement.to_entry(original.id)
+            if not fixed or _fixed_placement(original, entry):
+                result.append((_distance(original, entry) if preserve else 0, placement, entry))
+    return sorted(result, key=lambda item: item[0])
+
+
+def _infeasible(message: str, workload_ids: tuple[UUID, ...] = ()) -> SolverResult:
+    return SolverResult(
+        SolverStatus.INFEASIBLE, diagnostics=(SolverDiagnostic(message, workload_ids),)
+    )
 
 
 class ExistingScheduleSolver:
@@ -71,63 +150,73 @@ class ExistingScheduleSolver:
         control: SolverControl,
     ) -> SolverResult:
         try:
-            return self._search(source, job_type, problem, control)
+            return self._solve(source, job_type, problem, control)
         except SearchCancelled:
             return SolverResult(SolverStatus.CANCELLED)
 
-    def _search(
+    def _solve(
         self,
         source: ExistingScheduleInput,
         job_type: JobType,
         problem: ScheduleProblem,
         control: SolverControl,
     ) -> SolverResult:
-        schedule = source.schedule
-        preserve = job_type is not JobType.REOPTIMIZE_FULL
         check_cancelled(control)
-        if not validate_schedule(schedule, problem):
-            scores = criterion_scores(schedule.entries, problem)
-            if all(score.value == 0 for score in scores) or preserve:
-                # В режиме минимальных изменений только исходное размещение имеет цену ноль.
-                return SolverResult(
-                    SolverStatus.SOLVED, (ScheduleVariant(schedule.entries, scores),)
+        requirements = _requirements_by_format(problem, control)
+        by_workload = {item.workload.id: item for item in requirements.values()}
+        workloads = {item.id: item for item in problem.workloads}
+        linked = []
+        for entry in source.schedule.entries:
+            check_cancelled(control)
+            workload_id = _match_workload(entry, by_workload)
+            if workload_id is None:
+                return _infeasible(
+                    "Для занятия не найдена однозначная учебная нагрузка с данными для расчёта"
                 )
-
-        requirements, _ = prepare_requirements(problem, control)
-        by_workload = {req.workload.id: req for req in requirements}
-        durations = {w.id: w.duration_minutes for w in problem.workloads}
+            linked.append(workload_id)
+        counts = Counter(linked)
+        mismatched = tuple(
+            workload.id
+            for workload in problem.workloads
+            if counts[workload.id] != workload.occurrences_per_cycle
+        )
+        if mismatched:
+            return _infeasible("Количество занятий не соответствует учебной нагрузке", mismatched)
+        preserve = job_type is not JobType.REOPTIMIZE_FULL
         fixed = set(source.fixed_entry_ids)
         choices = []
-        for original in schedule.entries:
-            duration = (
-                problem.settings.duration_mode.duration_minutes
-                or durations.get(original.workload_id)
-                or _minutes(original.end_time) - _minutes(original.start_time)
+        for entry, workload_id in zip(source.schedule.entries, linked, strict=True):
+            options = _options(
+                entry, workload_id, workloads[workload_id].lesson_format, requirements, problem,
+                entry.id in fixed, preserve, control,
             )
-            candidates = _candidates(
-                original,
-                problem,
-                by_workload.get(original.workload_id),
-                duration,
-                original.id in fixed,
-                control,
-            )
-            options = []
-            for entry in dict.fromkeys(candidates):
-                check_cancelled(control)
-                if not validate_schedule(
-                    replace(schedule, entries=(entry,)), problem, partial_assignment=True
-                ):
-                    cost = _distance(original, entry) if preserve else 0
-                    options.append((cost, entry))
             if not options:
-                return SolverResult(SolverStatus.INFEASIBLE)
-            choices.append(sorted(options, key=lambda item: item[0]))
+                return _infeasible("Для занятия отсутствуют допустимые размещения", (workload_id,))
+            choices.append(options)
+        template = replace(
+            source.schedule,
+            source=ScheduleSource.GENERATED,
+            job_id=JobId(UUID(int=0)),
+            result_index=1,
+            criterion_scores=(),
+            entries=(),
+        )
+        scorer = PlacementScorer(problem, tuple(by_workload.values()))
+        return self._search(template, choices, scorer, problem, control)
 
-        # Явный стек поиска не ограничивает размер расписания глубиной стека Python.
+    def _search(
+        self,
+        schedule: Schedule,
+        choices: list[list[tuple[int, Placement, ScheduleEntry]]],
+        scorer: PlacementScorer,
+        problem: ScheduleProblem,
+        control: SolverControl,
+    ) -> SolverResult:
+        if not choices:
+            return _infeasible("В расписании отсутствуют занятия")
         order = sorted(range(len(choices)), key=lambda i: len(choices[i]))
-        selected: list[ScheduleEntry] = []
-        stack = [iter(choices[order[0]])] if choices else []
+        selected: list[tuple[Placement, ScheduleEntry]] = []
+        stack: list[Iterator[tuple[int, Placement, ScheduleEntry]]] = [iter(choices[order[0]])]
         costs = [0]
         best_rank = None
         best = None
@@ -141,11 +230,12 @@ class ExistingScheduleSolver:
                     selected.pop()
                     costs.pop()
                 continue
-            delta, candidate = option
+            delta, placement, candidate = option
             cost = costs[-1] + delta
             if best_rank is not None and cost > best_rank[0]:
                 continue
-            entries = (*selected, candidate)
+            assignments = (*selected, (placement, candidate))
+            entries = tuple(entry for _, entry in assignments)
             complete = len(entries) == len(order)
             if validate_schedule(
                 replace(schedule, entries=entries), problem, partial_assignment=not complete
@@ -156,19 +246,19 @@ class ExistingScheduleSolver:
                 control.report_progress(JobProgress(min(99, 100 * deepest / len(order))))
             if complete:
                 original_order = tuple(
-                    e for _, e in sorted(zip(order, entries), key=lambda pair: pair[0])
+                    item for _, item in sorted(zip(order, assignments, strict=True))
                 )
-                scores = criterion_scores(original_order, problem)
-                rank = (cost, *(score.value for score in scores))
+                scores = scorer.score(tuple(item[0] for item in original_order), control)
+                rank = (cost, *scorer.rank(scores))
                 if best_rank is None or rank < best_rank:
                     best_rank = rank
-                    best = ScheduleVariant(original_order, scores)
-                    if not any(rank):
+                    best = ScheduleVariant(tuple(item[1] for item in original_order), scores)
+                    if rank == (0, *scorer.best_possible):
                         break
             else:
-                selected.append(candidate)
+                selected.append((placement, candidate))
                 costs.append(cost)
                 stack.append(iter(choices[order[len(entries)]]))
         if best is None:
-            return SolverResult(SolverStatus.INFEASIBLE)
+            return _infeasible("Полное допустимое расписание не найдено")
         return SolverResult(SolverStatus.SOLVED, (best,))

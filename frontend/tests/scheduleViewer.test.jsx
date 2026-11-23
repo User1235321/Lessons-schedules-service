@@ -49,3 +49,33 @@ describe("Просмотр расписания", () => {
     expect(screen.queryByRole("table")).toBeNull();
   });
 });
+
+describe("Варианты TOP-N", () => {
+  const first = { ...imported, id: "first", source: "GENERATED", result_index: 1, job_id: "job-1" };
+  const second = { ...first, id: "second", result_index: 2, entries: [] };
+
+  it("открывает нужный вариант по URL и сохраняет выбранную неделю при переключении", async () => {
+    const { user, router, fetchMock } = renderRoute("/projects/42/schedules/second", undefined, {
+      job: { status: "COMPLETED" }, schedules: [second, first]
+    });
+    expect(await screen.findByText("Вариант 2 из 2")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Чётная неделя" }));
+    await user.click(screen.getByRole("link", { name: "Предыдущий вариант" }));
+    expect(router.state.location.pathname).toBe("/projects/42/schedules/first");
+    expect(await screen.findByText("Алгебра")).toBeTruthy();
+    expect(screen.getByText("Вариант 1 из 2")).toBeTruthy();
+    await user.click(screen.getByRole("link", { name: "Следующий вариант" }));
+    expect(await screen.findByText("На этой неделе занятий нет.")).toBeTruthy();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/generation-jobs/job-1/schedules")).toHaveLength(1);
+  });
+
+  it("оставляет таблицу доступной при сбое загрузки вариантов и позволяет повторить запрос", async () => {
+    const job = { status: "RUNNING" };
+    const { user } = renderRoute("/projects/42/schedules/first", undefined, { job, schedules: [first, second] });
+    expect(await screen.findByText(/Не удалось загрузить варианты расчёта/)).toBeTruthy();
+    expect(screen.getByText("Физика")).toBeTruthy();
+    job.status = "COMPLETED";
+    await user.click(screen.getByRole("button", { name: "Повторить" }));
+    expect(await screen.findByText("Вариант 1 из 2")).toBeTruthy();
+  });
+});

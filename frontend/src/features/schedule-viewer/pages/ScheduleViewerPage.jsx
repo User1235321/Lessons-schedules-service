@@ -1,45 +1,24 @@
-import { useEffect, useState } from "react";
-import { Box, Button, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
+import { useState } from "react";
+import { Alert, Box, Button, Stack, ToggleButton, ToggleButtonGroup, Typography } from "@mui/material";
 import { Link as RouterLink, useParams } from "react-router";
 
-import { api } from "../../../api/client.js";
 import { paths } from "../../../app/paths.js";
 import ErrorState from "../../../components/ErrorState.jsx";
 import LoadingState from "../../../components/LoadingState.jsx";
 import ScheduleTable from "../components/ScheduleTable.jsx";
+import { useSchedule } from "../useSchedule.js";
 
 export default function ScheduleViewerPage() {
   const { projectId, scheduleId: routeScheduleId } = useParams();
   const scheduleId = routeScheduleId.toLowerCase();
   const [week, setWeek] = useState("ODD");
-  const [opened, setOpened] = useState(null);
-  const [failure, setFailure] = useState(null);
-  const [attempt, setAttempt] = useState(0);
-  const schedule = opened?.id === scheduleId ? opened : null;
-
-  useEffect(() => {
-    if (schedule) return;
-    const controller = new AbortController();
-    api.get(`/schedules/${encodeURIComponent(scheduleId)}`, { signal: controller.signal })
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        if (result.project_id !== projectId.toLowerCase()) {
-          throw new Error("Расписание не найдено в этом проекте.");
-        }
-        setOpened(result);
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) setFailure({ id: scheduleId, message: error.message });
-      });
-    return () => controller.abort();
-  }, [projectId, scheduleId, schedule, attempt]);
+  const { schedule, variants, error, variantError, retry, retryVariants } =
+    useSchedule(projectId.toLowerCase(), scheduleId);
+  const position = variants.findIndex(({ id }) => id === scheduleId);
 
   if (!schedule) {
-    if (failure?.id === scheduleId) {
-      return <ErrorState title="Не удалось открыть расписание" message={failure.message} onRetry={() => {
-        setFailure(null);
-        setAttempt((value) => value + 1);
-      }} />;
+    if (error) {
+      return <ErrorState title="Не удалось открыть расписание" message={error} onRetry={retry} />;
     }
     return <LoadingState label="Открываем расписание" />;
   }
@@ -52,6 +31,26 @@ export default function ScheduleViewerPage() {
           Редактировать
         </Button>
       </Stack>
+      {variantError && (
+        <Alert severity="warning" action={<Button color="inherit" onClick={retryVariants}>Повторить</Button>}>
+          Не удалось загрузить варианты расчёта. {variantError}
+        </Alert>
+      )}
+      {variants.length > 1 && position >= 0 && (
+        <Stack direction="row" spacing={1} sx={{ alignItems: "center", flexWrap: "wrap" }}>
+          <Typography sx={{ mr: 1 }}>Вариант {schedule.result_index} из {variants.length}</Typography>
+          {position > 0 && (
+            <Button component={RouterLink} to={paths.schedule(projectId, variants[position - 1].id)}>
+              Предыдущий вариант
+            </Button>
+          )}
+          {position + 1 < variants.length && (
+            <Button component={RouterLink} to={paths.schedule(projectId, variants[position + 1].id)}>
+              Следующий вариант
+            </Button>
+          )}
+        </Stack>
+      )}
       <Box>
         <ToggleButtonGroup exclusive size="small" value={week} aria-label="Учебная неделя"
           onChange={(_, value) => { if (value) setWeek(value); }}>

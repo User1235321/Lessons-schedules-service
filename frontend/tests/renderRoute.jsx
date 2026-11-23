@@ -153,7 +153,7 @@ export function stubBackend({
         return json(404, { code: "NOT_FOUND", message: "Задание не найдено", details: {} });
       }
       return job.status === "COMPLETED"
-        ? json(200, schedules)
+        ? json(200, schedules.map((item) => ({ project_id: "42", source: "GENERATED", job_id: "job-1", entries: [], ...item })))
         : json(409, { code: "JOB_RESULTS_UNAVAILABLE", message: "Результаты недоступны", details: {} });
     }
     const jobUrl = url.match(/^\/api\/generation-jobs\/([^/]+)(\/cancel)?$/);

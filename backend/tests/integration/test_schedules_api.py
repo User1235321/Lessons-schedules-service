@@ -260,7 +260,9 @@ def test_imported_schedule_preserves_labels_and_checks_known_resources(
     assert before["entries"][0]["teachers"][0]["display_name"] == "Исходная подпись"
     assert before["entries"][0]["room_name"] == "А-17"
     conflicts = api.post(f"{path}/validate", headers=owner).json()["conflicts"]
-    assert [item["code"] for item in conflicts] == ["TEACHER_OVERLAP"]
+    assert [item["code"] for item in conflicts] == [
+        "GROUP_OVERLAP", "ROOM_OVERLAP", "TEACHER_OVERLAP",
+    ]
 
     entry_url = f"{path}/entries/{first.id}"
     for invalid in (
@@ -288,7 +290,9 @@ def test_imported_schedule_preserves_labels_and_checks_known_resources(
     assert entry["participant_label"] == first.participant_label
     assert entry["room_id"] is None and entry["room_name"] is None
     assert entry["teachers"] == [{"display_name": "Имя из файла", "teacher_id": None}]
-    assert api.post(f"{path}/validate", headers=owner).json()["status"] == "valid"
+    validation = api.post(f"{path}/validate", headers=owner).json()
+    assert validation["status"] == "invalid"
+    assert [item["code"] for item in validation["conflicts"]] == ["GROUP_OVERLAP"]
 
     replacement = api.patch(
         entry_url,
@@ -301,6 +305,17 @@ def test_imported_schedule_preserves_labels_and_checks_known_resources(
     assert replacement.json()["entry"]["teachers"] == [
         {"teacher_id": teacher["id"], "display_name": teacher["full_name"]},
     ]
+    assert [item["code"] for item in replacement.json()["conflicts"]] == [
+        "GROUP_OVERLAP", "TEACHER_OVERLAP",
+    ]
+    corrected = api.patch(
+        f"{path}/entries/{second.id}",
+        json={"start_time": "11:00", "end_time": "12:40"},
+        headers=owner,
+    )
+    assert corrected.status_code == 200
+    assert corrected.json()["conflicts"] == []
+    assert api.post(f"{path}/validate", headers=owner).json()["status"] == "valid"
 
 
 def test_schedule_routes_enforce_ownership_entry_scope_and_resource_scope(

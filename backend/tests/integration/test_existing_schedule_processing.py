@@ -180,7 +180,9 @@ def test_invalid_requests_do_not_create_jobs_or_access_other_projects(api, stora
         assert uow.job_outbox.get_pending_for_update() is None
 
 
-def test_processing_without_workloads_returns_diagnostics(api, container, storage, monkeypatch):
+def test_processing_without_workloads_returns_diagnostics(
+    api, container, storage, monkeypatch, migrated_engine
+):
     state = Mock()
     state.is_cancel_requested.return_value = False
     state.get_progress.return_value = None
@@ -193,7 +195,9 @@ def test_processing_without_workloads_returns_diagnostics(api, container, storag
     assert queued.status_code == 202
     with container.uow() as uow:
         message = uow.job_outbox.get_pending_for_update()
-    assert container.process_job().execute(message)
+    worker = container.process_job()
+    worker.lock = PostgresJobExecutionLock(migrated_engine)
+    assert worker.execute(message)
     job_url = "/generation-jobs/" + queued.json()["job_id"]
     result = api.get(job_url, headers=owner).json()
     assert result["status"] == "COMPLETED"

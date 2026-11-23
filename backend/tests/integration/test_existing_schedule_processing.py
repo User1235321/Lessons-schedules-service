@@ -9,7 +9,7 @@ from sqlalchemy import Engine
 from app.bootstrap.container import Container
 from app.domain.scheduling.job import JobMessage
 from app.infrastructure.persistence.job_lock import PostgresJobExecutionLock
-from tests.api_calls import new_project, sign_in
+from tests.api_calls import created, new_project, sign_in
 
 
 def upload(api, owner, project, rows):
@@ -95,8 +95,32 @@ def test_processing_uses_queued_snapshot_and_returns_owned_result(
     owner = sign_in(api)
     outsider = sign_in(api, "other-schedule-user@example.org")
     project = new_project(api, owner)
-    first = lesson(9)
-    first["room_id"] = str(uuid4())
+    base = f"/projects/{project}"
+    group = created(api, base + "/groups", owner, {
+        "name": "Группа без справочника", "student_count": 12,
+    })
+    subject = created(api, base + "/subjects", owner, {"name": "Физика"})
+    capability = {"subject_id": subject["id"], "lesson_type": "LECTURE"}
+    teacher = created(api, base + "/teachers", owner, {
+        "full_name": "Преподаватель",
+        "capabilities": [capability],
+        "availability": [{"week": "ANY", "day": "MONDAY", "start": "09:00", "end": "14:00"}],
+    })
+    workload = created(api, base + "/workloads", owner, {
+        **capability,
+        "lesson_format": "REMOTE",
+        "group_id": group["id"],
+        "occurrences_per_cycle": 2,
+        "required_teacher_count": 1,
+    })
+    first = dict(
+        lesson(9),
+        workload_id=workload["id"],
+        subject_name=subject["name"],
+        lesson_type="LECTURE",
+        lesson_format="REMOTE",
+        teachers=[{"teacher_id": teacher["id"], "display_name": teacher["full_name"]}],
+    )
     result = upload(api, owner, project, [first, first]).json()
     path = "/schedules/" + result["schedule_ids"][0]
     initial = api.get(path, headers=owner).json()
@@ -124,7 +148,9 @@ def test_processing_uses_queued_snapshot_and_returns_owned_result(
     assert api.get(job_url, headers=owner).json()["status"] == "COMPLETED"
     (variant,) = api.get(job_url + "/schedules", headers=owner).json()
     assert variant["id"] != initial["id"]
-    assert variant["entries"][0]["subject_name"] is None
+    assert variant["source"] == "GENERATED"
+    assert variant["entries"][0]["subject_name"] == "Физика"
+    assert all(entry["workload_id"] == workload["id"] for entry in variant["entries"])
     assert len(variant["entries"]) == 2
     assert (
         api.post("/schedules/" + variant["id"] + "/validate", headers=owner).json()["status"]
@@ -152,3 +178,36 @@ def test_invalid_requests_do_not_create_jobs_or_access_other_projects(api, stora
         assert api.post(path + "/" + suffix, headers=owner, json=body).status_code == 422
     with container.uow() as uow:
         assert uow.job_outbox.get_pending_for_update() is None
+
+
+def test_processing_without_workloads_returns_diagnostics(api, container, storage, monkeypatch):
+    state = Mock()
+    state.is_cancel_requested.return_value = False
+    state.get_progress.return_value = None
+    monkeypatch.setattr(container, "job_state", lambda: state)
+    owner = sign_in(api)
+    project = new_project(api, owner)
+    saved = upload(api, owner, project, [lesson(9)]).json()
+    path = "/schedules/" + saved["schedule_ids"][0]
+    queued = api.post(path + "/reoptimize", headers=owner, json={"mode": "FULL"})
+    assert queued.status_code == 202
+    with container.uow() as uow:
+        message = uow.job_outbox.get_pending_for_update()
+    assert container.process_job().execute(message)
+    job_url = "/generation-jobs/" + queued.json()["job_id"]
+    result = api.get(job_url, headers=owner).json()
+    assert result["status"] == "COMPLETED"
+    assert result["diagnostics"]
+    assert api.get(job_url + "/schedules", headers=owner).json() == []
+    assert api.get(path, headers=owner).json()["source"] == "IMPORTED"
+
+
+def test_text_only_resources_report_overlaps(api, storage):
+    owner = sign_in(api)
+    project = new_project(api, owner)
+    entry = dict(lesson(9), room_name="101", lesson_format="ONSITE")
+    data = upload(api, owner, project, [entry, entry]).json()
+    assert data["imported_count"] == 2
+    assert {item["code"] for item in data["validation"]["conflicts"]} == {
+        "GROUP_OVERLAP", "ROOM_OVERLAP", "TEACHER_OVERLAP",
+    }

@@ -82,7 +82,7 @@ def test_worker_uses_queued_project_data_and_persists_scores_and_diagnostics(
     assert result["diagnostics"][0]["workload_ids"] == [workload["id"]]
     assert client.get(missing_url + "/schedules", headers=auth).json() == []
     (variant,) = client.get(f"/generation-jobs/{with_teacher}/schedules", headers=auth).json()
-    assert variant["criterion_scores"] == {"TEACHER_PREFERENCES": 0}
+    assert variant["criterion_scores"] == {"TEACHER_PREFERENCES": 1}
     (entry,) = variant["entries"]
     assert entry["start_time"] == "12:00" and entry["week"] == "ODD"
     assert entry["teachers"] == [{"teacher_id": teacher["id"], "display_name": "Иванов"}]

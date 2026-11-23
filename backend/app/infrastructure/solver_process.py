@@ -2,6 +2,7 @@
 
 import logging
 import multiprocessing
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from multiprocessing.connection import Connection
 from time import monotonic
 
@@ -48,34 +49,43 @@ class SupervisedSolver:
         stop = context.Event()
         reader, writer = context.Pipe(duplex=False)
         process = context.Process(target=_run, args=(self.solver, inputs, progress, stop, writer))
-        with reader, writer:
+        with reader, writer, ThreadPoolExecutor(max_workers=1) as executor:
             process.start()
             writer.close()
             try:
-                return self._wait(reader, progress, control)
+                result = executor.submit(self._receive, reader)
+                return self._wait(result, progress, control)
             finally:
                 stop.set()
                 process.join(POLL_SECONDS)
                 if process.is_alive():
                     process.terminate()
+                    process.join(POLL_SECONDS)
+                if process.is_alive():
+                    process.kill()
                     process.join()
                 process.close()
 
     @staticmethod
-    def _wait(output: Connection, progress, control: SolverControl) -> SolverResult:
+    def _receive(output: Connection) -> SolverResult:
+        try:
+            result, error = output.recv()
+        except EOFError as exc:
+            raise RuntimeError("Процесс планировщика завершился без результата") from exc
+        if error is not None:
+            raise RuntimeError(error)
+        return result
+
+    @staticmethod
+    def _wait(result: Future[SolverResult], progress, control: SolverControl) -> SolverResult:
         next_heartbeat = monotonic()
         while True:
             if control.is_cancel_requested():
                 return SolverResult(SolverStatus.CANCELLED)
+            if result.done():
+                return result.result()
             now = monotonic()
             if now >= next_heartbeat:
                 control.report_progress(JobProgress(progress.value))
                 next_heartbeat = now + HEARTBEAT_SECONDS
-            if output.poll(POLL_SECONDS):
-                try:
-                    result, error = output.recv()
-                except EOFError as exc:
-                    raise RuntimeError("Процесс планировщика завершился без результата") from exc
-                if error is not None:
-                    raise RuntimeError(error)
-                return result
+            wait((result,), timeout=POLL_SECONDS)

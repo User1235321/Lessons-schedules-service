@@ -30,6 +30,7 @@ from app.domain.scheduling.schedule import (
     Schedule,
     ScheduleConflict,
     ScheduleEntry,
+    ScheduleSource,
 )
 from app.domain.shared.week import Weekday
 
@@ -68,15 +69,67 @@ def _conflict(
     return ScheduleConflict(code, message, tuple(sorted({entry.id for entry in entries})), details)
 
 
+def _label(value: str | None) -> str | None:
+    return " ".join(value.casefold().split()) if value and value.strip() else None
+
+
+def _identities(pairs: Iterator[tuple[UUID, str | None]]) -> dict[str, set[UUID]]:
+    result: dict[str, set[UUID]] = defaultdict(set)
+    for resource_id, name in pairs:
+        label = _label(name)
+        if label is not None:
+            result[label].add(resource_id)
+    return result
+
+
+def _identity(
+    resource_id: UUID | None, name: str | None, identities: dict[str, set[UUID]]
+) -> UUID | str | None:
+    if resource_id is not None:
+        return resource_id
+    label = _label(name)
+    if label is None:
+        return None
+    matches = identities.get(label, set())
+    if len(matches) == 1:
+        return next(iter(matches))
+    return label if not matches else None
+
+
+def _participant_targets(problem: ScheduleProblem):
+    targets = defaultdict(list)
+    groups = {group.id: group for group in problem.groups}
+    for group in problem.groups:
+        targets[_label(group.name)].append(((group.id,), None, group.student_count))
+    for subgroup in problem.subgroups:
+        group = groups.get(subgroup.group_id)
+        if group is not None:
+            targets[_label(f"{group.name} / {subgroup.name}")].append(
+                ((group.id,), subgroup.id, subgroup.student_count)
+            )
+    for stream in problem.streams:
+        group_ids = tuple(dict.fromkeys(stream.group_ids))
+        if group_ids and all(group_id in groups for group_id in group_ids):
+            targets[_label(stream.name)].append(
+                (group_ids, None, sum(groups[group_id].student_count for group_id in group_ids))
+            )
+    return targets
+
+
 def _placements(schedule: Schedule, problem: ScheduleProblem) -> Iterator[_Placement]:
     workloads = {workload.id: workload for workload in problem.workloads}
     groups = {group.id: group for group in problem.groups}
     subgroups = {subgroup.id: subgroup for subgroup in problem.subgroups}
     streams = {stream.id: stream for stream in problem.streams}
+    targets = _participant_targets(problem)
     for entry in schedule.entries:
         workload = workloads.get(entry.workload_id)
         if workload is None:
-            yield _Placement(entry, None, (), None, None)
+            matches = targets.get(_label(entry.participant_label), ())
+            if len(matches) == 1:
+                yield _Placement(entry, None, *matches[0])
+            else:
+                yield _Placement(entry, None, (), None, None)
             continue
         kind, target = workload.target.kind, workload.target.resource_id
         if kind is WorkloadTargetKind.SUBGROUP:
@@ -263,20 +316,43 @@ _OVERLAP_REASONS = {
 }
 
 
-def _overlap_conflicts(placements: list[_Placement]) -> Iterator[ScheduleConflict]:
-    by_resource: dict[tuple[str, UUID, str, Weekday], list[_Placement]] = defaultdict(list)
+def _overlap_conflicts(
+    placements: list[_Placement], problem: ScheduleProblem
+) -> Iterator[ScheduleConflict]:
+    teacher_names = _identities(iter(
+        [(teacher.id, teacher.full_name) for teacher in problem.teachers]
+        + [
+            (teacher.teacher_id, teacher.display_name)
+            for placement in placements
+            for teacher in placement.entry.teachers
+            if teacher.teacher_id is not None
+        ]
+    ))
+    room_names = _identities(iter(
+        [(room.id, room.name) for room in problem.rooms]
+        + [
+            (placement.entry.room_id, placement.entry.room_name)
+            for placement in placements
+            if placement.entry.room_id is not None
+        ]
+    ))
+    participant_targets = _participant_targets(problem)
+    by_resource: dict[tuple[str, UUID | str, str, Weekday], list[_Placement]] = defaultdict(list)
     for placement in placements:
         entry = placement.entry
-        resources = [("GROUP_OVERLAP", group_id) for group_id in placement.groups]
-        resources.extend(
-            ("TEACHER_OVERLAP", teacher.teacher_id)
+        resources = {("GROUP_OVERLAP", group_id) for group_id in placement.groups}
+        participant_label = _label(entry.participant_label)
+        if not placement.groups and participant_label and not participant_targets.get(participant_label):
+            resources.add(("GROUP_OVERLAP", participant_label))
+        resources.update(
+            ("TEACHER_OVERLAP", _identity(teacher.teacher_id, teacher.display_name, teacher_names))
             for teacher in entry.teachers
-            if teacher.teacher_id is not None
         )
-        if entry.room_id is not None and placement.lesson_format is not LessonFormat.REMOTE:
-            resources.append(("ROOM_OVERLAP", entry.room_id))
+        if placement.lesson_format is not LessonFormat.REMOTE:
+            resources.add(("ROOM_OVERLAP", _identity(entry.room_id, entry.room_name, room_names)))
         for code, resource_id in resources:
-            by_resource[code, resource_id, entry.week, entry.weekday].append(placement)
+            if resource_id is not None:
+                by_resource[code, resource_id, entry.week, entry.weekday].append(placement)
     for (code, resource_id, _, _), items in by_resource.items():
         # При разных подгруппах общий родитель сам по себе не создаёт конфликт.
         items.sort(key=lambda item: item.entry.start_time)
@@ -306,8 +382,15 @@ def _extra_conflicts(
     placements: list[_Placement],
     by_workload: dict[UUID, list[ScheduleEntry]],
     complete: bool,
+    partial_assignment: bool,
 ) -> Iterator[ScheduleConflict]:
     subgroups = {subgroup.id: subgroup for subgroup in problem.subgroups}
+    expected = {workload.id: workload.occurrences_per_cycle for workload in problem.workloads}
+
+    def workload_complete(workload_id: UUID | None) -> bool:
+        return workload_id in expected and (
+            len(by_workload.get(workload_id, ())) >= expected[workload_id]
+        )
     for constraint in problem.constraints:
         scope = constraint.scope
         if scope.kind is ConstraintScopeKind.WORKLOAD:
@@ -320,15 +403,26 @@ def _extra_conflicts(
             if isinstance(params, (RelatedWorkloadParameters, MinimumGapParameters))
             else []
         )
-        yield from constraint_conflicts(constraint, selected, related, complete)
+        available = complete
+        if not partial_assignment and scope.kind is ConstraintScopeKind.WORKLOAD:
+            available = available or (
+                workload_complete(scope.resource_id)
+                and (
+                    not isinstance(params, (RelatedWorkloadParameters, MinimumGapParameters))
+                    or workload_complete(params.workload_id)
+                )
+            )
+        yield from constraint_conflicts(constraint, selected, related, available)
 
 
 def validate_schedule(
     schedule: Schedule, problem: ScheduleProblem, *, partial_assignment: bool = False
 ) -> list[ScheduleConflict]:
     placements = list(_placements(schedule, problem))
-    generated = not schedule.allows_partial_data
-    complete = not partial_assignment and generated
+    generated = schedule.source is ScheduleSource.GENERATED
+    complete = not partial_assignment and (
+        generated or bool(placements and all(item.workload is not None for item in placements))
+    )
     teachers = {teacher.id: teacher for teacher in problem.teachers}
     rooms = {room.id: room for room in problem.rooms}
     groups = {group.id: group for group in problem.groups}
@@ -366,8 +460,8 @@ def validate_schedule(
                     actual=actual,
                 )
             )
-    conflicts.extend(_overlap_conflicts(placements))
-    conflicts.extend(_extra_conflicts(problem, placements, by_workload, complete))
+    conflicts.extend(_overlap_conflicts(placements, problem))
+    conflicts.extend(_extra_conflicts(problem, placements, by_workload, complete, partial_assignment))
     unique = {
         (conflict.code, conflict.entry_ids, repr(sorted(conflict.details.items()))): conflict
         for conflict in conflicts

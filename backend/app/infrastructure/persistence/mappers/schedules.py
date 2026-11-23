@@ -29,7 +29,6 @@ def schedule_to_row(schedule: Schedule) -> ScheduleRow:
         if schedule.criterion_scores is not None
         else None,
         created_at=schedule.created_at,
-        from_import=schedule.from_import,
     )
 
 
@@ -88,5 +87,4 @@ def schedule_to_domain(row: ScheduleRow, entries: tuple[ScheduleEntry, ...]) -> 
         if row.criterion_scores is not None
         else None,
         created_at=row.created_at,
-        from_import=row.from_import,
     )

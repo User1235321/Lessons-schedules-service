@@ -10,12 +10,7 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column("schedule_jobs", sa.Column("existing_input", JSONB(), nullable=True))
-    op.add_column(
-        "schedules",
-        sa.Column("from_import", sa.Boolean(), nullable=False, server_default=sa.false()),
-    )
 
 
 def downgrade() -> None:
-    op.drop_column("schedules", "from_import")
     op.drop_column("schedule_jobs", "existing_input")

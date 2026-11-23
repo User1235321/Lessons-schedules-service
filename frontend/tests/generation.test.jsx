@@ -216,7 +216,7 @@ describe("Generation: progress and result", () => {
     const link = await screen.findByRole("link", { name: "Открыть расписание" });
     expect(link.getAttribute("href")).toBe("/projects/42/schedules/schedule-real");
     await user.click(link);
-    expect(await screen.findByText("Расписание schedule-real")).toBeTruthy();
+    expect(await screen.findByRole("table", { name: "Занятия выбранной недели" })).toBeTruthy();
   });
 
   it("reports when the calculation completed without an admissible schedule", async () => {

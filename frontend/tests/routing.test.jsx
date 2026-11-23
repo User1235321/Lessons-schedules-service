@@ -56,12 +56,12 @@ describe("routing", () => {
   });
 
   it("goes from schedule viewer to schedule editor", async () => {
-    const { user, router } = renderRoute("/projects/42/schedules/s-1");
+    const { user, router } = renderRoute("/projects/42/schedules/schedule-1");
 
     await user.click(await screen.findByRole("link", { name: "Редактировать" }));
 
     expect(await findHeading("Редактирование расписания")).toBeTruthy();
-    expect(router.state.location.pathname).toBe("/projects/42/schedules/s-1/edit");
+    expect(router.state.location.pathname).toBe("/projects/42/schedules/schedule-1/edit");
     expect(screen.getByRole("tab", { name: "Расписания", selected: true })).toBeTruthy();
   });
 

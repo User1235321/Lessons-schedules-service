@@ -395,6 +395,29 @@ Workflow-файлы находятся в `.github/workflows`.
 - `docs/FS.md` — функциональная спецификация;
 - `docs/HLD.md` — High-Level Design.
 
+### Повторная обработка расписания
+
+После сохранения ручного изменения через `PATCH /schedules/{schedule_id}/entries/{entry_id}`
+можно запустить корректировку через `POST /schedules/{schedule_id}/auto-repair`.
+Пример запроса для фиксации дня занятия:
+
+```json
+{
+  "pins": [
+    {"entry_id": "550e8400-e29b-41d4-a716-446655440000", "fields": ["DAY"]}
+  ]
+}
+```
+
+`DAY` закрепляет неделю и день, а `TIME` — начало и конец занятия. Передайте
+`["DAY", "TIME"]`, чтобы закрепить оба признака. Для полной фиксации размещения
+по-прежнему доступно поле `fixed_entry_ids`. Указывайте каждое занятие один раз.
+Worker использует снимок расписания на момент постановки задания.
+
+Для повторной оптимизации отправьте `POST /schedules/{schedule_id}/reoptimize`
+с `mode` равным `FULL` или `MIN_CHANGES`. Состояние задания доступно по
+`GET /generation-jobs/{job_id}`, варианты — по `GET /generation-jobs/{job_id}/schedules`.
+
 ## Тестовые данные
 
 `test-data/minimal-project.json` содержит общий интеграционный набор данных для Frontend, Backend, Scheduler и интеграционных тестов.

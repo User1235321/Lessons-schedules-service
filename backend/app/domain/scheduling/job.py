@@ -53,10 +53,22 @@ class ResultOptions:
         return self.top_n if self.top_n is not None else 1
 
 
+class EntryPinField(StrEnum):
+    DAY = "DAY"
+    TIME = "TIME"
+
+
+@dataclass(frozen=True)
+class ScheduleEntryPin:
+    entry_id: ScheduleEntryId
+    fields: tuple[EntryPinField, ...]
+
+
 @dataclass(frozen=True, kw_only=True)
 class ExistingScheduleInput:
     schedule: Schedule
     fixed_entry_ids: tuple[ScheduleEntryId, ...] = ()
+    pins: tuple[ScheduleEntryPin, ...] = ()
 
 
 @dataclass(frozen=True)

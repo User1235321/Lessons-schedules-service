@@ -2,6 +2,8 @@ from dataclasses import replace
 from datetime import UTC, datetime, time
 from uuid import uuid4
 
+import pytest
+
 from app.domain.scheduling.constraints import (
     ClockTimeParameters,
     ConstraintKind,
@@ -10,7 +12,12 @@ from app.domain.scheduling.constraints import (
     EveryWeekParameters,
     ExtraConstraintSnapshot,
 )
-from app.domain.scheduling.job import ExistingScheduleInput, JobType
+from app.domain.scheduling.job import (
+    EntryPinField,
+    ExistingScheduleInput,
+    JobType,
+    ScheduleEntryPin,
+)
 from app.domain.scheduling.problem import OptimizationCriterionSnapshot
 from app.domain.scheduling.resources import (
     RoomSnapshot,
@@ -29,11 +36,12 @@ from app.domain.scheduling.schedule import (
 from app.domain.scheduling.solver import SolverStatus
 from app.domain.scheduling.validation import validate_schedule
 from app.domain.shared.week import Weekday
-from app.scheduling.reprocessing import ExistingScheduleSolver
+from app.scheduling.reprocessing import ExistingScheduleSolver, _distance
 from tests.unit.test_feasible_solver import (
     GROUP,
     MONDAY,
     ROOM,
+    SECOND_TEACHER,
     STREAM,
     TEACHER,
     WORKLOAD,
@@ -95,6 +103,157 @@ def test_modes_rank_changes_before_quality_only_for_min_changes():
     assert solver.solve(
         source, JobType.AUTO_REPAIR, data, RecordingControl(cancel_after=0)
     ).status is SolverStatus.CANCELLED
+
+
+def test_min_changes_uses_quality_to_break_ties():
+    original = entry(8)
+    assigned = replace(
+        teacher(availability=(window(time(9), time(11)),)),
+        preferences=(window(time(10), time(11)),),
+    )
+    data = replace(
+        problem(teachers=(assigned,)),
+        optimization_criteria=(OptimizationCriterionSnapshot("TEACHER_PREFERENCES", 1),),
+    )
+    result = ExistingScheduleSolver().solve(
+        ExistingScheduleInput(schedule=schedule(original)),
+        JobType.REOPTIMIZE_MIN_CHANGES,
+        data,
+        RecordingControl(),
+    )
+    assert result.status is SolverStatus.SOLVED
+    assert result.variants[0].entries == (replace(original, start_time=time(10), end_time=time(11)),)
+
+
+def test_change_count_compares_all_five_fields_and_ignores_teacher_order():
+    first, second = entry().teachers[0], TeacherAssignment("Другой преподаватель", SECOND_TEACHER)
+    original = replace(entry(), lesson_format=LessonFormat.ONSITE, teachers=(first, second))
+
+    for changed in (
+        replace(original, week="EVEN"),
+        replace(original, weekday=Weekday.TUESDAY),
+        replace(original, start_time=time(9), end_time=time(10)),
+        replace(original, lesson_format=LessonFormat.REMOTE),
+        replace(original, room_id=ROOM, room_name="101"),
+        replace(original, teachers=(first,)),
+    ):
+        assert _distance(original, changed) == 1
+    assert _distance(original, replace(original, teachers=(second, first))) == 0
+
+
+@pytest.mark.parametrize(
+    ("field", "expected_week", "expected_day", "expected_start"),
+    [
+        (EntryPinField.DAY, "ODD", MONDAY, 9),
+        (EntryPinField.TIME, "ODD", Weekday.TUESDAY, 8),
+    ],
+)
+def test_auto_repair_pins_only_requested_field(field, expected_week, expected_day, expected_start):
+    original = entry(8)
+    available = (
+        window(time(9), time(10), week="ODD"),
+        window(time(8), time(9), week="ODD", day=Weekday.TUESDAY),
+        window(time(8), time(9), week="EVEN"),
+    )
+    data = problem(
+        teachers=(teacher(availability=available),),
+        project_settings=settings(odd=(MONDAY, Weekday.TUESDAY), even=(MONDAY,)),
+    )
+    source = ExistingScheduleInput(
+        schedule=schedule(original), pins=(ScheduleEntryPin(original.id, (field,)),)
+    )
+
+    result = ExistingScheduleSolver().solve(source, JobType.AUTO_REPAIR, data, RecordingControl())
+
+    assert result.status is SolverStatus.SOLVED
+    expected = replace(
+        original,
+        week=expected_week,
+        weekday=expected_day,
+        start_time=time(expected_start),
+        end_time=time(expected_start + 1),
+    )
+    assert result.variants[0].entries == (expected,)
+
+
+def test_auto_repair_keeps_pinned_occurrence_and_moves_only_one_neighbor():
+    neighbor, pinned, independent = entry(9), entry(9), entry(11)
+    data = problem(
+        workloads=(workload(occurrences=3),),
+        teachers=(teacher(availability=(window(time(9), time(12)),)),),
+    )
+    source = ExistingScheduleInput(
+        schedule=schedule(neighbor, pinned, independent),
+        pins=(ScheduleEntryPin(pinned.id, (EntryPinField.DAY, EntryPinField.TIME)),),
+    )
+
+    result = ExistingScheduleSolver().solve(source, JobType.AUTO_REPAIR, data, RecordingControl())
+
+    assert result.status is SolverStatus.SOLVED
+    variant = result.variants[0]
+    assert variant.entries == (
+        replace(neighbor, start_time=time(10), end_time=time(11)),
+        pinned,
+        independent,
+    )
+    assert not validate_schedule(replace(source.schedule, entries=variant.entries), data)
+
+
+def test_auto_repair_can_change_format_with_both_day_and_time_pinned():
+    original = replace(entry(9), lesson_format=LessonFormat.ONSITE, room_id=ROOM, room_name="101")
+    source = ExistingScheduleInput(
+        schedule=schedule(original),
+        pins=(ScheduleEntryPin(original.id, (EntryPinField.DAY, EntryPinField.TIME)),),
+    )
+
+    result = ExistingScheduleSolver().solve(
+        source, JobType.AUTO_REPAIR, problem(), RecordingControl()
+    )
+
+    assert result.status is SolverStatus.SOLVED
+    assert result.variants[0].entries == (
+        replace(original, lesson_format=LessonFormat.REMOTE, room_id=None, room_name=None),
+    )
+
+
+def test_auto_repair_explains_when_pinned_day_has_no_placements():
+    original = replace(entry(9), weekday=Weekday.SUNDAY)
+    source = ExistingScheduleInput(
+        schedule=schedule(original), pins=(ScheduleEntryPin(original.id, (EntryPinField.DAY,)),)
+    )
+
+    result = ExistingScheduleSolver().solve(
+        source, JobType.AUTO_REPAIR, problem(), RecordingControl()
+    )
+
+    assert result.status is SolverStatus.INFEASIBLE
+    assert not result.variants
+    (diagnostic,) = result.diagnostics
+    assert diagnostic.workload_ids == (WORKLOAD,)
+    assert str(original.id) in diagnostic.message
+    assert "DAY" in diagnostic.message
+
+
+def test_auto_repair_reports_infeasible_when_pinned_occurrences_overlap():
+    first, second = entry(9), entry(9)
+    source = ExistingScheduleInput(
+        schedule=schedule(first, second),
+        pins=tuple(
+            ScheduleEntryPin(item.id, (EntryPinField.DAY, EntryPinField.TIME))
+            for item in (first, second)
+        ),
+    )
+    data = problem(
+        workloads=(workload(occurrences=2),),
+        teachers=(teacher(availability=(window(time(9), time(11)),)),),
+    )
+
+    result = ExistingScheduleSolver().solve(source, JobType.AUTO_REPAIR, data, RecordingControl())
+
+    assert result.status is SolverStatus.INFEASIBLE
+    assert not result.variants
+    assert result.diagnostics[0].workload_ids == (WORKLOAD,)
+    assert "фиксации" in result.diagnostics[0].message
 
 
 def test_import_without_workload_id_can_match_unique_workload():

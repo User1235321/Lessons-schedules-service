@@ -3,7 +3,7 @@ from collections.abc import Iterator
 from dataclasses import replace
 from uuid import UUID
 
-from app.domain.scheduling.job import ExistingScheduleInput, JobProgress, JobType
+from app.domain.scheduling.job import EntryPinField, ExistingScheduleInput, JobProgress, JobType
 from app.domain.scheduling.problem import ScheduleProblem
 from app.domain.scheduling.schedule import LessonFormat, Schedule, ScheduleEntry, ScheduleSource
 from app.domain.scheduling.solver import (
@@ -55,11 +55,19 @@ def _teachers_equal(original: ScheduleEntry, candidate: ScheduleEntry) -> bool:
     return not remaining
 
 
+def _same_day(original: ScheduleEntry, candidate: ScheduleEntry) -> bool:
+    return (original.week, original.weekday) == (candidate.week, candidate.weekday)
+
+
+def _same_time(original: ScheduleEntry, candidate: ScheduleEntry) -> bool:
+    return (original.start_time, original.end_time) == (candidate.start_time, candidate.end_time)
+
+
 def _distance(original: ScheduleEntry, candidate: ScheduleEntry) -> int:
     return sum(
         (
-            (original.week, original.weekday) != (candidate.week, candidate.weekday),
-            (original.start_time, original.end_time) != (candidate.start_time, candidate.end_time),
+            not _same_day(original, candidate),
+            not _same_time(original, candidate),
             original.lesson_format != candidate.lesson_format,
             not _resource_equal(
                 original.room_id, original.room_name, candidate.room_id, candidate.room_name
@@ -87,8 +95,8 @@ def _requirements_by_format(
 
 def _fixed_placement(original: ScheduleEntry, candidate: ScheduleEntry) -> bool:
     return (
-        (original.week, original.weekday, original.start_time, original.end_time)
-        == (candidate.week, candidate.weekday, candidate.start_time, candidate.end_time)
+        _same_day(original, candidate)
+        and _same_time(original, candidate)
         and (original.lesson_format is None or original.lesson_format == candidate.lesson_format)
         and (
             not (original.room_id or original.room_name)
@@ -107,6 +115,7 @@ def _options(
     requirements: dict[tuple[UUID, LessonFormat], LessonRequirements],
     problem: ScheduleProblem,
     fixed: bool,
+    pinned_fields: tuple[EntryPinField, ...],
     preserve: bool,
     control: SolverControl,
 ) -> list[tuple[int, Placement, ScheduleEntry]]:
@@ -118,8 +127,13 @@ def _options(
             continue
         for placement in iter_placements(requirement, problem.settings, control):
             entry = placement.to_entry(original.id)
-            if not fixed or _fixed_placement(original, entry):
-                result.append((_distance(original, entry) if preserve else 0, placement, entry))
+            if fixed and not _fixed_placement(original, entry):
+                continue
+            if EntryPinField.DAY in pinned_fields and not _same_day(original, entry):
+                continue
+            if EntryPinField.TIME in pinned_fields and not _same_time(original, entry):
+                continue
+            result.append((_distance(original, entry) if preserve else 0, placement, entry))
     return sorted(result, key=lambda item: item[0])
 
 
@@ -172,14 +186,40 @@ class ExistingScheduleSolver:
             return _infeasible("Количество занятий не соответствует учебной нагрузке", mismatched)
         preserve = job_type is not JobType.REOPTIMIZE_FULL
         fixed = set(source.fixed_entry_ids)
+        pins = {pin.entry_id: pin.fields for pin in source.pins}
+        pinned_workloads = []
         choices = []
         for entry, workload_id in zip(source.schedule.entries, linked, strict=True):
+            check_cancelled(control)
+            is_fixed = entry.id in fixed
+            pinned_fields = pins.get(entry.id, ())
             options = _options(
-                entry, workload_id, workloads[workload_id].lesson_format, requirements, problem,
-                entry.id in fixed, preserve, control,
+                entry,
+                workload_id,
+                workloads[workload_id].lesson_format,
+                requirements,
+                problem,
+                is_fixed,
+                pinned_fields,
+                preserve,
+                control,
             )
             if not options:
+                if pinned_fields:
+                    fields = ", ".join(pinned_fields)
+                    return _infeasible(
+                        f"Для занятия {entry.id} нет допустимых размещений "
+                        f"с фиксацией полей {fields}",
+                        (workload_id,),
+                    )
+                if is_fixed:
+                    return _infeasible(
+                        f"Зафиксированное размещение занятия {entry.id} недопустимо",
+                        (workload_id,),
+                    )
                 return _infeasible("Для занятия отсутствуют допустимые размещения", (workload_id,))
+            if is_fixed or pinned_fields:
+                pinned_workloads.append(workload_id)
             choices.append(options)
         template = replace(
             source.schedule,
@@ -190,7 +230,14 @@ class ExistingScheduleSolver:
             entries=(),
         )
         scorer = PlacementScorer(problem, tuple(by_workload.values()))
-        return self._search(template, choices, scorer, problem, control)
+        return self._search(
+            template,
+            choices,
+            scorer,
+            problem,
+            control,
+            pinned_workloads=tuple(dict.fromkeys(pinned_workloads)),
+        )
 
     def _search(
         self,
@@ -199,6 +246,8 @@ class ExistingScheduleSolver:
         scorer: PlacementScorer,
         problem: ScheduleProblem,
         control: SolverControl,
+        *,
+        pinned_workloads: tuple[UUID, ...],
     ) -> SolverResult:
         if not choices:
             return _infeasible("В расписании отсутствуют занятия")
@@ -248,5 +297,11 @@ class ExistingScheduleSolver:
                 costs.append(cost)
                 stack.append(iter(choices[order[len(entries)]]))
         if best is None:
+            if pinned_workloads:
+                return _infeasible(
+                    "Не найдено расписание, одновременно соблюдающее фиксации занятий "
+                    "и все обязательные ограничения",
+                    pinned_workloads,
+                )
             return _infeasible("Полное допустимое расписание не найдено")
         return SolverResult(SolverStatus.SOLVED, (best,))

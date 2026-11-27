@@ -11,7 +11,7 @@ from app.api.schemas.schedules import (
     ScheduleEntryUpdateResponse,
     ScheduleValidationResponse,
 )
-from app.domain.scheduling.job import JobType
+from app.domain.scheduling.job import JobType, ScheduleEntryPin
 from app.domain.shared.ids import ScheduleEntryId, ScheduleId
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
@@ -54,7 +54,10 @@ def auto_repair(
         user_id,
         ScheduleId(schedule_id),
         JobType.AUTO_REPAIR,
-        tuple(ScheduleEntryId(item) for item in body.fixed_entry_ids),
+        fixed_entry_ids=tuple(ScheduleEntryId(item) for item in body.fixed_entry_ids),
+        pins=tuple(
+            ScheduleEntryPin(ScheduleEntryId(pin.entry_id), tuple(pin.fields)) for pin in body.pins
+        ),
     )
     return QueuedJobResponse.of(job)
 

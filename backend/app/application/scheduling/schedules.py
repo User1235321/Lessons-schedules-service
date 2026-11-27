@@ -7,7 +7,14 @@ from app.application.auth.access import owned_project
 from app.application.scheduling.validation_data import enqueue_with_snapshot, load_validation_data
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
-from app.domain.scheduling.job import ExistingScheduleInput, Job, JobStatus, JobType, ResultOptions
+from app.domain.scheduling.job import (
+    ExistingScheduleInput,
+    Job,
+    JobStatus,
+    JobType,
+    ResultOptions,
+    ScheduleEntryPin,
+)
 from app.domain.scheduling.problem import ScheduleProblem
 from app.domain.scheduling.resources import LessonType
 from app.domain.scheduling.schedule import (
@@ -103,6 +110,8 @@ class QueueScheduleProcessing:
         schedule_id: ScheduleId,
         job_type: JobType,
         fixed_entry_ids: tuple[ScheduleEntryId, ...] = (),
+        *,
+        pins: tuple[ScheduleEntryPin, ...] = (),
     ) -> Job:
         with self.uow:
             project_id = self.uow.schedules.owned_project_id(schedule_id, user_id)
@@ -110,17 +119,32 @@ class QueueScheduleProcessing:
                 raise NotFound("Расписание не найдено", schedule_id=str(schedule_id))
             project = owned_project(self.uow, project_id, user_id, for_update=True)
             schedule = _owned_schedule(self.uow, schedule_id, user_id, for_update=True)
-            if len(set(fixed_entry_ids)) != len(fixed_entry_ids):
+            pinned_ids = set(fixed_entry_ids)
+            if len(pinned_ids) != len(fixed_entry_ids):
                 raise InvalidValue("Занятие указано повторно", field="fixed_entry_ids")
-            if set(fixed_entry_ids).difference(entry.id for entry in schedule.entries):
+            entry_ids = {entry.id for entry in schedule.entries}
+            if pinned_ids - entry_ids:
                 raise InvalidValue("Занятие отсутствует в расписании", field="fixed_entry_ids")
+            for index, pin in enumerate(pins):
+                field = f"pins.{index}"
+                if pin.entry_id not in entry_ids:
+                    raise InvalidValue("Занятие отсутствует в расписании", field=f"{field}.entry_id")
+                if pin.entry_id in pinned_ids:
+                    raise InvalidValue("Занятие указано повторно", field=f"{field}.entry_id")
+                if not pin.fields or len(set(pin.fields)) != len(pin.fields):
+                    raise InvalidValue(
+                        "Укажите закрепляемые поля без повторов", field=f"{field}.fields"
+                    )
+                pinned_ids.add(pin.entry_id)
             job = Job(
                 id=JobId(self.ids.new_id()),
                 project_id=schedule.project_id,
                 job_type=job_type,
                 status=JobStatus.QUEUED,
                 result_options=ResultOptions(),
-                existing=ExistingScheduleInput(schedule=schedule, fixed_entry_ids=fixed_entry_ids),
+                existing=ExistingScheduleInput(
+                    schedule=schedule, fixed_entry_ids=fixed_entry_ids, pins=pins
+                ),
                 created_at=self.clock.now(),
             )
             enqueue_with_snapshot(self.uow, job, project)

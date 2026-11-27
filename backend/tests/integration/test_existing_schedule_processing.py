@@ -7,8 +7,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine
 
 from app.bootstrap.container import Container
-from app.domain.scheduling.job import JobMessage
+from app.domain.scheduling.job import EntryPinField, JobMessage, ScheduleEntryPin
 from app.infrastructure.persistence.job_lock import PostgresJobExecutionLock
+from app.infrastructure.persistence.mappers.jobs import job_to_domain, job_to_row
 from tests.api_calls import created, new_project, sign_in
 
 
@@ -74,6 +75,7 @@ def test_partial_import_returns_conflicts_and_preserves_original(api, container,
     ("suffix", "body", "kind"),
     [
         ("auto-repair", {}, "AUTO_REPAIR"),
+        ("auto-repair", {"pins": [{"fields": ["DAY", "TIME"]}]}, "AUTO_REPAIR"),
         ("reoptimize", {"mode": "FULL"}, "REOPTIMIZE_FULL"),
         ("reoptimize", {"mode": "MIN_CHANGES"}, "REOPTIMIZE_MIN_CHANGES"),
     ],
@@ -125,7 +127,15 @@ def test_processing_uses_queued_snapshot_and_returns_owned_result(
     path = "/schedules/" + result["schedule_ids"][0]
     initial = api.get(path, headers=owner).json()
     fixed = initial["entries"][0]["id"]
-    if suffix == "auto-repair":
+    entry_url = path + "/entries/" + fixed
+    pinned_time = {"start_time": first["start_time"], "end_time": first["end_time"]}
+    selective_pin = "pins" in body
+    if selective_pin:
+        body = {"pins": [dict(body["pins"][0], entry_id=fixed)]}
+        pinned_time = {"start_time": "11:00", "end_time": "12:40"}
+        patched = api.patch(entry_url, headers=owner, json=pinned_time)
+        assert patched.status_code == 200, patched.text
+    elif suffix == "auto-repair":
         body = {"fixed_entry_ids": [fixed]}
     assert api.post(path + "/" + suffix, json=body).status_code == 401
     assert api.post(path + "/" + suffix, json=body, headers=outsider).status_code == 404
@@ -138,9 +148,28 @@ def test_processing_uses_queued_snapshot_and_returns_owned_result(
     assert api.get(job_url + "/schedules", headers=outsider).status_code == 404
     with container.uow() as uow:
         job = uow.jobs.get(UUID(project), job_id)
+        assert job is not None and job.existing is not None
         message = uow.job_outbox.get_pending_for_update()
         assert message == JobMessage(job_id, job.project_id, job.job_type)
-    api.patch(path + "/entries/" + fixed, headers=owner, json={"subject_name": "После запуска"})
+        if selective_pin:
+            assert job.existing.pins == (
+                ScheduleEntryPin(UUID(fixed), (EntryPinField.DAY, EntryPinField.TIME)),
+            )
+        elif suffix == "auto-repair":
+            old_row = job_to_row(job)
+            assert old_row.existing_input is not None
+            old_row.existing_input.pop("pins")
+            assert job_to_domain(old_row).existing == job.existing
+    edited = api.patch(
+        entry_url,
+        headers=owner,
+        json={
+            "subject_name": "После запуска",
+            "start_time": first["start_time"],
+            "end_time": first["end_time"],
+        },
+    )
+    assert edited.status_code == 200, edited.text
     worker = container.process_job()
     worker.lock = PostgresJobExecutionLock(migrated_engine)
     assert worker.execute(message)
@@ -157,9 +186,10 @@ def test_processing_uses_queued_snapshot_and_returns_owned_result(
         == "valid"
     )
     if suffix == "auto-repair":
+        expected = {"week": first["week"], "weekday": first["weekday"], **pinned_time}
         assert all(
-            variant["entries"][0][k] == first[k]
-            for k in ("week", "weekday", "start_time", "end_time")
+            variant["entries"][0][field] == value
+            for field, value in expected.items()
         )
     assert api.post(path + "/validate", headers=owner).json()["status"] == "invalid"
 
@@ -171,8 +201,19 @@ def test_invalid_requests_do_not_create_jobs_or_access_other_projects(api, stora
     assert upload(api, outsider, project, [lesson(9)]).status_code == 404
     storage.put.assert_not_called()
     path = "/schedules/" + upload(api, owner, project, [lesson(9)]).json()["schedule_ids"][0]
+    other_path = "/schedules/" + upload(api, owner, project, [lesson(9)]).json()["schedule_ids"][0]
+    entry_id = api.get(path, headers=owner).json()["entries"][0]["id"]
+    other_id = api.get(other_path, headers=owner).json()["entries"][0]["id"]
+    day_pin = {"entry_id": entry_id, "fields": ["DAY"]}
     for suffix, body in [
         ("auto-repair", {"fixed_entry_ids": [str(uuid4())]}),
+        ("auto-repair", {}),
+        ("auto-repair", {"pins": [{"entry_id": other_id, "fields": ["DAY"]}]}),
+        ("auto-repair", {"pins": [day_pin, {"entry_id": entry_id, "fields": ["TIME"]}]}),
+        ("auto-repair", {"pins": [day_pin], "fixed_entry_ids": [entry_id]}),
+        ("auto-repair", {"pins": [dict(day_pin, fields=["DAY", "DAY"])]}),
+        ("auto-repair", {"pins": [dict(day_pin, fields=[])]}),
+        ("auto-repair", {"pins": [dict(day_pin, fields=["ROOM"])]}),
         ("reoptimize", {"mode": "unknown"}),
     ]:
         assert api.post(path + "/" + suffix, headers=owner, json=body).status_code == 422

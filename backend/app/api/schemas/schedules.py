@@ -1,11 +1,12 @@
 from typing import Literal, Self, cast
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.api.schemas.academic import HourMinute
 from app.api.schemas.jobs import ScheduleEntryResponse, TeacherAssignmentResponse
 from app.application.scheduling.schedules import EntryChanges
+from app.domain.scheduling.job import EntryPinField
 from app.domain.scheduling.resources import LessonType
 from app.domain.scheduling.schedule import (
     LessonFormat,
@@ -87,9 +88,23 @@ class ScheduleValidationResponse(BaseModel):
         )
 
 
+class ScheduleEntryPinRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entry_id: UUID
+    fields: list[EntryPinField] = Field(min_length=1)
+
+
 class AutoRepairRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    fixed_entry_ids: list[UUID]
+    fixed_entry_ids: list[UUID] = Field(default_factory=list)
+    pins: list[ScheduleEntryPinRequest] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _require_pin_list(self) -> Self:
+        if not self.model_fields_set:
+            raise ValueError("Укажите pins или fixed_entry_ids")
+        return self
 
 
 class ReoptimizeRequest(BaseModel):

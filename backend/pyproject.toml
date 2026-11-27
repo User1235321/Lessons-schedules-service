@@ -18,6 +18,8 @@ dependencies = [
     "confluent-kafka>=2.6,<3.0",
     "redis>=5.2,<6.0",
     "python-multipart>=0.0.20,<1",
+    "openpyxl>=3.1,<4",
+    "odfpy>=1.4.1,<2",
     "python-calamine>=0.9,<1",
     "minio>=7.2,<8",
 ]

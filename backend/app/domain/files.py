@@ -5,6 +5,8 @@ from enum import StrEnum
 from app.domain.shared.errors import DomainError, InvalidValue
 from app.domain.shared.ids import JobId, ProjectId, ScheduleId, StoredFileId, UserId
 
+MAX_UPLOAD_BYTES = 16 * 1024 * 1024
+
 
 class StoredFileCategory(StrEnum):
     UPLOAD = "UPLOAD"

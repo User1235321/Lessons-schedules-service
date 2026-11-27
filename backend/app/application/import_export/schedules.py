@@ -1,9 +1,9 @@
-import logging
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 
 from app.application.auth.access import owned_project
-from app.application.import_export.ports import ObjectKey, ObjectStorage, ObjectStorageError
+from app.application.import_export.files import store_and_commit
+from app.application.import_export.ports import ObjectKey, ObjectStorage
 from app.application.scheduling.validation_data import load_validation_data
 from app.application.shared.ports import Clock, IdGenerator
 from app.application.shared.uow import UnitOfWork
@@ -12,8 +12,6 @@ from app.domain.scheduling.problem import ScheduleProblem
 from app.domain.scheduling.schedule import Schedule, ScheduleConflict, ScheduleEntry, ScheduleSource
 from app.domain.scheduling.validation import validate_schedule
 from app.domain.shared.ids import ProjectId, ScheduleId, StoredFileId, UserId
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -106,14 +104,5 @@ class ImportSchedule:
                 object_key=key,
                 schedule_id=schedule_id,
             )
-            self.uow.files.add(file)
-            self.storage.put(key, content, content_type=content_type)
-            try:
-                self.uow.commit()
-            except Exception:
-                try:
-                    self.storage.delete(key)
-                except ObjectStorageError:
-                    logger.exception("Не удалось удалить файл после ошибки импорта: %s", key)
-                raise
+            store_and_commit(self.uow, self.storage, file, content, content_type)
         return ImportResult(file, len(entries), errors, conflicts)

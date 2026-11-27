@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.domain.files import StoredFile, StoredFileCategory
 from app.domain.shared.errors import AlreadyExists, InvalidValue, NotFound
-from app.domain.shared.ids import ProjectId, StoredFileId
+from app.domain.shared.ids import ProjectId, StoredFileId, UserId
 from app.infrastructure.persistence.errors import violated_constraint
 from app.infrastructure.persistence.models.files import StoredFileRow
 from app.infrastructure.persistence.models.jobs import JobRow
@@ -64,11 +64,27 @@ class SqlStoredFileRepository:
         )
         return _to_domain(row) if row else None
 
-    def list_in_project(self, project_id: ProjectId) -> list[StoredFile]:
-        rows = self._session.scalars(
+    def get_owned(
+        self, file_id: StoredFileId, user_id: UserId, *, for_update: bool = False
+    ) -> StoredFile | None:
+        query = (
             select(StoredFileRow)
-            .where(StoredFileRow.project_id == project_id)
-            .order_by(StoredFileRow.created_at.desc(), StoredFileRow.id)
+            .join(ProjectRow, ProjectRow.id == StoredFileRow.project_id)
+            .where(StoredFileRow.id == file_id, ProjectRow.owner_id == user_id)
+        )
+        if for_update:
+            query = query.with_for_update(of=StoredFileRow)
+        row = self._session.scalar(query)
+        return _to_domain(row) if row else None
+
+    def list_in_project(
+        self, project_id: ProjectId, *, category: StoredFileCategory | None = None
+    ) -> list[StoredFile]:
+        query = select(StoredFileRow).where(StoredFileRow.project_id == project_id)
+        if category is not None:
+            query = query.where(StoredFileRow.category == category.value)
+        rows = self._session.scalars(
+            query.order_by(StoredFileRow.created_at.desc(), StoredFileRow.id)
         )
         return [_to_domain(row) for row in rows]
 

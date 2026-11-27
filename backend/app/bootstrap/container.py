@@ -73,7 +73,11 @@ from app.application.constraints.use_cases import (
     ReplaceCriteria,
     UpdateConstraint,
 )
+from app.application.import_export.exports import ExportSchedule
+from app.application.import_export.files import DeleteFile, DownloadFile, ListFiles
 from app.application.import_export.ports import ObjectStorage
+from app.application.import_export.projects import ExportProject, ImportProject
+from app.application.import_export.resources import ImportResources
 from app.application.import_export.schedules import ImportSchedule
 from app.application.projects.use_cases import (
     CreateProject,
@@ -140,6 +144,27 @@ class Container:
             access_key=self.settings.minio_access_key, secret_key=self.settings.minio_secret_key,
             secure=endpoint.startswith("https://"),
         ), self.settings.minio_bucket)
+
+    def export_project(self) -> ExportProject:
+        return ExportProject(SqlUnitOfWork(self.session_factory, snapshot=True), self.object_storage(), self.ids, self.clock)
+
+    def import_project(self) -> ImportProject:
+        return ImportProject(self.uow(), self.object_storage(), self.ids, self.clock)
+
+    def import_resources(self) -> ImportResources:
+        return ImportResources(self.uow(), self.object_storage(), self.ids, self.clock)
+
+    def list_files(self) -> ListFiles:
+        return ListFiles(self.uow())
+
+    def download_file(self) -> DownloadFile:
+        return DownloadFile(self.uow(), self.object_storage())
+
+    def delete_file(self) -> DeleteFile:
+        return DeleteFile(self.uow(), self.object_storage())
+
+    def export_schedule(self) -> ExportSchedule:
+        return ExportSchedule(self.uow(), self.object_storage(), self.ids, self.clock)
 
     def import_schedule(self) -> ImportSchedule:
         return ImportSchedule(self.uow(), self.object_storage(), self.ids, self.clock)

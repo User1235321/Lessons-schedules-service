@@ -9,6 +9,7 @@ from app.api.request_context import RequestContextMiddleware, get_request_id
 from app.api.routers import (
     auth,
     constraints,
+    files,
     groups,
     health,
     imports,
@@ -59,4 +60,5 @@ def create_app(container: Container | None = None) -> FastAPI:
     app.include_router(jobs.router)
     app.include_router(schedules.router)
     app.include_router(imports.router)
+    app.include_router(files.router)
     return app

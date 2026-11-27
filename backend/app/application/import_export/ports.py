@@ -1,7 +1,7 @@
 from typing import NewType, Protocol
 
-from app.domain.files import StoredFile
-from app.domain.shared.ids import ProjectId, StoredFileId
+from app.domain.files import StoredFile, StoredFileCategory
+from app.domain.shared.ids import ProjectId, StoredFileId, UserId
 
 ObjectKey = NewType("ObjectKey", str)
 
@@ -23,6 +23,12 @@ class StoredFileRepository(Protocol):
 
     def get(self, project_id: ProjectId, file_id: StoredFileId) -> StoredFile | None: ...
 
-    def list_in_project(self, project_id: ProjectId) -> list[StoredFile]: ...
+    def get_owned(
+        self, file_id: StoredFileId, user_id: UserId, *, for_update: bool = False
+    ) -> StoredFile | None: ...
+
+    def list_in_project(
+        self, project_id: ProjectId, *, category: StoredFileCategory | None = None
+    ) -> list[StoredFile]: ...
 
     def delete(self, project_id: ProjectId, file_id: StoredFileId) -> None: ...

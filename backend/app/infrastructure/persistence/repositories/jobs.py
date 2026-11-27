@@ -21,6 +21,10 @@ class SqlJobRepository:
     def __init__(self, session: Session) -> None:
         self._session = session
 
+    def has_in_project(self, project_id: ProjectId) -> bool:
+        query = select(JobRow.id).where(JobRow.project_id == project_id).exists()
+        return bool(self._session.scalar(select(query)))
+
     def add(self, job: Job) -> None:
         self._session.add(job_to_row(job))
         try:
